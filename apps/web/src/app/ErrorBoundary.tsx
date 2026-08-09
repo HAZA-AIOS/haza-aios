@@ -8,10 +8,7 @@ interface ErrorBoundaryState {
   hasError: boolean;
 }
 
-export class ErrorBoundary extends Component<
-  ErrorBoundaryProps,
-  ErrorBoundaryState
-> {
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = {
     hasError: false,
   };
@@ -30,16 +27,10 @@ export class ErrorBoundary extends Component<
     if (this.state.hasError) {
       return (
         <main className="flex min-h-screen items-center justify-center p-6">
-          <section
-            className="max-w-md text-center"
-            role="alert"
-            aria-live="assertive"
-          >
-            <h1 className="text-2xl font-bold">
-              Something went wrong
-            </h1>
+          <section className="max-w-md text-center" role="alert" aria-live="assertive">
+            <h1 className="text-2xl font-bold">Something went wrong</h1>
 
-            <p className="mt-2 text-muted-foreground">
+            <p className="text-muted-foreground mt-2">
               Please refresh the application and try again.
             </p>
           </section>

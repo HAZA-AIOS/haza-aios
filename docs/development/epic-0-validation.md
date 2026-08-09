@@ -12,6 +12,14 @@ Validation in progress.
 - Development Branch: develop
 - Epic Branch: feature/project-foundation
 
+## Validation Result
+
+Epic 0 validation passed.
+
+All required repository, frontend, development-tooling, build, documentation, and Git workflow checks passed.
+
+Docker remains blocked because hardware virtualization is unavailable on the development machine.
+
 ## Frontend
 
 - React: validated
@@ -53,3 +61,13 @@ Pending final verification.
 ## Next Step
 
 Epic 0 Release.
+
+## Release
+
+Release version:
+
+`v0.1.0-alpha.1`
+
+Release status:
+
+Completed.

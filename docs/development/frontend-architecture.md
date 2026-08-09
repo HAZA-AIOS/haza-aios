@@ -27,11 +27,11 @@ The shared component library consumed by all applications. Contains reusable UI 
 
 ## Component Ownership
 
-| Category                | Location                        | Examples                                      |
-| ----------------------- | ------------------------------- | --------------------------------------------- |
-| **Shared primitives**   | `packages/ui`                   | Button, Input, Card, Dialog, Table, Badge     |
-| **Application components** | `apps/web/src/components`    | OrganizationSwitcher, DashboardSidebar, AICommandBar |
-| **Pages**               | `apps/web/src/pages`            | LandingPage, LoginPage, DashboardPage         |
+| Category                   | Location                  | Examples                                             |
+| -------------------------- | ------------------------- | ---------------------------------------------------- |
+| **Shared primitives**      | `packages/ui`             | Button, Input, Card, Dialog, Table, Badge            |
+| **Application components** | `apps/web/src/components` | OrganizationSwitcher, DashboardSidebar, AICommandBar |
+| **Pages**                  | `apps/web/src/pages`      | LandingPage, LoginPage, DashboardPage                |
 
 ### Application Directory Structure
 

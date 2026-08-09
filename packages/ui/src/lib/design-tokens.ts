@@ -1,0 +1,72 @@
+export const hazaDesignTokens = {
+  colors: {
+    background: "hsl(var(--background))",
+    foreground: "hsl(var(--foreground))",
+    muted: "hsl(var(--muted))",
+    "muted-foreground": "hsl(var(--muted-foreground))",
+    card: "hsl(var(--card))",
+    "card-foreground": "hsl(var(--card-foreground))",
+    border: "hsl(var(--border))",
+    input: "hsl(var(--input))",
+    ring: "hsl(var(--ring))",
+    primary: "hsl(var(--primary))",
+    "primary-foreground": "hsl(var(--primary-foreground))",
+    secondary: "hsl(var(--secondary))",
+    "secondary-foreground": "hsl(var(--secondary-foreground))",
+    accent: "hsl(var(--accent))",
+    "accent-foreground": "hsl(var(--accent-foreground))",
+    destructive: "hsl(var(--destructive))",
+    "destructive-foreground": "hsl(var(--destructive-foreground))",
+    success: "hsl(var(--success))",
+    warning: "hsl(var(--warning))",
+    info: "hsl(var(--info))",
+    panel: "hsl(var(--panel))",
+  },
+  gradients: {
+    primary: "var(--gradient-primary)",
+    glow: "var(--gradient-glow)",
+    panel: "var(--gradient-panel)",
+    ambient: "var(--gradient-ambient)",
+  },
+  shadows: {
+    soft: "var(--shadow-soft)",
+    glow: "var(--shadow-glow)",
+    card: "var(--shadow-card)",
+  },
+  radius: {
+    sm: "0.5rem",
+    md: "0.75rem",
+    lg: "1rem",
+    xl: "1.25rem",
+    "2xl": "1.5rem",
+    full: "9999px",
+  },
+  spacing: {
+    xs: "0.5rem",
+    sm: "0.75rem",
+    md: "1rem",
+    lg: "1.5rem",
+    xl: "2rem",
+    "2xl": "3rem",
+  },
+  motion: {
+    durations: {
+      fast: "150ms",
+      normal: "220ms",
+      slow: "350ms",
+    },
+    easing: {
+      standard: "cubic-bezier(0.2, 0, 0, 1)",
+      emphasized: "cubic-bezier(0.22, 1, 0.36, 1)",
+    },
+  },
+  breakpoints: {
+    sm: "640px",
+    md: "768px",
+    lg: "1024px",
+    xl: "1280px",
+    "2xl": "1536px",
+  },
+} as const;
+
+export type HazaDesignTokens = typeof hazaDesignTokens;

@@ -1,0 +1,29 @@
+{
+  "name": "haza-aios",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w apps/web",
+    "build:web": "npm run build -w apps/web",
+    "lint:web": "npm run lint -w apps/web",
+    "typecheck:web": "npm run typecheck -w apps/web",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check:web": "npm run typecheck:web && npm run lint:web && npm run format:check && npm run build:web"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^26.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "jsdom": "^29.1.1",
+    "prettier": "^3.9.6",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "vitest": "^4.1.10"
+  }
+}

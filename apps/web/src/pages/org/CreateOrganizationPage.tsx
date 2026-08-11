@@ -67,6 +67,7 @@ function CreateOrganizationPage() {
 
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors as Record<string, string>);
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
@@ -229,6 +230,12 @@ function CreateOrganizationPage() {
               rows={3}
             />
           </FormField>
+
+          {Object.keys(errors).length > 0 && (
+            <AuthAlert variant="error">
+              Please resolve the validation errors above before submitting.
+            </AuthAlert>
+          )}
 
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? "Creating workspace..." : "Register Organization"}

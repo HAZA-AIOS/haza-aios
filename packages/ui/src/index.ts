@@ -20,5 +20,6 @@ export * from "./components/section-heading";
 export * from "./components/select";
 export * from "./components/switch";
 export * from "./components/textarea";
+export * from "./components/organization-selects";
 export * from "./lib/design-tokens";
 export * from "./lib/utils";

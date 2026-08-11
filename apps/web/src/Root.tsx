@@ -6,6 +6,8 @@ import App from "./App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
 import { AuthProvider } from "./auth/AuthProvider";
 
+import { OrgProvider } from "./org/OrgProvider";
+
 function Root() {
   useEffect(() => {
     AOS.init({
@@ -19,7 +21,9 @@ function Root() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <App />
+        <OrgProvider>
+          <App />
+        </OrgProvider>
       </AuthProvider>
     </ErrorBoundary>
   );

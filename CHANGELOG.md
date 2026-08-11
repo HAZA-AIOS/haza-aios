@@ -1,3 +1,16 @@
+## [0.4.0-alpha.1] - 2026-08-11
+
+### Added
+
+- Multi-tenant organization data model foundations (`org.types.ts`).
+- Organization membership model with role declarations (`Owner`, `Admin`, `Member`).
+- Organization context state provider (`OrgProvider.tsx`) and `useOrganization()` hook.
+- Standard organization form validation rules and interactive slug generation/deduplication checks.
+- Authenticated Organization Registration flow screen at `/organization/create`.
+- Reusable UI select dropdown inputs for industries and organization types in `packages/ui`.
+- Comprehensive Vitest unit tests for validation, slug generation, service layers, and page renders.
+- Tenancy architecture reference document (`docs/architecture/organizations.md`).
+
 ## [0.3.0-alpha.1] - 2026-08-11
 
 ### Added

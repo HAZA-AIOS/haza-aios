@@ -15,6 +15,7 @@ import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
 import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { VerifyEmailPage } from "./pages/auth/VerifyEmailPage";
+import { CreateOrganizationPage } from "./pages/org/CreateOrganizationPage";
 import { usePathname } from "./routes/navigation";
 import { ProtectedRoute, PublicOnlyRoute } from "./routes/router";
 
@@ -70,6 +71,12 @@ function App() {
       );
     case "/verify-email":
       return <VerifyEmailPage />;
+    case "/organization/create":
+      return (
+        <ProtectedRoute>
+          <CreateOrganizationPage />
+        </ProtectedRoute>
+      );
     case "/app":
       return (
         <ProtectedRoute>

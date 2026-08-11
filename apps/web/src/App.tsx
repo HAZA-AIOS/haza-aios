@@ -9,8 +9,16 @@ import { HeroSection } from "./components/HeroSection";
 import { IndustryShowcase } from "./components/IndustryShowcase";
 import { IntelligenceSection } from "./components/IntelligenceSection";
 import { TrustSection } from "./components/TrustSection";
+import { ProtectedAppPage } from "./pages/app/ProtectedAppPage";
+import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
+import { LoginPage } from "./pages/auth/LoginPage";
+import { RegisterPage } from "./pages/auth/RegisterPage";
+import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
+import { VerifyEmailPage } from "./pages/auth/VerifyEmailPage";
+import { usePathname } from "./routes/navigation";
+import { ProtectedRoute, PublicOnlyRoute } from "./routes/router";
 
-function App() {
+function LandingPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Header />
@@ -30,6 +38,47 @@ function App() {
       <Footer />
     </div>
   );
+}
+
+function App() {
+  const pathname = usePathname();
+
+  switch (pathname) {
+    case "/login":
+      return (
+        <PublicOnlyRoute>
+          <LoginPage />
+        </PublicOnlyRoute>
+      );
+    case "/register":
+      return (
+        <PublicOnlyRoute>
+          <RegisterPage />
+        </PublicOnlyRoute>
+      );
+    case "/forgot-password":
+      return (
+        <PublicOnlyRoute>
+          <ForgotPasswordPage />
+        </PublicOnlyRoute>
+      );
+    case "/reset-password":
+      return (
+        <PublicOnlyRoute>
+          <ResetPasswordPage />
+        </PublicOnlyRoute>
+      );
+    case "/verify-email":
+      return <VerifyEmailPage />;
+    case "/app":
+      return (
+        <ProtectedRoute>
+          <ProtectedAppPage />
+        </ProtectedRoute>
+      );
+    default:
+      return <LandingPage />;
+  }
 }
 
 export default App;

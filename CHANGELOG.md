@@ -1,3 +1,54 @@
+## [0.3.0-alpha.1] - 2026-08-11
+
+### Added
+
+- Complete authentication and identity foundation (Epic 3)
+- `AuthProvider` React context with `useAuth()` and `useCurrentUser()` hooks
+- Centralized authentication state (`loading | authenticated | unauthenticated | error`)
+- Mock auth service adapter (`auth-service.ts`) implementing the full `AuthService` interface
+- Client-side form validation utilities (`auth-validation.ts`)
+- Session persistence with `localStorage` (remember-me) and `sessionStorage` (session-only)
+- Automatic session expiry detection and cleanup
+- `ProtectedRoute` and `PublicOnlyRoute` route guard components
+- Public routes: `/`, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email`
+- Login page with email, password, and remember-me fields
+- Registration page with name, email, password, and strength indicator
+- Forgot Password page with email field and submission confirmation
+- Reset Password page with new password, confirmation, and token validation
+- Email Verification page with status display and navigation
+- Protected application placeholder at `/app` for future dashboard epics
+- `AuthLayout` reusable layout primitive in `packages/ui` (router-agnostic, slot-based)
+- `AuthCard` glass card component in `packages/ui`
+- `AuthAlert` accessible alert component (`error | success | info`) in `packages/ui`
+- `AuthLoading` spinner component in `packages/ui`
+- `FormField` accessible label/field/error wrapper in `packages/ui`
+- `PasswordField` with show/hide toggle in `packages/ui`
+- `PasswordStrength` 5-bar visual indicator with `aria-live` in `packages/ui`
+- `ApiClient` class with base URL, auth token injection, 401 handling, and `ApiError`
+- Vitest test suite with jsdom environment
+- Tests: auth validation, auth storage, mock auth service, `AuthProvider` hooks, route protection
+
+### Architecture
+
+- Authentication is fully isolated from organization and business logic
+- Clean layered boundary: UI → AuthProvider → Auth Service → API Client → Backend
+- Identity model (`User`, `AuthSession`) separated from profile; `Organization` and `OrganizationMembership` types stubbed for future epics
+- All reusable auth UI primitives placed in `packages/ui`; app-specific shell in `apps/web`
+- Backend API can be connected by swapping the mock adapter with a real `AuthService` implementation — no UI layer changes required
+
+### Documentation
+
+- Added `docs/architecture/authentication.md` covering architecture, identity model, session model, route protection, security boundaries, and backend connection guide
+
+### Not Implemented (Future Epics)
+
+- Organization registration (next relevant Epic)
+- Organization dashboard
+- Role/permission enforcement UI
+- Platform administration
+- Education / SIS modules
+- AI Agent Framework
+
 ## [0.2.0-alpha.1] - 2026-08-09
 
 ### Added

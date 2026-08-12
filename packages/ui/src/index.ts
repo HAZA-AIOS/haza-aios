@@ -13,5 +13,7 @@ export * from "./components/section-heading";
 export * from "./components/select";
 export * from "./components/switch";
 export * from "./components/textarea";
+export * from "./components/admin-primitives";
+export * from "./components/module-primitives";
 export * from "./lib/design-tokens";
 export * from "./lib/utils";

@@ -90,6 +90,7 @@ function CreateOrganizationPage() {
       setApiError(
         err instanceof Error ? err.message : "Failed to create organization. Please try again.",
       );
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 

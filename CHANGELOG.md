@@ -1,3 +1,16 @@
+## [0.5.0-alpha.1] - 2026-08-12
+
+### Added
+
+- Compact premium Sidebar navigation with data-driven routing, active state highlighting, hover expansions, and collapsed states.
+- Reusable top utility Header bar featuring breadcrumbs, notification center with indicator badges, profile dropdown, and organization switcher dropdown.
+- Authenticated Dashboard route at `/dashboard` protected by Auth routing gates.
+- Reusable presenter components in `packages/ui`: `DashboardCard`, `StatCard` with SVG sparklines, and `AIAssistantWidget`.
+- SVG Donut Chart representing distribution of system load, and SVG Bar Chart representing hourly AI Ops activity.
+- Floating AI Assistant box foundation at the bottom center.
+- Dashboard architecture documentation (`docs/architecture/dashboard.md`).
+- Robust Vitest suite checking layout rendering, telemetry metrics, and sidebar functionality.
+
 ## [0.4.0-alpha.1] - 2026-08-11
 
 ### Added

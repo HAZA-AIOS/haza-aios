@@ -9,12 +9,12 @@ import { HeroSection } from "./components/HeroSection";
 import { IndustryShowcase } from "./components/IndustryShowcase";
 import { IntelligenceSection } from "./components/IntelligenceSection";
 import { TrustSection } from "./components/TrustSection";
-import { ProtectedAppPage } from "./pages/app/ProtectedAppPage";
 import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
 import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { VerifyEmailPage } from "./pages/auth/VerifyEmailPage";
+import { DashboardPage } from "./pages/dashboard/DashboardPage";
 import { CreateOrganizationPage } from "./pages/org/CreateOrganizationPage";
 import { usePathname } from "./routes/navigation";
 import { ProtectedRoute, PublicOnlyRoute } from "./routes/router";
@@ -78,9 +78,10 @@ function App() {
         </ProtectedRoute>
       );
     case "/app":
+    case "/dashboard":
       return (
         <ProtectedRoute>
-          <ProtectedAppPage />
+          <DashboardPage />
         </ProtectedRoute>
       );
     default:

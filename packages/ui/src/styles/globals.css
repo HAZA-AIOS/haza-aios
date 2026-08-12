@@ -233,3 +233,14 @@ img {
     color: #ffffff;
   }
 }
+
+/* Force dark styling on select options globally to prevent browser light-mode white-on-white text issues */
+select option {
+  background-color: #0b0f19 !important;
+  color: #ffffff !important;
+}
+
+select option:disabled {
+  color: #64748b !important;
+}
+

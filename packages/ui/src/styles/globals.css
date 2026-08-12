@@ -226,4 +226,10 @@ img {
     background-color: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.3);
   }
+
+  /* Dropdown selects background style */
+  select option {
+    background-color: #0b0f19;
+    color: #ffffff;
+  }
 }

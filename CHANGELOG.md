@@ -1,3 +1,19 @@
+## [0.7.0-alpha.1] - 2026-08-12
+
+### Added
+
+- Organization Workspace module under protected `/workspace/*` routes, gated by active organization session checks (`WorkspaceGuard`).
+- Adapted AppShell sidebar navigation to display organization-specific overview, members, modules, and settings.
+- Adapted AppShell top utility header to display organization name, type, industry, status badge, and initial logo.
+- Workspace Overview page at `/workspace` showing logo avatar, type/industry/status details, KPI stats (members, active modules count), activity logs, and quick actions.
+- Workspace Members page at `/workspace/members` showing member table (with role badges, joined date), search filter, role filters, and dialogs for Invite, Role Change, and Remove Member.
+- Workspace Modules page at `/workspace/modules` listing 5 modules (SIS, HR, Financials, AI Workspace, Patient EHR) with toggle switch controls to activate/deactivate modules.
+- Workspace Settings page at `/workspace/settings` providing settings form (Name, Legal Name, Description, Website, Contact Info, Localization, Timezone, Currency) and role-based permissions warning.
+- Scoped multi-tenant local storage state management (`workspace-service.ts`) using `organizationId` keys for memberships, logs, and modules activation.
+- Role boundaries separating Owner (full control), Admin (limited members/settings control), and Member (read-only view).
+- Unit tests verifying memberships CRUD, module toggle activation, tenant isolation, and page rendering (13 tests passing).
+- Organization Workspace architecture documentation (`docs/architecture/organization-workspace.md`).
+
 ## [0.6.0-alpha.1] - 2026-08-12
 
 ### Added

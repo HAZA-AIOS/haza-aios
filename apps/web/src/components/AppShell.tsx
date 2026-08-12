@@ -98,8 +98,8 @@ function AppShell({ children }: AppShellProps) {
   // Data-driven navigation definition
   const orgNavItems: NavItem[] = [
     {
-      label: "Dashboard",
-      path: "/dashboard",
+      label: "Overview",
+      path: "/workspace",
       icon: (
         <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect width="7" height="9" x="3" y="3" rx="1" />
@@ -110,8 +110,8 @@ function AppShell({ children }: AppShellProps) {
       ),
     },
     {
-      label: "Organization",
-      path: "/organization/details",
+      label: "Members",
+      path: "/workspace/members",
       icon: (
         <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -122,8 +122,8 @@ function AppShell({ children }: AppShellProps) {
       ),
     },
     {
-      label: "Modules",
-      path: "/modules",
+      label: "Active Modules",
+      path: "/workspace/modules",
       icon: (
         <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="m7.5 4.27 9 5.15" />
@@ -133,24 +133,13 @@ function AppShell({ children }: AppShellProps) {
         </svg>
       ),
     },
-    {
-      label: "Analytics",
-      path: "/analytics",
-      icon: (
-        <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="18" x2="18" y1="20" y2="10" />
-          <line x1="12" x2="12" y1="20" y2="4" />
-          <line x1="6" x2="6" y1="20" y2="14" />
-        </svg>
-      ),
-    },
   ];
 
   const navItems = isAdminMode ? adminNavItems : orgNavItems;
 
   const bottomNavItem: NavItem = {
     label: "Settings",
-    path: "/settings", // mock settings path
+    path: "/workspace/settings",
     icon: (
       <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
@@ -161,13 +150,16 @@ function AppShell({ children }: AppShellProps) {
 
   // Check if link is active
   const isActive = (path: string) => {
-    if (path === "/dashboard") {
-      return pathname === "/dashboard" || pathname === "/app";
+    if (path === "/workspace") {
+      return pathname === "/workspace" || pathname === "/dashboard" || pathname === "/app";
     }
     if (path === "/admin" && pathname === "/admin") {
       return true;
     }
     if (path !== "/admin" && pathname.startsWith(path) && path.startsWith("/admin/")) {
+      return true;
+    }
+    if (path !== "/workspace" && pathname.startsWith(path) && path.startsWith("/workspace/")) {
       return true;
     }
     return pathname === path;
@@ -250,7 +242,7 @@ function AppShell({ children }: AppShellProps) {
           {/* Back to Dashboard link (visible in admin mode) */}
           {isAdminMode && (
             <button
-              onClick={() => navigate("/dashboard")}
+              onClick={() => navigate("/workspace")}
               className="flex items-center gap-4 w-full p-3 rounded-xl transition-all duration-200 group text-left text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
             >
               <div className="shrink-0">
@@ -352,23 +344,45 @@ function AppShell({ children }: AppShellProps) {
             <div className="h-4 w-px bg-white/10 hidden sm:block"></div>
             {/* Organization switch dropdown */}
             {organizations.length > 0 && currentOrganization && (
-              <div className="relative">
-                <select
-                  value={currentOrganization.id}
-                  onChange={(e) => switchOrg(e.target.value)}
-                  className="appearance-none rounded-xl border border-white/10 bg-slate-900 px-3 py-1.5 pr-8 text-xs font-medium text-white focus:outline-none focus:border-red-500/30 transition-colors"
-                >
-                  {organizations.map((o: Organization) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
-                  <svg className="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                  </svg>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <select
+                    value={currentOrganization.id}
+                    onChange={(e) => switchOrg(e.target.value)}
+                    className="appearance-none rounded-xl border border-white/10 bg-slate-900 px-3 py-1.5 pr-8 text-xs font-medium text-white focus:outline-none focus:border-red-500/30 transition-colors"
+                  >
+                    {organizations.map((o: Organization) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+                    <svg className="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
                 </div>
+
+                {/* Organization details display */}
+                {!isAdminMode && (
+                  <div className="hidden lg:flex items-center gap-2.5 border-l border-white/10 pl-3">
+                    <div className="size-6 rounded-md bg-red-500/10 text-red-500 flex items-center justify-center font-bold text-xs">
+                      {currentOrganization.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="text-left leading-none">
+                      <p className="text-[10px] text-slate-300 font-semibold">{currentOrganization.organizationType}</p>
+                      <p className="text-[9px] text-slate-500 mt-0.5">{currentOrganization.industry}</p>
+                    </div>
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider ${
+                      currentOrganization.status === "active"
+                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                        : "bg-red-500/10 text-red-400 border border-red-500/20"
+                    }`}>
+                      {currentOrganization.status}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>

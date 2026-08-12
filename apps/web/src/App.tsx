@@ -14,7 +14,6 @@ import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
 import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { VerifyEmailPage } from "./pages/auth/VerifyEmailPage";
-import { DashboardPage } from "./pages/dashboard/DashboardPage";
 import { CreateOrganizationPage } from "./pages/org/CreateOrganizationPage";
 import { AdminOverviewPage } from "./pages/admin/AdminOverviewPage";
 import { AdminOrganizationsPage } from "./pages/admin/AdminOrganizationsPage";
@@ -22,8 +21,22 @@ import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
 import { AdminAuditLogPage } from "./pages/admin/AdminAuditLogPage";
 import { AdminSystemHealthPage } from "./pages/admin/AdminSystemHealthPage";
 import { AdminGuard } from "./admin/AdminGuard";
-import { usePathname } from "./routes/navigation";
+import { usePathname, navigate } from "./routes/navigation";
 import { ProtectedRoute, PublicOnlyRoute } from "./routes/router";
+import { WorkspaceGuard } from "./workspace/WorkspaceGuard";
+import { WorkspaceOverviewPage } from "./pages/workspace/WorkspaceOverviewPage";
+import { WorkspaceMembersPage } from "./pages/workspace/WorkspaceMembersPage";
+import { WorkspaceModulesPage } from "./pages/workspace/WorkspaceModulesPage";
+import { WorkspaceSettingsPage } from "./pages/workspace/WorkspaceSettingsPage";
+import { useEffect } from "react";
+
+function WorkspaceRedirect() {
+  useEffect(() => {
+    navigate("/workspace");
+  }, []);
+  return null;
+}
+
 
 function LandingPage() {
   return (
@@ -87,9 +100,44 @@ function App() {
     case "/dashboard":
       return (
         <ProtectedRoute>
-          <DashboardPage />
+          <WorkspaceGuard>
+            <WorkspaceRedirect />
+          </WorkspaceGuard>
         </ProtectedRoute>
       );
+    case "/workspace":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <WorkspaceOverviewPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/members":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <WorkspaceMembersPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/modules":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <WorkspaceModulesPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/settings":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <WorkspaceSettingsPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+
 
     /* ───── Platform Administration Routes ───── */
     case "/admin":

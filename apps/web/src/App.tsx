@@ -16,6 +16,12 @@ import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage";
 import { VerifyEmailPage } from "./pages/auth/VerifyEmailPage";
 import { DashboardPage } from "./pages/dashboard/DashboardPage";
 import { CreateOrganizationPage } from "./pages/org/CreateOrganizationPage";
+import { AdminOverviewPage } from "./pages/admin/AdminOverviewPage";
+import { AdminOrganizationsPage } from "./pages/admin/AdminOrganizationsPage";
+import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
+import { AdminAuditLogPage } from "./pages/admin/AdminAuditLogPage";
+import { AdminSystemHealthPage } from "./pages/admin/AdminSystemHealthPage";
+import { AdminGuard } from "./admin/AdminGuard";
 import { usePathname } from "./routes/navigation";
 import { ProtectedRoute, PublicOnlyRoute } from "./routes/router";
 
@@ -84,9 +90,53 @@ function App() {
           <DashboardPage />
         </ProtectedRoute>
       );
+
+    /* ───── Platform Administration Routes ───── */
+    case "/admin":
+      return (
+        <ProtectedRoute>
+          <AdminGuard>
+            <AdminOverviewPage />
+          </AdminGuard>
+        </ProtectedRoute>
+      );
+    case "/admin/organizations":
+      return (
+        <ProtectedRoute>
+          <AdminGuard>
+            <AdminOrganizationsPage />
+          </AdminGuard>
+        </ProtectedRoute>
+      );
+    case "/admin/users":
+      return (
+        <ProtectedRoute>
+          <AdminGuard>
+            <AdminUsersPage />
+          </AdminGuard>
+        </ProtectedRoute>
+      );
+    case "/admin/audit-log":
+      return (
+        <ProtectedRoute>
+          <AdminGuard>
+            <AdminAuditLogPage />
+          </AdminGuard>
+        </ProtectedRoute>
+      );
+    case "/admin/system-health":
+      return (
+        <ProtectedRoute>
+          <AdminGuard>
+            <AdminSystemHealthPage />
+          </AdminGuard>
+        </ProtectedRoute>
+      );
+
     default:
       return <LandingPage />;
   }
 }
 
 export default App;
+

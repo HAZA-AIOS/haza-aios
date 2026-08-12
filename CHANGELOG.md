@@ -1,3 +1,19 @@
+## [0.6.0-alpha.1] - 2026-08-12
+
+### Added
+
+- Platform Administration module with super-admin route protection (`AdminGuard`).
+- Platform role model (`super_admin`, `support_agent`, `viewer`) and `usePlatformRole()` / `useIsSuperAdmin()` hooks.
+- Mock platform admin service with comprehensive sample data (7 organizations, 11 users, 12 audit entries, 6 services).
+- Admin Overview page at `/admin` with platform KPI stat cards, system health monitor grid, and recent audit activity feed.
+- Admin Organizations page at `/admin/organizations` with searchable data table, status badges, and suspend/activate actions with confirmation dialog.
+- Admin Users page at `/admin/users` with searchable data table, platform role badges, avatar initials, and deactivate/activate actions.
+- Admin Audit Log page at `/admin/audit-log` with action type filters (Create, Update, Delete, Login, System) and timestamp-sorted entries.
+- Admin System Health page at `/admin/system-health` with summary stats, per-service health cards showing latency/uptime/status, and visual health progress bars.
+- Reusable admin UI primitives in `packages/ui`: `DataTable`, `AdminStatCard`, `StatusBadge`, `AdminPageHeader`, `ConfirmDialog`.
+- AppShell admin-mode sidebar with context-aware navigation, admin mode badge, and "Back to Dashboard" / "Admin Panel" links.
+- Platform administration architecture documentation (`docs/architecture/platform-admin.md`).
+
 ## [0.5.0-alpha.1] - 2026-08-12
 
 ### Added

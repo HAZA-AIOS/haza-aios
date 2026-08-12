@@ -4,6 +4,7 @@ import { useOrganization } from "@/org/use-organization";
 import { navigate, usePathname } from "@/routes/navigation";
 import { LogoMark } from "@haza-aios/ui";
 import type { Organization } from "@/org/org.types";
+import { useIsSuperAdmin } from "@/admin/use-platform-admin";
 
 interface NavItem {
   label: string;
@@ -19,19 +20,83 @@ function AppShell({ children }: AppShellProps) {
   const auth = useAuth();
   const pathname = usePathname();
   const { currentOrganization, organizations, switchOrg } = useOrganization();
+  const isSuperAdmin = useIsSuperAdmin();
   
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
+  // Detect admin mode by pathname
+  const isAdminMode = pathname.startsWith("/admin");
+
   const handleLogout = async () => {
     await auth.logout();
     navigate("/login");
   };
 
+  // Admin-specific navigation
+  const adminNavItems: NavItem[] = [
+    {
+      label: "Overview",
+      path: "/admin",
+      icon: (
+        <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect width="7" height="9" x="3" y="3" rx="1" />
+          <rect width="7" height="5" x="14" y="3" rx="1" />
+          <rect width="7" height="9" x="14" y="12" rx="1" />
+          <rect width="7" height="5" x="3" y="16" rx="1" />
+        </svg>
+      ),
+    },
+    {
+      label: "Organizations",
+      path: "/admin/organizations",
+      icon: (
+        <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+      ),
+    },
+    {
+      label: "Users",
+      path: "/admin/users",
+      icon: (
+        <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+      ),
+    },
+    {
+      label: "Audit Log",
+      path: "/admin/audit-log",
+      icon: (
+        <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+          <polyline points="10 9 9 9 8 9" />
+        </svg>
+      ),
+    },
+    {
+      label: "System Health",
+      path: "/admin/system-health",
+      icon: (
+        <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+        </svg>
+      ),
+    },
+  ];
+
   // Data-driven navigation definition
-  const navItems: NavItem[] = [
+  const orgNavItems: NavItem[] = [
     {
       label: "Dashboard",
       path: "/dashboard",
@@ -46,7 +111,7 @@ function AppShell({ children }: AppShellProps) {
     },
     {
       label: "Organization",
-      path: "/organization/details", // mock details path
+      path: "/organization/details",
       icon: (
         <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -58,7 +123,7 @@ function AppShell({ children }: AppShellProps) {
     },
     {
       label: "Modules",
-      path: "/modules", // mock modules path
+      path: "/modules",
       icon: (
         <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="m7.5 4.27 9 5.15" />
@@ -70,7 +135,7 @@ function AppShell({ children }: AppShellProps) {
     },
     {
       label: "Analytics",
-      path: "/analytics", // mock analytics path
+      path: "/analytics",
       icon: (
         <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <line x1="18" x2="18" y1="20" y2="10" />
@@ -80,6 +145,8 @@ function AppShell({ children }: AppShellProps) {
       ),
     },
   ];
+
+  const navItems = isAdminMode ? adminNavItems : orgNavItems;
 
   const bottomNavItem: NavItem = {
     label: "Settings",
@@ -97,6 +164,12 @@ function AppShell({ children }: AppShellProps) {
     if (path === "/dashboard") {
       return pathname === "/dashboard" || pathname === "/app";
     }
+    if (path === "/admin" && pathname === "/admin") {
+      return true;
+    }
+    if (path !== "/admin" && pathname.startsWith(path) && path.startsWith("/admin/")) {
+      return true;
+    }
     return pathname === path;
   };
 
@@ -112,7 +185,7 @@ function AppShell({ children }: AppShellProps) {
         onMouseLeave={() => setIsSidebarExpanded(false)}
       >
         {/* Brand Logo */}
-        <div className="flex items-center gap-3 w-full px-2 mb-10">
+        <div className="flex items-center gap-3 w-full px-2 mb-6">
           <LogoMark className="size-8 text-red-500 shrink-0" />
           {isSidebarExpanded && (
             <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
@@ -120,6 +193,20 @@ function AppShell({ children }: AppShellProps) {
             </span>
           )}
         </div>
+
+        {/* Admin Mode Badge / Context Switcher */}
+        {isAdminMode && (
+          <div className="w-full px-2 mb-6">
+            <div className={`flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 transition-all ${isSidebarExpanded ? 'px-3 py-2' : 'justify-center py-2'}`}>
+              <svg className="size-4 text-red-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+              {isSidebarExpanded && (
+                <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">Admin Mode</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Navigation Items */}
         <nav className="flex-1 w-full space-y-2">
@@ -144,8 +231,38 @@ function AppShell({ children }: AppShellProps) {
           })}
         </nav>
 
-        {/* Bottom Settings Link */}
-        <div className="w-full pt-4 border-t border-white/5">
+        {/* Bottom section: Admin link + Settings */}
+        <div className="w-full pt-4 border-t border-white/5 space-y-2">
+          {/* Admin link (visible in org mode when user is super_admin) */}
+          {!isAdminMode && isSuperAdmin && (
+            <button
+              onClick={() => navigate("/admin")}
+              className="flex items-center gap-4 w-full p-3 rounded-xl transition-all duration-200 group text-left text-slate-400 hover:text-red-400 hover:bg-red-500/5 border border-transparent"
+            >
+              <div className="shrink-0">
+                <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+              </div>
+              {isSidebarExpanded && <span className="text-sm font-medium">Admin Panel</span>}
+            </button>
+          )}
+          {/* Back to Dashboard link (visible in admin mode) */}
+          {isAdminMode && (
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="flex items-center gap-4 w-full p-3 rounded-xl transition-all duration-200 group text-left text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
+            >
+              <div className="shrink-0">
+                <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m12 19-7-7 7-7" />
+                  <path d="M19 12H5" />
+                </svg>
+              </div>
+              {isSidebarExpanded && <span className="text-sm font-medium">Back to Dashboard</span>}
+            </button>
+          )}
+          {/* Settings link */}
           <button
             onClick={() => navigate(bottomNavItem.path)}
             className={`flex items-center gap-4 w-full p-3 rounded-xl transition-all duration-200 group text-left ${
@@ -229,8 +346,8 @@ function AppShell({ children }: AppShellProps) {
           
           {/* Breadcrumb / Left Side Header */}
           <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold tracking-wider text-red-500 uppercase bg-red-500/10 px-2 py-1 rounded">
-              Tenant Active
+            <span className={`text-xs font-semibold tracking-wider uppercase px-2 py-1 rounded ${isAdminMode ? 'text-red-400 bg-red-500/10' : 'text-red-500 bg-red-500/10'}`}>
+              {isAdminMode ? 'Platform Admin' : 'Tenant Active'}
             </span>
             <div className="h-4 w-px bg-white/10 hidden sm:block"></div>
             {/* Organization switch dropdown */}

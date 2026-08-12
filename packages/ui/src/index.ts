@@ -22,6 +22,7 @@ export * from "./components/switch";
 export * from "./components/textarea";
 export * from "./components/organization-selects";
 export * from "./components/dashboard-primitives";
+export * from "./components/admin-primitives";
 export * from "./lib/design-tokens";
 export * from "./lib/utils";
 

@@ -30,8 +30,12 @@ function TestComponent() {
   );
 }
 
+import { orgService } from "../org-service";
+
 describe("OrgProvider & useOrganization hook", () => {
   it("provides organization context if authenticated", async () => {
+    localStorage.clear();
+    orgService.constructor.prototype.constructor.resetToDefaults();
     clearStoredAuth();
     writeStoredAuth({
       user: {

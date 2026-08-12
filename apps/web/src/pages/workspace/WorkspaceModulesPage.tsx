@@ -131,13 +131,8 @@ export function WorkspaceModulesPage() {
           }}
           module={selectedModule}
         />
-=======
->>>>>>> feature/organization-workspace
       </div>
     </AppShell>
   );
 }
-<<<<<<< HEAD
 
-=======
->>>>>>> feature/organization-workspace

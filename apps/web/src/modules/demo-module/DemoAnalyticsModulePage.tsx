@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useOrganization } from "../../org/use-organization";
 import { ModuleRuntime } from "../module-runtime";
 import { AppShell } from "../../components/AppShell";

@@ -20,6 +20,7 @@ import { AdminOrganizationsPage } from "./pages/admin/AdminOrganizationsPage";
 import { AdminUsersPage } from "./pages/admin/AdminUsersPage";
 import { AdminAuditLogPage } from "./pages/admin/AdminAuditLogPage";
 import { AdminSystemHealthPage } from "./pages/admin/AdminSystemHealthPage";
+import { AdminModulesPage } from "./pages/admin/AdminModulesPage";
 import { AdminGuard } from "./admin/AdminGuard";
 import { usePathname, navigate } from "./routes/navigation";
 import { ProtectedRoute, PublicOnlyRoute } from "./routes/router";
@@ -177,6 +178,14 @@ function App() {
         <ProtectedRoute>
           <AdminGuard>
             <AdminSystemHealthPage />
+          </AdminGuard>
+        </ProtectedRoute>
+      );
+    case "/admin/modules":
+      return (
+        <ProtectedRoute>
+          <AdminGuard>
+            <AdminModulesPage />
           </AdminGuard>
         </ProtectedRoute>
       );

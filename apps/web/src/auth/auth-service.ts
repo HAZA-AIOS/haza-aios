@@ -173,7 +173,8 @@ function isValidEmail(value: string) {
 }
 
 function wait() {
-  return new Promise((resolve) => window.setTimeout(resolve, delayMs));
+  const isTest = typeof process !== "undefined" && process.env.NODE_ENV === "test";
+  return new Promise((resolve) => window.setTimeout(resolve, isTest ? 0 : delayMs));
 }
 
 export { mockAuthService };

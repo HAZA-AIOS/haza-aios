@@ -54,7 +54,7 @@ export const ModuleRuntime = {
       };
 
       return { module, state };
-    }),
+    });
   },
 
   /**

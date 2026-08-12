@@ -1,3 +1,15 @@
+## [0.8.0-alpha.1] - 2026-08-12
+
+### Added
+
+- Dynamic Industry & Platform Modules framework featuring contract specification (`module.types.ts`), centralized discovery registry (`module-registry.ts`), and tenant-isolated runtime manager (`module-runtime.ts`).
+- Platform Module Registry directory page at `/admin/modules` allowing super-admins to inspect all registered platform and industry module contracts, specifications, routes, and permissions.
+- Interactive `ModuleCard` and `ModuleDetailsDialog` UI primitives in `@haza-aios/ui` for rendering module capabilities, metadata, navigation manifests, and write-access gated activation toggles.
+- Dynamic sidebar navigation integration in `AppShell` automatically injecting active tenant module links into the workspace navigation rail.
+- Demo analytics module (`demo-module`) illustrating dynamic client routing, sub-navigation, and configuration options.
+- Industry Modules Architecture specification (`docs/architecture/industry-modules.md`).
+- Vitest suite for module registry discovery, tenant activation toggling, and multi-tenant isolation.
+
 ## [0.7.0-alpha.1] - 2026-08-12
 
 ### Added

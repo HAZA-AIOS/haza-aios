@@ -1,4 +1,3 @@
-import * as React from "react";
 import { cn } from "@haza-aios/ui/lib/utils";
 
 export type ModuleBadgeStatus =

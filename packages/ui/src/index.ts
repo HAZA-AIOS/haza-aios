@@ -24,6 +24,9 @@ export * from "./components/organization-selects";
 export * from "./components/dashboard-primitives";
 export * from "./components/admin-primitives";
 export * from "./components/module-primitives";
+export * from "./components/table";
+export * from "./components/avatar";
+export * from "./components/status-badge";
 export * from "./lib/design-tokens";
 export * from "./lib/utils";
 

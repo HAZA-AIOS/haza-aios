@@ -1,3 +1,14 @@
+## [Unreleased]
+
+### Added
+
+- **Epic 10: School Information System (SIS) Core**
+  - Established School Domain and Academic Structure (Academic Years, Education Levels, Grades, Sections) in `modules/education/sis`.
+  - Implemented Students, Staff, and Enrollment data models.
+  - Built Mock `SisService` with tenant-isolation to simulate backend.
+  - Added reusable UI components to `packages/ui` (`table`, `avatar`, `status-badge`).
+  - Added foundational SIS Navigation, School Profile, Academic Years, Students, and Staff views.
+
 ## [0.8.0-alpha.1] - 2026-08-12
 
 ### Added

@@ -1,43 +1,12 @@
 import { ModuleRegistry } from "./module-registry";
 import { registerDemoModule } from "./demo-module";
+import { registerEducationModule } from "./education";
 import type { ModuleContract } from "./module.types";
 
 /**
  * Default catalog of registered platform module definitions for discovery across industries.
  */
 const platformCatalog: ModuleContract[] = [
-  {
-    id: "mod-education-sis",
-    name: "Education & SIS Suite (Framework Ready)",
-    slug: "education-sis",
-    description:
-      "Future School Information System capability for managing academic structures, students, and course registries.",
-    version: "0.1.0-alpha",
-    category: "industry",
-    industry: "Education",
-    icon: "🎓",
-    status: "available",
-    enabled: false,
-    routes: [],
-    navigation: [],
-    permissions: [
-      {
-        key: "module.education.view",
-        name: "View Education Data",
-        description: "Access student and academic registries.",
-      },
-      {
-        key: "module.education.manage",
-        name: "Manage Education Data",
-        description: "Modify student records and courses.",
-      },
-    ],
-    metadata: {
-      author: "HAZA AIOS Core Team",
-      tags: ["education", "sis", "academic"],
-      releasedAt: "2026-08-12",
-    },
-  },
   {
     id: "mod-healthcare-ehr",
     name: "Healthcare & Patient EHR (Framework Ready)",
@@ -94,6 +63,9 @@ const platformCatalog: ModuleContract[] = [
 export function initModuleRegistry(): void {
   // Register demo module
   registerDemoModule();
+  
+  // Register Education module
+  registerEducationModule();
 
   // Register catalog stubs
   for (const mod of platformCatalog) {

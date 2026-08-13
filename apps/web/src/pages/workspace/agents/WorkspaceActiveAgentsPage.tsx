@@ -6,7 +6,7 @@ import { navigate } from "../../../routes/navigation";
 
 export const WorkspaceActiveAgentsPage: React.FC = () => {
   const { templates } = useAgentTemplates();
-  const { instances, isLoading, activateAgent } = useAgentInstances();
+  const { instances, isLoading } = useAgentInstances();
 
   return (
     <div className="space-y-8 p-6">

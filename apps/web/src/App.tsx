@@ -30,6 +30,7 @@ import { WorkspaceMembersPage } from "./pages/workspace/WorkspaceMembersPage";
 import { WorkspaceModulesPage } from "./pages/workspace/WorkspaceModulesPage";
 import { WorkspaceSettingsPage } from "./pages/workspace/WorkspaceSettingsPage";
 import { WorkspaceDiscoverPage, WorkspaceActiveAgentsPage, AgentDetailsPage } from "./pages/workspace/agents";
+import { AgentBuilderPage } from "./pages/workspace/agents/builder/AgentBuilderPage";
 import { useEffect } from "react";
 
 function WorkspaceRedirect() {
@@ -153,6 +154,14 @@ function App() {
         <ProtectedRoute>
           <WorkspaceGuard>
             <WorkspaceActiveAgentsPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case (pathname.match(/^\/workspace\/agents\/[^\/]+\/configure$/) || {}).input:
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AgentBuilderPage />
           </WorkspaceGuard>
         </ProtectedRoute>
       );

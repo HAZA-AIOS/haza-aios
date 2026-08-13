@@ -60,7 +60,19 @@ export class AgentServiceClass {
       agentTemplateId: template.id,
       name: `${template.name} (Instance)`,
       status: "active",
-      configuration: {},
+      configuration: {
+        version: "1.0",
+        general: { description: template.description },
+        instructions: { systemInstructions: "", objectives: "", constraints: "", responseStyle: "" },
+        behavior: { tone: "Neutral", formality: "Standard", creativity: 50, responseLength: "Medium", language: "English", communicationStyle: "Direct" },
+        inputs: [],
+        outputs: [],
+        tools: [],
+        model: { provider: "Platform Default", modelSelection: "Auto", responseQuality: "Balanced", temperature: 0.7, tokenLimits: 2048 },
+        memory: { enabled: true, conversationContext: true, persistentMemory: false, organizationKnowledgeFoundation: false },
+        notifications: { inApp: true, email: false, onSuccess: false, onFailure: true, requireApproval: false },
+        advanced: { executionLimits: 100, timeoutSeconds: 30, retryCount: 1, loggingLevel: "Info", debugMode: false }
+      },
       enabled: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -101,7 +113,7 @@ export class AgentServiceClass {
     return data ? JSON.parse(data) : [];
   }
 
-  private saveRunsDb(runs: AgentRun[]): void {
+  public saveRunsDb(runs: AgentRun[]): void {
     localStorage.setItem(RUNS_KEY, JSON.stringify(runs));
   }
 

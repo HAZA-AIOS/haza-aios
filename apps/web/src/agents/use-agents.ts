@@ -14,33 +14,39 @@ export function useAgentTemplates() {
 }
 
 export function useAgentInstances() {
-  const { organization } = useOrganization();
+  const { currentOrganization } = useOrganization();
   const [instances, setInstances] = useState<AgentInstance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchInstances = async () => {
-    if (!organization) return;
+    if (!currentOrganization) return;
     setIsLoading(true);
-    const data = await AgentService.getInstances(organization.id);
+    const data = await AgentService.getInstances(currentOrganization.id);
     setInstances(data);
     setIsLoading(false);
   };
 
   useEffect(() => {
     fetchInstances();
-  }, [organization]);
+  }, [currentOrganization]);
 
   const activateAgent = async (templateId: string) => {
-    if (!organization) return;
-    await AgentService.activateAgent(organization.id, templateId);
+    if (!currentOrganization) return;
+    await AgentService.activateAgent(currentOrganization.id, templateId);
     await fetchInstances();
   };
 
   const pauseAgent = async (instanceId: string) => {
-    if (!organization) return;
-    await AgentService.pauseInstance(instanceId, organization.id);
+    if (!currentOrganization) return;
+    await AgentService.pauseInstance(instanceId, currentOrganization.id);
     await fetchInstances();
   };
 
-  return { instances, isLoading, activateAgent, pauseAgent };
+  const updateConfiguration = async (instanceId: string, config: any) => {
+    if (!currentOrganization) return;
+    await AgentService.updateConfiguration(instanceId, currentOrganization.id, config);
+    await fetchInstances();
+  };
+
+  return { instances, isLoading, activateAgent, pauseAgent, updateConfiguration };
 }

@@ -2,6 +2,15 @@
 
 ### Added
 
+- **Epic 13: Agent Configuration & Builder**
+  - Implemented `AgentConfiguration` schema on `AgentInstance`.
+  - Created low-code `AgentBuilderPage` at `/workspace/agents/:id/configure`.
+  - Added modular builder sections: General, Instructions, Behavior, Inputs, Outputs, Tools, Model & Memory.
+  - Added configuration preview and draft state tracking.
+  - Implemented `updateConfiguration` in `AgentService`.
+  - Added reusable `agent-builder-primitives` to `@haza-aios/ui`.
+
+
 - **Epic 12: AI Agent Registry & Marketplace**
   - Created the Agent Marketplace UI foundation at `/workspace/agents`.
   - Implemented discoverable global `AgentTemplate` registry.

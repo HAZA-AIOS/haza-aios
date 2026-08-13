@@ -1,10 +1,9 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import { WorkspaceDiscoverPage } from "../WorkspaceDiscoverPage";
-import { AgentService } from "../../../../agents/agent-service";
 import * as useOrganizationHook from "../../../../org/use-organization";
-import * as navigationContext from "../../../../routes/navigation";
 
 // Mock dependencies
 vi.mock("../../../../routes/navigation", () => ({

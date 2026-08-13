@@ -27,5 +27,6 @@ export * from "./components/admin-primitives";
 export * from "./components/module-primitives";
 export * from "./components/agent-primitives";
 export * from "./components/agent-marketplace-primitives";
+export * from "./components/agent-builder-primitives";
 export * from "./lib/design-tokens";
 export * from "./lib/utils";

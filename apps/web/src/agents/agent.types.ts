@@ -63,13 +63,97 @@ export interface AgentTemplate {
   updatedAt: string;
 }
 
+export interface AgentInputDefinition {
+  id: string;
+  name: string;
+  label: string;
+  description: string;
+  type: "Text" | "Number" | "Boolean" | "Date" | "Select" | "File" | "Object";
+  required: boolean;
+  defaultValue?: any;
+  validation?: string;
+  source?: string;
+}
+
+export interface AgentOutputDefinition {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+  format: "Text" | "JSON" | "Table" | "File" | "Structured data";
+  required: boolean;
+  destinationFoundation?: string;
+}
+
+export interface AgentBehaviorConfig {
+  tone: string;
+  formality: string;
+  creativity: number;
+  responseLength: string;
+  language: string;
+  communicationStyle: string;
+}
+
+export interface AgentMemoryConfig {
+  enabled: boolean;
+  conversationContext: boolean;
+  persistentMemory: boolean;
+  organizationKnowledgeFoundation: boolean;
+}
+
+export interface AgentModelConfig {
+  provider: string;
+  modelSelection: string;
+  responseQuality: string;
+  temperature: number;
+  tokenLimits: number;
+}
+
+export interface AgentNotificationConfig {
+  inApp: boolean;
+  email: boolean;
+  onSuccess: boolean;
+  onFailure: boolean;
+  requireApproval: boolean;
+}
+
+export interface AgentAdvancedConfig {
+  executionLimits: number;
+  timeoutSeconds: number;
+  retryCount: number;
+  loggingLevel: string;
+  debugMode: boolean;
+}
+
+export interface AgentConfiguration {
+  version: string;
+  general: {
+    description: string;
+  };
+  instructions: {
+    systemInstructions: string;
+    objectives: string;
+    constraints: string;
+    responseStyle: string;
+  };
+  behavior: AgentBehaviorConfig;
+  inputs: AgentInputDefinition[];
+  outputs: AgentOutputDefinition[];
+  tools: string[]; // List of authorized tool IDs
+  model: AgentModelConfig;
+  memory: AgentMemoryConfig;
+  notifications: AgentNotificationConfig;
+  advanced: AgentAdvancedConfig;
+  updatedBy?: string;
+}
+
 export interface AgentInstance {
   id: string;
   organizationId: string;
   agentTemplateId: string;
   name: string;
   status: AgentLifecycleStatus;
-  configuration: Record<string, any>;
+  configuration: AgentConfiguration;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;

@@ -8,7 +8,7 @@ export const AgentBadge: React.FC<{ category?: string; industry?: string }> = ({
   return (
     <div className="flex gap-2">
       {category && <Badge variant="secondary">{category}</Badge>}
-      {industry && <Badge variant="outline">{industry}</Badge>}
+      {industry && <Badge variant="secondary">{industry}</Badge>}
     </div>
   );
 };

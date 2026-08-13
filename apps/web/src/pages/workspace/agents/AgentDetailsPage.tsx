@@ -10,7 +10,7 @@ import { useAgentInstances } from "../../../agents/use-agents";
 export const AgentDetailsPage: React.FC = () => {
   const pathname = usePathname();
   const id = pathname.replace("/workspace/agents/", ""); // could be template or instance ID
-  const { organization } = useOrganization();
+  const { currentOrganization } = useOrganization();
   const { activateAgent, pauseAgent } = useAgentInstances();
   
   const [template, setTemplate] = useState<AgentTemplate | null>(null);
@@ -131,7 +131,9 @@ export const AgentDetailsPage: React.FC = () => {
               <p className="text-sm text-blue-700 dark:text-blue-300 mb-4">
                 This agent is currently active in your organization workspace. You can configure its parameters here.
               </p>
-              <Button variant="outline" className="bg-white dark:bg-background">Open Configuration Engine</Button>
+              <Button variant="outline" className="bg-white dark:bg-background" onClick={() => navigate(`/workspace/agents/${instance.id}/configure`)}>
+                Open Configuration Engine
+              </Button>
             </section>
           )}
         </div>

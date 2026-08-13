@@ -29,6 +29,7 @@ import { WorkspaceOverviewPage } from "./pages/workspace/WorkspaceOverviewPage";
 import { WorkspaceMembersPage } from "./pages/workspace/WorkspaceMembersPage";
 import { WorkspaceModulesPage } from "./pages/workspace/WorkspaceModulesPage";
 import { WorkspaceSettingsPage } from "./pages/workspace/WorkspaceSettingsPage";
+import { WorkspaceAgentsPage, AgentDetailsPage } from "./pages/workspace/agents";
 import { useEffect } from "react";
 
 function WorkspaceRedirect() {
@@ -138,7 +139,14 @@ function App() {
           </WorkspaceGuard>
         </ProtectedRoute>
       );
-
+    case "/workspace/agents":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <WorkspaceAgentsPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
 
     /* ───── Platform Administration Routes ───── */
     case "/admin":
@@ -191,6 +199,15 @@ function App() {
       );
 
     default:
+      if (pathname.startsWith("/workspace/agents/")) {
+        return (
+          <ProtectedRoute>
+            <WorkspaceGuard>
+              <AgentDetailsPage />
+            </WorkspaceGuard>
+          </ProtectedRoute>
+        );
+      }
       return <LandingPage />;
   }
 }

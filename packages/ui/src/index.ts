@@ -24,6 +24,6 @@ export * from "./components/organization-selects";
 export * from "./components/dashboard-primitives";
 export * from "./components/admin-primitives";
 export * from "./components/module-primitives";
+export * from "./components/agent-primitives";
 export * from "./lib/design-tokens";
 export * from "./lib/utils";
-

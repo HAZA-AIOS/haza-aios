@@ -1,3 +1,14 @@
+## [Unreleased]
+
+### Added
+
+- **Epic 11: AI Agent Platform Foundation**
+  - Established generic agent domain models (`AgentTemplate`, `AgentInstance`, `AgentRun`, `Tool`, `Capability`).
+  - Implemented `AgentRegistry` for module-agnostic agent discovery and capabilities advertisement.
+  - Implemented `AgentService` enforcing organization-isolated agent instantiation and configurations.
+  - Added reusable `AgentCard` and `AgentStatus` UI primitives to `@haza-aios/ui`.
+  - Added Workspace Agent Management views at `/workspace/agents`.
+
 ## [0.8.0-alpha.1] - 2026-08-12
 
 ### Added

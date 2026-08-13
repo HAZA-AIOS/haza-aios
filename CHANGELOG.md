@@ -2,6 +2,15 @@
 
 ### Added
 
+- **Epic 12: AI Agent Registry & Marketplace**
+  - Created the Agent Marketplace UI foundation at `/workspace/agents`.
+  - Implemented discoverable global `AgentTemplate` registry.
+  - Implemented Search, Category Navigation, and Industry/Status filters.
+  - Added dedicated `/workspace/agents/active` page for managing instantiated agents.
+  - Added `AgentDetailsPage` handling both Template inspection and Instance configuration paths.
+  - Created reusable UI primitives (`AgentSearch`, `AgentFilters`, `AgentCategoryNav`).
+
+
 - **Epic 11: AI Agent Platform Foundation**
   - Established generic agent domain models (`AgentTemplate`, `AgentInstance`, `AgentRun`, `Tool`, `Capability`).
   - Implemented `AgentRegistry` for module-agnostic agent discovery and capabilities advertisement.

@@ -17,6 +17,7 @@ export * from "./components/navbar";
 export * from "./components/password-field";
 export * from "./components/password-strength";
 export * from "./components/section-heading";
+
 export * from "./components/select";
 export * from "./components/switch";
 export * from "./components/textarea";
@@ -25,5 +26,6 @@ export * from "./components/dashboard-primitives";
 export * from "./components/admin-primitives";
 export * from "./components/module-primitives";
 export * from "./components/agent-primitives";
+export * from "./components/agent-marketplace-primitives";
 export * from "./lib/design-tokens";
 export * from "./lib/utils";

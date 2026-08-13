@@ -29,7 +29,7 @@ import { WorkspaceOverviewPage } from "./pages/workspace/WorkspaceOverviewPage";
 import { WorkspaceMembersPage } from "./pages/workspace/WorkspaceMembersPage";
 import { WorkspaceModulesPage } from "./pages/workspace/WorkspaceModulesPage";
 import { WorkspaceSettingsPage } from "./pages/workspace/WorkspaceSettingsPage";
-import { WorkspaceAgentsPage, AgentDetailsPage } from "./pages/workspace/agents";
+import { WorkspaceDiscoverPage, WorkspaceActiveAgentsPage, AgentDetailsPage } from "./pages/workspace/agents";
 import { useEffect } from "react";
 
 function WorkspaceRedirect() {
@@ -140,10 +140,19 @@ function App() {
         </ProtectedRoute>
       );
     case "/workspace/agents":
+    case "/workspace/agents/discover":
       return (
         <ProtectedRoute>
           <WorkspaceGuard>
-            <WorkspaceAgentsPage />
+            <WorkspaceDiscoverPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/agents/active":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <WorkspaceActiveAgentsPage />
           </WorkspaceGuard>
         </ProtectedRoute>
       );

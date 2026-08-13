@@ -4,26 +4,33 @@ import { AgentCard } from "@haza-aios/ui/components/agent-primitives";
 import { useAgentTemplates, useAgentInstances } from "../../../agents/use-agents";
 import { navigate } from "../../../routes/navigation";
 
-export const WorkspaceAgentsPage: React.FC = () => {
+export const WorkspaceActiveAgentsPage: React.FC = () => {
   const { templates } = useAgentTemplates();
   const { instances, isLoading, activateAgent } = useAgentInstances();
 
   return (
     <div className="space-y-8 p-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">AI Agents</h1>
-        <p className="text-muted-foreground mt-2">
-          Discover and manage AI agents for your organization.
-        </p>
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Active Agents</h1>
+          <p className="text-muted-foreground mt-2">
+            Manage your organization's activated AI agents.
+          </p>
+        </div>
+        <Button onClick={() => navigate("/workspace/agents/discover")}>
+          Discover New Agents
+        </Button>
       </div>
 
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold">My Active Agents</h2>
         {isLoading ? (
           <p className="text-muted-foreground">Loading active agents...</p>
         ) : instances.length === 0 ? (
-          <div className="bg-muted p-8 text-center rounded-lg border border-dashed">
+          <div className="bg-muted p-12 text-center rounded-lg border border-dashed flex flex-col items-center justify-center">
             <p className="text-muted-foreground mb-4">You don't have any active agents yet.</p>
+            <Button onClick={() => navigate("/workspace/agents/discover")}>
+              Browse the Agent Marketplace
+            </Button>
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -50,36 +57,6 @@ export const WorkspaceAgentsPage: React.FC = () => {
             })}
           </div>
         )}
-      </div>
-
-      <div className="space-y-4 pt-6 border-t">
-        <h2 className="text-xl font-semibold">Available Agent Templates</h2>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {templates.map(template => {
-            const isActive = instances.some(i => i.agentTemplateId === template.id);
-            return (
-              <AgentCard 
-                key={template.id}
-                name={template.name}
-                description={template.description}
-                icon={template.icon}
-                category={template.category}
-                industry={template.industry}
-                capabilities={template.capabilities}
-                action={
-                  <Button 
-                    className="w-full" 
-                    variant={isActive ? "secondary" : "default"}
-                    disabled={isActive}
-                    onClick={() => activateAgent(template.id)}
-                  >
-                    {isActive ? "Activated" : "Activate Agent"}
-                  </Button>
-                }
-              />
-            );
-          })}
-        </div>
       </div>
     </div>
   );

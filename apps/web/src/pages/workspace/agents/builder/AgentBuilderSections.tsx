@@ -208,13 +208,12 @@ export const OutputsConfig: React.FC<SectionProps> = ({ config, onChange }) => {
   );
 };
 
+import { ToolRegistry } from "../../../../agents/runtime/tools/ToolRegistry";
+// Ensure tools are registered
+import "../../../../modules/education/tools/education-tools";
+
 export const ToolsConfig: React.FC<SectionProps> = ({ config, onChange }) => {
-  // Mock tools since we don't have real integrations yet
-  const availableTools = [
-    { id: "tool-web-search", name: "Web Search", description: "Search the public internet" },
-    { id: "tool-calculator", name: "Calculator", description: "Perform mathematical calculations" },
-    { id: "tool-db-query", name: "Database Query", description: "Query read-only databases" }
-  ];
+  const availableTools = ToolRegistry.getAllTools();
 
   return (
     <BuilderSection title="Tools" description="Select the external tools this agent is authorized to use.">
@@ -224,7 +223,12 @@ export const ToolsConfig: React.FC<SectionProps> = ({ config, onChange }) => {
           return (
             <div key={tool.id} className="flex items-center justify-between p-4 border rounded-md">
               <div>
-                <h4 className="font-medium">{tool.name}</h4>
+                <h4 className="font-medium flex items-center gap-2">
+                  {tool.name}
+                  <span className="text-[10px] uppercase tracking-wider bg-primary/10 text-primary px-2 py-0.5 rounded">
+                    {tool.category}
+                  </span>
+                </h4>
                 <p className="text-sm text-muted-foreground">{tool.description}</p>
               </div>
               <Switch 

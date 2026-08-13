@@ -9,6 +9,7 @@ import { HeroSection } from "./components/HeroSection";
 import { IndustryShowcase } from "./components/IndustryShowcase";
 import { IntelligenceSection } from "./components/IntelligenceSection";
 import { TrustSection } from "./components/TrustSection";
+import { PricingSection } from "./components/PricingSection";
 import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
@@ -31,6 +32,8 @@ import { WorkspaceModulesPage } from "./pages/workspace/WorkspaceModulesPage";
 import { WorkspaceSettingsPage } from "./pages/workspace/WorkspaceSettingsPage";
 import { WorkspaceDiscoverPage, WorkspaceActiveAgentsPage, AgentDetailsPage } from "./pages/workspace/agents";
 import { AgentBuilderPage } from "./pages/workspace/agents/builder/AgentBuilderPage";
+import { AgentRunPage } from "./pages/workspace/agents/run/AgentRunPage";
+import { AgentRunHistory } from "./pages/workspace/agents/run/AgentRunHistory";
 import { useEffect } from "react";
 
 function WorkspaceRedirect() {
@@ -53,6 +56,7 @@ function LandingPage() {
         <IndustryShowcase />
         <CapabilitiesSection />
         <TrustSection />
+        <PricingSection />
         <GlobalFutureSection />
         <DemoRequestSection />
         <FinalCTA />
@@ -165,8 +169,30 @@ function App() {
           </WorkspaceGuard>
         </ProtectedRoute>
       );
-
-    /* ───── Platform Administration Routes ───── */
+    case (pathname.match(/^\/workspace\/agents\/[^\/]+\/run$/) || {}).input:
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AgentRunPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case (pathname.match(/^\/workspace\/agents\/[^\/]+\/history$/) || {}).input:
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AgentRunHistory />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case (pathname.match(/^\/workspace\/agents\/[^\/]+$/) || {}).input:
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AgentDetailsPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );    /* ───── Platform Administration Routes ───── */
     case "/admin":
       return (
         <ProtectedRoute>

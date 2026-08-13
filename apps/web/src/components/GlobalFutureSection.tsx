@@ -12,7 +12,7 @@ const globalPoints = [
 
 function GlobalFutureSection() {
   return (
-    <section className="py-20">
+    <section id="company" className="py-4">
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
         <div className="grid items-center gap-8 lg:grid-cols-[0.95fr_1.05fr]">
           <div data-aos="fade-right">

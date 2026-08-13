@@ -23,7 +23,7 @@ function AppShell({ children }: AppShellProps) {
   const { currentOrganization, organizations, switchOrg } = useOrganization();
   const isSuperAdmin = useIsSuperAdmin();
   
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  // isSidebarExpanded state removed as per user request
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -204,32 +204,20 @@ function AppShell({ children }: AppShellProps) {
       
       {/* 1. DESKTOP SIDEBAR RAIL */}
       <aside
-        className={`hidden md:flex flex-col items-center border-r border-white/5 bg-[#090d16] py-6 transition-all duration-300 z-30 ${
-          isSidebarExpanded ? "w-64 px-4" : "w-16 px-2"
-        }`}
-        onMouseEnter={() => setIsSidebarExpanded(true)}
-        onMouseLeave={() => setIsSidebarExpanded(false)}
+        className={`hidden md:flex flex-col items-center border-r border-white/5  bg-indigo-900 py-6 transition-all duration-300 z-30 w-16 px-2`}
       >
         {/* Brand Logo */}
-        <div className="flex items-center gap-3 w-full px-2 mb-6">
-          <LogoMark className="size-8 text-red-500 shrink-0" />
-          {isSidebarExpanded && (
-            <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
-              HAZA AIOS
-            </span>
-          )}
+        <div className="flex items-center justify-center gap-3 w-full px-2 mb-6" title="HAZA AIOS">
+          <LogoMark className="size-8 text-yellow-500 shrink-0" />
         </div>
 
         {/* Admin Mode Badge / Context Switcher */}
         {isAdminMode && (
           <div className="w-full px-2 mb-6">
-            <div className={`flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 transition-all ${isSidebarExpanded ? 'px-3 py-2' : 'justify-center py-2'}`}>
-              <svg className="size-4 text-red-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <div title="Admin Mode" className={`flex justify-center py-2 items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 transition-all`}>
+              <svg className="size-4 text-red-900 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
               </svg>
-              {isSidebarExpanded && (
-                <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider">Admin Mode</span>
-              )}
             </div>
           </div>
         )}
@@ -241,8 +229,9 @@ function AppShell({ children }: AppShellProps) {
             return (
               <button
                 key={item.label}
+                title={item.label}
                 onClick={() => navigate(item.path)}
-                className={`flex items-center gap-4 w-full p-3 rounded-xl transition-all duration-200 group text-left ${
+                className={`flex items-center justify-center w-full p-3 rounded-xl transition-all duration-200 group ${
                   active
                     ? "bg-red-500/10 text-red-500 border border-red-500/20"
                     : "text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
@@ -251,7 +240,6 @@ function AppShell({ children }: AppShellProps) {
                 <div className={`shrink-0 transition-transform group-hover:scale-105 ${active ? "text-red-500" : ""}`}>
                   {item.icon}
                 </div>
-                {isSidebarExpanded && <span className="text-sm font-medium">{item.label}</span>}
               </button>
             );
           })}
@@ -262,22 +250,23 @@ function AppShell({ children }: AppShellProps) {
           {/* Admin link (visible in org mode when user is super_admin) */}
           {!isAdminMode && isSuperAdmin && (
             <button
+              title="Admin Panel"
               onClick={() => navigate("/admin")}
-              className="flex items-center gap-4 w-full p-3 rounded-xl transition-all duration-200 group text-left text-slate-400 hover:text-red-400 hover:bg-red-500/5 border border-transparent"
+              className="flex items-center justify-center w-full p-3 rounded-xl transition-all duration-200 group text-slate-400 hover:text-red-400 hover:bg-red-500/5 border border-transparent"
             >
               <div className="shrink-0">
                 <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
               </div>
-              {isSidebarExpanded && <span className="text-sm font-medium">Admin Panel</span>}
             </button>
           )}
           {/* Back to Dashboard link (visible in admin mode) */}
           {isAdminMode && (
             <button
+              title="Back to Dashboard"
               onClick={() => navigate("/workspace")}
-              className="flex items-center gap-4 w-full p-3 rounded-xl transition-all duration-200 group text-left text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
+              className="flex items-center justify-center w-full p-3 rounded-xl transition-all duration-200 group text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
             >
               <div className="shrink-0">
                 <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -285,13 +274,13 @@ function AppShell({ children }: AppShellProps) {
                   <path d="M19 12H5" />
                 </svg>
               </div>
-              {isSidebarExpanded && <span className="text-sm font-medium">Back to Dashboard</span>}
             </button>
           )}
           {/* Settings link */}
           <button
+            title={bottomNavItem.label}
             onClick={() => navigate(bottomNavItem.path)}
-            className={`flex items-center gap-4 w-full p-3 rounded-xl transition-all duration-200 group text-left ${
+            className={`flex items-center justify-center w-full p-3 rounded-xl transition-all duration-200 group ${
               isActive(bottomNavItem.path)
                 ? "bg-red-500/10 text-red-500 border border-red-500/20"
                 : "text-slate-400 hover:text-white hover:bg-white/5 border border-transparent"
@@ -300,7 +289,6 @@ function AppShell({ children }: AppShellProps) {
             <div className="shrink-0 transition-transform group-hover:rotate-45 duration-300">
               {bottomNavItem.icon}
             </div>
-            {isSidebarExpanded && <span className="text-sm font-medium">{bottomNavItem.label}</span>}
           </button>
         </div>
       </aside>
@@ -368,11 +356,11 @@ function AppShell({ children }: AppShellProps) {
       <div className="flex-1 flex flex-col min-w-0 md:pt-0 pt-16">
         
         {/* TOP UTILITY HEADER BAR */}
-        <header className="h-16 border-b border-white/5 bg-[#090d16]/30 px-6 flex items-center justify-between z-20">
+        <header className="h-16 border-b border-white/5 bg-indigo-900 px-6 flex items-center justify-between z-20">
           
           {/* Breadcrumb / Left Side Header */}
           <div className="flex items-center gap-3">
-            <span className={`text-xs font-semibold tracking-wider uppercase px-2 py-1 rounded ${isAdminMode ? 'text-red-400 bg-red-500/10' : 'text-red-500 bg-red-500/10'}`}>
+            <span className={`text-xs font-semibold tracking-wider uppercase px-2 py-1 rounded ${isAdminMode ? 'text-yellow-500  bg-indigo-700' : 'text-yellow-500  bg-indigo-700'}`}>
               {isAdminMode ? 'Platform Admin' : 'Tenant Active'}
             </span>
             <div className="h-4 w-px bg-white/10 hidden sm:block"></div>

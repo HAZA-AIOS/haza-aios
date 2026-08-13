@@ -122,7 +122,28 @@ export class AgentServiceClass {
     if (instanceId) {
       runs = runs.filter(r => r.agentInstanceId === instanceId);
     }
-    return runs;
+    // Sort by startedAt descending
+    return runs.sort((a, b) => {
+      const timeA = a.startedAt ? new Date(a.startedAt).getTime() : 0;
+      const timeB = b.startedAt ? new Date(b.startedAt).getTime() : 0;
+      return timeB - timeA;
+    });
+  }
+
+  async saveAgentRun(run: AgentRun): Promise<void> {
+    const runs = this.getRunsDb();
+    runs.push(run);
+    this.saveRunsDb(runs);
+  }
+
+  async updateAgentRun(runId: string, updates: Partial<AgentRun>): Promise<AgentRun> {
+    const runs = this.getRunsDb();
+    const index = runs.findIndex(r => r.id === runId);
+    if (index === -1) throw new Error("Run not found");
+    
+    runs[index] = { ...runs[index], ...updates };
+    this.saveRunsDb(runs);
+    return runs[index];
   }
 }
 
@@ -139,10 +160,17 @@ const mockTemplates: AT[] = [
     description: "Automatically generates customized student worksheets and quizzes based on subject and difficulty.",
     version: "1.0.0",
     category: "Education",
-    industry: "education",
+    industry: "Education",
     status: "available",
     icon: "📝",
-    capabilities: [{ key: "generate", name: "Content Generation", description: "Generates text content" }],
+    capabilities: [
+      { key: "edu_gen", name: "Educational content generation", description: "Generates educational materials" },
+      { key: "q_gen", name: "Question generation", description: "Generates various types of questions" },
+      { key: "structure", name: "Worksheet structuring", description: "Structures content into a worksheet format" },
+      { key: "difficulty", name: "Difficulty control", description: "Adjusts content based on grade and difficulty" },
+      { key: "q_type", name: "Question-type selection", description: "Supports multiple choice, open-ended, etc." },
+      { key: "answers", name: "Answer-key generation", description: "Generates accurate answer keys" }
+    ],
     requiredPermissions: ["module.education.view"],
     configurationSchema: {},
     inputSchema: {},

@@ -18,7 +18,7 @@ export const AgentDetailsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!organization || !id) return;
+    if (!currentOrganization || !id) return;
 
     const load = async () => {
       setLoading(true);
@@ -27,12 +27,12 @@ export const AgentDetailsPage: React.FC = () => {
       if (tpl) {
         setTemplate(tpl);
         // See if there's an active instance for this template
-        const instances = await AgentService.getInstances(organization.id);
+        const instances = await AgentService.getInstances(currentOrganization.id);
         const activeInst = instances.find(i => i.agentTemplateId === tpl.id);
         setInstance(activeInst || null);
       } else {
         // Try resolving as instance
-        const inst = await AgentService.getInstance(id, organization.id);
+        const inst = await AgentService.getInstance(id, currentOrganization.id);
         if (inst) {
           setInstance(inst);
           const instTpl = AgentService.getTemplate(inst.agentTemplateId);
@@ -42,23 +42,23 @@ export const AgentDetailsPage: React.FC = () => {
       setLoading(false);
     };
     load();
-  }, [id, organization]);
+  }, [id, currentOrganization]);
 
   if (loading) return <div className="p-6 text-muted-foreground">Loading agent details...</div>;
   if (!template) return <div className="p-6 text-destructive">Agent not found.</div>;
 
   const handleActivate = async () => {
-    if (!organization) return;
+    if (!currentOrganization) return;
     await activateAgent(template.id);
-    const instances = await AgentService.getInstances(organization.id);
+    const instances = await AgentService.getInstances(currentOrganization.id);
     const activeInst = instances.find(i => i.agentTemplateId === template.id);
     setInstance(activeInst || null);
   };
 
   const handlePause = async () => {
-    if (!organization || !instance) return;
+    if (!currentOrganization || !instance) return;
     await pauseAgent(instance.id);
-    const inst = await AgentService.getInstance(instance.id, organization.id);
+    const inst = await AgentService.getInstance(instance.id, currentOrganization.id);
     setInstance(inst || null);
   };
 
@@ -83,11 +83,21 @@ export const AgentDetailsPage: React.FC = () => {
         </div>
         <div className="flex gap-3">
           {instance ? (
-            instance.status === "active" ? (
-              <Button variant="destructive" onClick={handlePause}>Pause Agent</Button>
-            ) : (
-              <Button onClick={handleActivate}>Re-activate Agent</Button>
-            )
+            <>
+              {instance.status === "active" || instance.status === "configured" ? (
+                <>
+                  <Button variant="outline" onClick={() => navigate(`/workspace/agents/${instance.id}/history`)}>Run History</Button>
+                  <Button onClick={() => navigate(`/workspace/agents/${instance.id}/run`)} className="bg-red-600 hover:bg-red-700">Run Agent</Button>
+                  <Button variant="outline" onClick={() => navigate(`/workspace/agents/${instance.id}/configure`)}>Open Configuration Engine</Button>
+                  <Button variant="destructive" onClick={handlePause}>Pause Agent</Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="outline" onClick={() => navigate(`/workspace/agents/${instance.id}/configure`)}>Open Configuration Engine</Button>
+                  <Button onClick={handleActivate}>Re-activate Agent</Button>
+                </>
+              )}
+            </>
           ) : (
             <Button onClick={handleActivate} size="lg">Activate Agent</Button>
           )}

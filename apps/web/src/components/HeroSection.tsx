@@ -9,22 +9,29 @@ const trustPills = ["AI automation", "Security", "Scalability", "Governance"];
 
 function HeroSection() {
   return (
-    <section className="relative overflow-hidden pt-8 pb-20 sm:pt-4">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(128,122,255,0.2),_transparent_30%)]" />
-      <Container className="relative">
+    <section className="relative overflow-hidden py-4 min-h-[700px] flex items-center">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(128,122,255,0.1),_transparent_30%)]" />
+      <Container className="relative w-full">
         <div className="w-full">
-          {" "}
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease: "easeOut" }}
           >
-            <GlassCard className="p-6 sm:p-8 lg:p-10">
-              <Badge variant="primary" className="mb-6">
+            <GlassCard className="relative overflow-hidden p-8 sm:p-10 lg:p-16 border-white/10">
+              {/* Background image constrained to the GlassCard */}
+              <div 
+                className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-40 mix-blend-luminosity"
+                style={{ backgroundImage: 'url("/hero-bg.png")' }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#091524]/80 to-[#091524] pointer-events-none" />
+              
+              <div className="relative z-10">
+                <Badge variant="primary" className="mb-6 bg-white/5 border-white/10 text-slate-300">
                 AI-native operating system
               </Badge>
 
-              <h1 className="max-w-xl text-5xl leading-[0.92] font-black tracking-[-0.07em] text-blue-900 md:text-6xl lg:text-[5rem]">
+              <h1 className="max-w-xl text-5xl leading-[0.92] font-black tracking-[-0.07em] text-white md:text-5xl lg:text-[4.5rem]">
                 Build a smarter
                 <span className="block bg-[linear-gradient(135deg,#572756,#c7682a,#c5a7ff)] bg-clip-text text-transparent">
                   organization.
@@ -68,6 +75,7 @@ function HeroSection() {
                     {pill}
                   </span>
                 ))}
+              </div>
               </div>
             </GlassCard>
           </motion.div>

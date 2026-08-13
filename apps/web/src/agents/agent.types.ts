@@ -159,7 +159,19 @@ export interface AgentInstance {
   updatedAt: string;
 }
 
-export type AgentRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+export type AgentExecutionMode = "manual" | "api" | "workflow" | "scheduled" | "event";
+
+export interface AgentExecutionRequest {
+  agentInstanceId: string;
+  organizationId: string;
+  input: any;
+  context?: Record<string, any>;
+  requestedBy: string;
+  executionMode: AgentExecutionMode;
+  metadata?: Record<string, any>;
+}
+
+export type AgentRunStatus = "queued" | "running" | "waiting" | "completed" | "failed" | "cancelled";
 
 export interface AgentRun {
   id: string;
@@ -168,10 +180,32 @@ export interface AgentRun {
   status: AgentRunStatus;
   input: any;
   output?: any;
+  error?: string;
   startedAt?: string;
   completedAt?: string;
-  error?: string;
+  duration?: number; // in milliseconds
+  requestedBy?: string;
   metadata?: Record<string, any>;
+}
+
+export type AgentRuntimeErrorCategory = 
+  | "AuthenticationError"
+  | "AuthorizationError"
+  | "AgentNotFoundError"
+  | "AgentInactiveError"
+  | "ConfigurationError"
+  | "ToolPermissionError"
+  | "ToolExecutionError"
+  | "ModelProviderError"
+  | "TimeoutError"
+  | "ValidationError"
+  | "RuntimeError";
+
+export interface AgentRuntimeError {
+  category: AgentRuntimeErrorCategory;
+  message: string;
+  code?: string;
+  details?: any;
 }
 
 export interface MemoryContext {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { navigate, usePathname } from "../../../routes/navigation";
 import { useOrganization } from "../../../org/use-organization";
 import { AgentService } from "../../../agents/agent-service";
 import type { AgentInstance, AgentTemplate } from "../../../agents/agent.types";
@@ -7,8 +7,8 @@ import { Button } from "@haza-aios/ui/components/button";
 import { AgentBadge, AgentStatus, AgentCapabilityList } from "@haza-aios/ui/components/agent-primitives";
 
 export const AgentDetailsPage: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const pathname = usePathname();
+  const id = pathname.replace("/workspace/agents/", "");
   const { organization } = useOrganization();
   const [instance, setInstance] = useState<AgentInstance | null>(null);
   const [template, setTemplate] = useState<AgentTemplate | null>(null);

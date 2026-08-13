@@ -2,12 +2,11 @@ import React from "react";
 import { Button } from "@haza-aios/ui/components/button";
 import { AgentCard } from "@haza-aios/ui/components/agent-primitives";
 import { useAgentTemplates, useAgentInstances } from "../../../agents/use-agents";
-import { useNavigate } from "react-router-dom";
+import { navigate } from "../../../routes/navigation";
 
 export const WorkspaceAgentsPage: React.FC = () => {
   const { templates } = useAgentTemplates();
   const { instances, isLoading, activateAgent } = useAgentInstances();
-  const navigate = useNavigate();
 
   return (
     <div className="space-y-8 p-6">

@@ -2,121 +2,102 @@ import { motion } from "framer-motion";
 
 import { Badge } from "@haza-aios/ui/components/badge";
 import { Button } from "@haza-aios/ui/components/button";
-import { Card, CardContent } from "@haza-aios/ui/components/card";
 import { GlassCard } from "@haza-aios/ui/components/glass-card";
 import { Container } from "@haza-aios/ui/components/container";
-import { IconBadge } from "@haza-aios/ui/components/icon-badge";
-
-import heroImage from "../assets/hero.png";
-import { IndustriesPanel } from "./IndustriesPanel";
 
 const trustPills = ["AI automation", "Security", "Scalability", "Governance"];
 
 function HeroSection() {
   return (
-    <section className="relative overflow-hidden pt-8 pb-20 sm:pt-12">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(128,122,255,0.2),_transparent_30%)]" />
-      <Container className="relative">
-        <div className="grid items-center gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+    <section className="relative overflow-hidden min-h-screen flex bg-[#090b14] pt-24 lg:pt-32">
+      {/* Background with Grid/Waves */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-40 mix-blend-screen"
+        style={{ backgroundImage: 'url("/ai_hero_bg.jpg")' }}
+      />
+      {/* Purple/Pink subtle glow in background like image */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-fuchsia-600/20 via-purple-900/10 to-transparent pointer-events-none" />
+
+      <Container className="relative w-full z-10 flex flex-col lg:flex-row items-start justify-between gap-12">
+        
+        {/* Left Content Column */}
+        <div className="w-full lg:w-1/2 flex flex-col items-start mt-4 lg:mt-8">
           <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, x: -30 }}
+            animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.7, ease: "easeOut" }}
+            className="w-full"
           >
-            <GlassCard className="p-6 sm:p-8 lg:p-10">
-              <Badge variant="primary" className="mb-6">
-                AI-native operating system
-              </Badge>
+            <h1 className="max-w-2xl text-[3.5rem] leading-[1.1] font-bold tracking-tight text-white md:text-6xl lg:text-[4.5rem]">
+              Build a smarter
+              <span className="block mt-2">organization.</span>
+            </h1>
 
-              <h1 className="max-w-xl text-5xl leading-[0.92] font-black tracking-[-0.07em] text-white md:text-6xl lg:text-[5rem]">
-                Build a smarter
-                <span className="block bg-[linear-gradient(135deg,#8da2ff,#88e0ff,#c5a7ff)] bg-clip-text text-transparent">
-                  organization.
+            <p className="mt-8 max-w-xl text-lg leading-relaxed text-slate-300">
+              HAZA AIOS unifies operations, people, data, and intelligent workflows into one
+              secure platform for modern organizations.
+            </p>
+
+            <div className="mt-10">
+              <button className="group relative flex items-center gap-4 overflow-hidden rounded-full bg-gradient-to-r from-fuchsia-600 to-purple-600 p-1 pl-6 pr-2 hover:from-fuchsia-500 hover:to-purple-500 transition-all shadow-[0_0_20px_rgba(192,38,211,0.4)]">
+                <span className="text-sm font-bold uppercase tracking-widest text-white">
+                  Request Demo
                 </span>
-              </h1>
-
-              <p className="mt-6 max-w-xl text-lg leading-8 text-slate-300">
-                HAZA AIOS unifies operations, people, data, and intelligent workflows into one
-                secure platform for modern organizations.
-              </p>
-
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Button className="rounded-full px-6 py-3 text-base">Request Demo</Button>
-                <Button variant="secondary" className="rounded-full px-6 py-3 text-base">
-                  Explore Platform
-                </Button>
-              </div>
-
-              <div className="mt-8 flex flex-wrap gap-2">
-                {trustPills.map((pill) => (
-                  <span
-                    key={pill}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium tracking-[0.08em] text-slate-300 uppercase"
-                  >
-                    {pill}
-                  </span>
-                ))}
-              </div>
-            </GlassCard>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
-            className="relative"
-          >
-            <Card className="relative overflow-hidden border border-white/10 bg-slate-950/80 p-4 shadow-[0_30px_80px_rgba(72,108,255,0.18)]">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),_transparent_45%)]" />
-              <div className="relative rounded-[1.75rem] border border-white/10 bg-slate-900/80 p-3">
-                <div className="mb-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <IconBadge size="sm" className="bg-indigo-500/20 text-indigo-200">
-                      ✦
-                    </IconBadge>
-                    <span className="text-sm text-slate-200">AI system overview</span>
-                  </div>
-                  <Badge variant="success">Live</Badge>
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-black transition-transform group-hover:translate-x-1">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
                 </div>
-
-                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/80 p-3 shadow-inner shadow-indigo-500/10">
-                  <img
-                    src={heroImage}
-                    alt="abstract AI system platform illustration"
-                    className="h-auto w-full rounded-[1.25rem] object-cover"
-                  />
-                </div>
-
-                <CardContent className="mt-4 space-y-3 p-0">
-                  <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                    <div>
-                      <p className="text-xs tracking-[0.08em] text-slate-400 uppercase">
-                        Automation
-                      </p>
-                      <p className="mt-1 text-lg font-semibold text-white">84% faster workflows</p>
-                    </div>
-                    <span className="text-sm font-medium text-emerald-300">+24%</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                      <p className="text-xs tracking-[0.08em] text-slate-400 uppercase">Security</p>
-                      <p className="mt-1 text-xl font-semibold text-white">Zero-trust</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                      <p className="text-xs tracking-[0.08em] text-slate-400 uppercase">Scale</p>
-                      <p className="mt-1 text-xl font-semibold text-white">Global</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </div>
-            </Card>
-
-            <div className="absolute -bottom-6 -left-6 hidden max-w-[230px] md:block">
-              <IndustriesPanel />
+              </button>
             </div>
           </motion.div>
         </div>
+
+        {/* Right Image/Globe Column */}
+        <div className="w-full lg:w-1/2 flex justify-center lg:justify-end">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 1, ease: "easeOut", delay: 0.2 }}
+            className="relative"
+          >
+            <div className="relative w-[300px] h-[300px] md:w-[450px] md:h-[450px] lg:w-[500px] lg:h-[500px]">
+              {/* Globe glow */}
+              <div className="absolute inset-0 bg-fuchsia-500/20 blur-[100px] rounded-full" />
+              {/* Using hero-globe.jpg but masked as a circle since it's a square JPEG */}
+              <img 
+                src="/hero-globe.jpg" 
+                alt="HAZA AIOS Global Network" 
+                className="w-full h-full object-cover mix-blend-screen opacity-90 rounded-full border border-fuchsia-500/20 shadow-[0_0_50px_rgba(192,38,211,0.2)] animate-pulse"
+                style={{ animationDuration: '4s' }}
+              />
+            </div>
+          </motion.div>
+        </div>
+
       </Container>
+
+      {/* Bottom decorative elements like the image */}
+      <div className="absolute bottom-8 left-0 right-0 flex justify-between items-end px-12 z-10">
+        {/* Social Icons (left) */}
+        <div className="hidden md:flex gap-6 text-slate-400">
+          <svg className="w-5 h-5 hover:text-white cursor-pointer transition-colors" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+          <svg className="w-5 h-5 hover:text-white cursor-pointer transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          <svg className="w-5 h-5 hover:text-white cursor-pointer transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+
+        {/* Scroll Indicator (center) */}
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-0 flex flex-col items-center justify-center animate-bounce">
+          <div className="w-[80px] h-[80px] border border-white/20 rounded-full flex items-center justify-center bg-black/20 backdrop-blur-sm cursor-pointer hover:bg-white/10 transition-colors">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 5v14M19 12l-7 7-7-7" />
+            </svg>
+            <div className="absolute inset-0 rounded-full">
+              {/* Circular text could go here, simplified to just the icon for now */}
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

@@ -4,6 +4,9 @@ import { useEffect } from "react";
 
 import App from "./App";
 import { ErrorBoundary } from "./app/ErrorBoundary";
+import { AuthProvider } from "./auth/AuthProvider";
+
+import { OrgProvider } from "./org/OrgProvider";
 
 function Root() {
   useEffect(() => {
@@ -17,7 +20,11 @@ function Root() {
 
   return (
     <ErrorBoundary>
-      <App />
+      <AuthProvider>
+        <OrgProvider>
+          <App />
+        </OrgProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

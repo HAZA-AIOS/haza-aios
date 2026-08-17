@@ -7,7 +7,7 @@ import { SectionHeading } from "@haza-aios/ui/components/section-heading";
 
 function DemoRequestSection() {
   return (
-    <section className="py-20">
+    <section className="py-4">
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-8">
         <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
           <div data-aos="fade-right">

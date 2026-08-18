@@ -11,6 +11,11 @@
     "build:web": "npm run build -w apps/web",
     "lint:web": "npm run lint -w apps/web",
     "typecheck:web": "npm run typecheck -w apps/web",
+    "dev:api": "npm run dev -w apps/api",
+    "build:api": "npm run build -w apps/api",
+    "lint:api": "npm run lint -w apps/api",
+    "typecheck:api": "npm run typecheck -w apps/api",
+    "test:api": "npm run test -w apps/api",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:web": "npm run typecheck:web && npm run lint:web && npm run format:check && npm run build:web"

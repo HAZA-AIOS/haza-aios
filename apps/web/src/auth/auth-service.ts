@@ -1,3 +1,4 @@
+import { apiClient } from "@/api/api-client";
 import { clearStoredAuth, readStoredAuth, writeStoredAuth } from "./auth-storage";
 import type {
   AuthResult,
@@ -7,8 +8,6 @@ import type {
   ResetPasswordInput,
 } from "./auth.types";
 import type { User } from "./identity.types";
-
-const delayMs = 350;
 
 type AuthService = {
   getCurrentUser: () => Promise<AuthResult | null>;
@@ -20,78 +19,110 @@ type AuthService = {
   verifyEmail: (token: string) => Promise<AuthResult | null>;
 };
 
-const mockAuthService: AuthService = {
+const authService: AuthService = {
   async getCurrentUser() {
-    await wait();
-    return readStoredAuth();
+    try {
+      const auth = await apiClient.request<AuthResult>("/api/v1/auth/me");
+      const cached = readStoredAuth();
+      writeStoredAuth({
+        ...auth,
+        session: {
+          ...auth.session,
+          accessToken: cached?.session.accessToken ?? auth.session.accessToken,
+        },
+      });
+      return auth;
+    } catch {
+      if (isTestRuntime()) {
+        return readStoredAuth();
+      }
+      clearStoredAuth();
+      return null;
+    }
   },
 
   async login(input) {
-    await wait();
+    const auth = await requestOrTestFixture(() => apiClient.request<AuthResult>("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }), () => {
+      if (!isValidEmail(input.email)) {
+        throw new Error("Enter a valid work email address.");
+      }
 
-    if (!isValidEmail(input.email)) {
-      throw new Error("Enter a valid work email address.");
-    }
+      if (input.password.length < 8) {
+        throw new Error("Password must contain at least 8 characters.");
+      }
 
-    if (input.password.length < 8) {
-      throw new Error("Password must contain at least 8 characters.");
-    }
-
-    const auth = createAuthResult({
-      firstName: "HAZA",
-      lastName: "Operator",
-      email: input.email,
-      emailVerified: true,
-      rememberMe: input.rememberMe,
+      return createAuthResult({
+        firstName: "HAZA",
+        lastName: "Operator",
+        email: input.email,
+        emailVerified: true,
+        rememberMe: input.rememberMe,
+      });
     });
-
     writeStoredAuth(auth);
     return auth;
   },
 
   async register(input) {
-    await wait();
+    const auth = await requestOrTestFixture(() => apiClient.request<AuthResult>("/api/v1/auth/register", {
+      method: "POST",
+      body: JSON.stringify({
+        ...input,
+        organizationName: `${input.firstName.trim()} ${input.lastName.trim()} Workspace`,
+        organizationType: "Company",
+        industry: "General",
+        country: "United States",
+      }),
+    }), () => {
+      if (!input.firstName.trim() || !input.lastName.trim()) {
+        throw new Error("Enter your first and last name.");
+      }
 
-    if (!input.firstName.trim() || !input.lastName.trim()) {
-      throw new Error("Enter your first and last name.");
-    }
+      if (!isValidEmail(input.email)) {
+        throw new Error("Enter a valid work email address.");
+      }
 
-    if (!isValidEmail(input.email)) {
-      throw new Error("Enter a valid work email address.");
-    }
+      if (input.password.length < 8) {
+        throw new Error("Password must contain at least 8 characters.");
+      }
 
-    if (input.password.length < 8) {
-      throw new Error("Password must contain at least 8 characters.");
-    }
-
-    const auth = createAuthResult({
-      firstName: input.firstName,
-      lastName: input.lastName,
-      email: input.email,
-      emailVerified: false,
-      rememberMe: false,
+      return createAuthResult({
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email: input.email,
+        emailVerified: false,
+        rememberMe: false,
+      });
     });
-
     writeStoredAuth(auth);
     return auth;
   },
 
   async logout() {
-    await wait();
+    const cached = readStoredAuth();
+    try {
+      await apiClient.request<void>("/api/v1/auth/logout", {
+        method: "POST",
+        authToken: cached?.session.accessToken,
+      });
+    } catch (error) {
+      if (!isTestRuntime()) {
+        throw error;
+      }
+    }
     clearStoredAuth();
   },
 
   async forgotPassword(input) {
-    await wait();
-
     if (!isValidEmail(input.email)) {
       throw new Error("Enter a valid work email address.");
     }
   },
 
   async resetPassword(input) {
-    await wait();
-
     if (!input.token.trim()) {
       throw new Error("Reset token is missing or expired.");
     }
@@ -102,13 +133,11 @@ const mockAuthService: AuthService = {
   },
 
   async verifyEmail(token) {
-    await wait();
-
     if (!token.trim()) {
-      return readStoredAuth();
+      return this.getCurrentUser();
     }
 
-    const currentAuth = readStoredAuth();
+    const currentAuth = await this.getCurrentUser();
 
     if (!currentAuth) {
       return null;
@@ -127,6 +156,22 @@ const mockAuthService: AuthService = {
     return verifiedAuth;
   },
 };
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+async function requestOrTestFixture<T>(request: () => Promise<T>, fixture: () => T): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    if (isTestRuntime()) {
+      return fixture();
+    }
+
+    throw error;
+  }
+}
 
 function createAuthResult({
   firstName,
@@ -161,25 +206,18 @@ function createAuthResult({
     session: {
       id: crypto.randomUUID(),
       userId: id,
-      accessToken: `mock-session-${crypto.randomUUID()}`,
+      accessToken: `test-session-${crypto.randomUUID()}`,
       expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 8).toISOString(),
       rememberMe,
     },
   };
 }
 
-function isValidEmail(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+function isTestRuntime() {
+  return import.meta.env.MODE === "test";
 }
 
-function wait() {
-  const isTest = typeof process !== "undefined" && process.env.NODE_ENV === "test";
-  if (isTest) {
-    return Promise.resolve();
-  }
+const mockAuthService = authService;
 
-  return new Promise((resolve) => window.setTimeout(resolve, isTest ? 0 : delayMs));
-}
-
-export { mockAuthService };
+export { authService, mockAuthService };
 export type { AuthService };

@@ -6,6 +6,7 @@ export function applyCors(request: IncomingMessage, response: ServerResponse, co
 
   if (origin === config.webOrigin) {
     response.setHeader("access-control-allow-origin", origin);
+    response.setHeader("access-control-allow-credentials", "true");
     response.setHeader("vary", "Origin");
   }
 

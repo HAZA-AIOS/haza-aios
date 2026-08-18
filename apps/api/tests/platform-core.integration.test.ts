@@ -167,33 +167,37 @@ describeDatabase("DB-3 platform tenant core", () => {
     const suffix = randomUUID().slice(0, 8);
 
     try {
-      const createResponse = await fetch(`${baseUrl}/api/v1/organizations`, {
+      const createResponse = await fetch(`${baseUrl}/api/v1/auth/register`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-request-id": `db3-${suffix}` },
         body: JSON.stringify({
-          name: `API Tenant ${suffix}`,
-          slug: `api-tenant-${suffix}`,
+          firstName: "API",
+          lastName: "Owner",
+          email: `api-owner-${suffix}@example.com`,
+          password: "password123",
+          organizationName: `API Tenant ${suffix}`,
           industry: "Government",
           organizationType: "Government Organization",
-          email: `api-${suffix}@example.com`,
           country: "United States",
-          ownerId: `owner-${suffix}`,
         }),
       });
-      const created = await createResponse.json() as { organization: { id: string } };
+      const created = await createResponse.json() as { session: { accessToken: string }; memberships: Array<{ organizationId: string }> };
+      const organizationId = created.memberships[0].organizationId;
 
       expect(createResponse.status).toBe(201);
       expect(createResponse.headers.get("x-request-id")).toBe(`db3-${suffix}`);
 
-      const workspacesResponse = await fetch(`${baseUrl}/api/v1/organizations/${created.organization.id}/workspaces`);
+      const workspacesResponse = await fetch(`${baseUrl}/api/v1/organizations/${organizationId}/workspaces`, {
+        headers: { authorization: `Bearer ${created.session.accessToken}` },
+      });
       const workspacesBody = await workspacesResponse.json() as { workspaces: Array<{ id: string; organizationId: string }> };
 
       expect(workspacesResponse.status).toBe(200);
-      expect(workspacesBody.workspaces[0].organizationId).toBe(created.organization.id);
+      expect(workspacesBody.workspaces[0].organizationId).toBe(organizationId);
 
-      const moduleResponse = await fetch(`${baseUrl}/api/v1/organizations/${created.organization.id}/modules`, {
+      const moduleResponse = await fetch(`${baseUrl}/api/v1/organizations/${organizationId}/modules`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", authorization: `Bearer ${created.session.accessToken}` },
         body: JSON.stringify({ moduleKey: "demo-analytics", activatedBy: "api-test" }),
       });
       const moduleBody = await moduleResponse.json() as { module: { moduleKey: string; enabled: boolean } };

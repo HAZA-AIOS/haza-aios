@@ -8,9 +8,19 @@ export type ApiConfig = {
   webOrigin: string;
   logLevel: LogLevel;
   bodyLimitBytes: number;
+  database: DatabaseConfig;
   apiBasePath: "/api/v1";
   serviceName: "haza-aios-api";
   version: string;
+};
+
+export type DatabaseConfig = {
+  host: string;
+  port: number;
+  name: string;
+  user: string;
+  password: string;
+  connectionLimit: number;
 };
 
 type EnvInput = NodeJS.ProcessEnv;
@@ -25,6 +35,7 @@ export function loadConfig(env: EnvInput = process.env): ApiConfig {
   const webOrigin = readOrigin(env.WEB_ORIGIN, "WEB_ORIGIN", nodeEnv === "production" ? undefined : "http://localhost:3000");
   const logLevel = readEnum(env.LOG_LEVEL, "LOG_LEVEL", allowedLogLevels, nodeEnv === "production" ? "info" : "debug");
   const bodyLimitBytes = readPositiveInteger(env.API_BODY_LIMIT_BYTES, "API_BODY_LIMIT_BYTES", 1_048_576);
+  const database = readDatabaseConfig(env, nodeEnv);
 
   return {
     nodeEnv,
@@ -33,9 +44,28 @@ export function loadConfig(env: EnvInput = process.env): ApiConfig {
     webOrigin,
     logLevel,
     bodyLimitBytes,
+    database,
     apiBasePath: "/api/v1",
     serviceName: "haza-aios-api",
     version: env.npm_package_version || "0.0.0",
+  };
+}
+
+function readDatabaseConfig(env: EnvInput, nodeEnv: NodeEnv): DatabaseConfig {
+  const defaultDatabaseName = nodeEnv === "test" ? "haza_aios_test" : "haza_aios";
+  const name = readString(
+    nodeEnv === "test" ? env.TEST_DATABASE_NAME ?? env.DATABASE_NAME : env.DATABASE_NAME,
+    nodeEnv === "test" && env.TEST_DATABASE_NAME ? "TEST_DATABASE_NAME" : "DATABASE_NAME",
+    nodeEnv === "production" ? undefined : defaultDatabaseName,
+  );
+
+  return {
+    host: readString(env.DATABASE_HOST, "DATABASE_HOST", nodeEnv === "production" ? undefined : "127.0.0.1"),
+    port: readPort(env.DATABASE_PORT, "DATABASE_PORT", 3306),
+    name,
+    user: readString(env.DATABASE_USER, "DATABASE_USER", nodeEnv === "production" ? undefined : "root"),
+    password: readDatabasePassword(env.DATABASE_PASSWORD, nodeEnv),
+    connectionLimit: readPositiveInteger(env.DATABASE_POOL_LIMIT, "DATABASE_POOL_LIMIT", 10),
   };
 }
 
@@ -47,6 +77,14 @@ function readString(value: string | undefined, name: string, fallback?: string):
   }
 
   return resolved;
+}
+
+function readDatabasePassword(value: string | undefined, nodeEnv: NodeEnv): string {
+  if (nodeEnv === "production" && value === undefined) {
+    throw new Error("DATABASE_PASSWORD is required");
+  }
+
+  return value ?? "";
 }
 
 function readPort(value: string | undefined, name: string, fallback: number): number {

@@ -3,6 +3,7 @@ import { ApiError } from "./common/errors/api-error.js";
 import { sendJson } from "./common/http/json.js";
 import { createLogger, type Logger } from "./common/logging/logger.js";
 import type { ApiConfig } from "./config/env.js";
+import { createDatabaseClient, type DatabaseClient } from "./database/client.js";
 import { applyCors } from "./middleware/cors.js";
 import { readJsonBody } from "./middleware/body.js";
 import { createRequestContext } from "./middleware/request-context.js";
@@ -12,7 +13,7 @@ import { healthModule } from "./modules/health/health.module.js";
 import { registerModules } from "./modules/module-registry.js";
 import { ApiRouter } from "./routes/router.js";
 
-export function createApp(config: ApiConfig, logger: Logger = createLogger(config)) {
+export function createApp(config: ApiConfig, logger: Logger = createLogger(config), database: DatabaseClient = createDatabaseClient(config.database, logger)) {
   const router = new ApiRouter();
 
   registerModules(router, [
@@ -39,6 +40,7 @@ export function createApp(config: ApiConfig, logger: Logger = createLogger(confi
 
       await route(apiRequest, response, {
         config,
+        database,
         logger,
         requestContext,
         url,

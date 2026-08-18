@@ -1,4 +1,5 @@
 import { ModuleRegistry } from "./module-registry";
+import { initModuleRegistry } from "./index";
 import type {
   ModuleContract,
   OrganizationModuleState,
@@ -26,6 +27,12 @@ function saveStoredOrgModuleStates(orgId: string, states: OrganizationModuleStat
   localStorage.setItem(getOrgModulesKey(orgId), JSON.stringify(states));
 }
 
+function ensureModuleRegistryReady(): void {
+  if (ModuleRegistry.getAll().length === 0) {
+    initModuleRegistry();
+  }
+}
+
 /**
  * ModuleRuntime handles tenant-isolated activation, dynamic routing lookups,
  * dynamic sidebar navigation generation, and permission verification for modules.
@@ -38,12 +45,13 @@ export const ModuleRuntime = {
     module: ModuleContract;
     state: OrganizationModuleState;
   }> {
+    ensureModuleRegistryReady();
     const allModules = ModuleRegistry.getAll();
     const storedStates = getStoredOrgModuleStates(orgId);
 
     return allModules.map((module) => {
       const existing = storedStates.find((s) => s.moduleId === module.id);
-      const isDefaultActivated = module.slug === "demo-analytics";
+      const isDefaultActivated = module.slug === "demo-analytics" || module.slug === "education-sis";
 
       const state: OrganizationModuleState = existing || {
         organizationId: orgId,
@@ -61,6 +69,7 @@ export const ModuleRuntime = {
    * Check if a specific module is activated for an organization.
    */
   isModuleActivatedForOrg(orgId: string, moduleIdOrSlug: string): boolean {
+    ensureModuleRegistryReady();
     const targetModule =
       ModuleRegistry.get(moduleIdOrSlug) || ModuleRegistry.getBySlug(moduleIdOrSlug);
     if (!targetModule) return false;
@@ -78,6 +87,7 @@ export const ModuleRuntime = {
     moduleId: string,
     activate: boolean
   ): OrganizationModuleState {
+    ensureModuleRegistryReady();
     const targetModule = ModuleRegistry.get(moduleId);
     if (!targetModule) {
       throw new Error(`Cannot toggle activation: Module "${moduleId}" is not registered.`);
@@ -146,6 +156,7 @@ export const ModuleRuntime = {
    * Get module configuration settings for an org.
    */
   getModuleConfigurationForOrg(orgId: string, moduleId: string): Record<string, unknown> {
+    ensureModuleRegistryReady();
     const targetModule = ModuleRegistry.get(moduleId);
     const defaultValues = targetModule?.configuration?.defaultValues || {};
     const states = getStoredOrgModuleStates(orgId);
@@ -161,6 +172,7 @@ export const ModuleRuntime = {
     moduleId: string,
     settings: Record<string, unknown>
   ): void {
+    ensureModuleRegistryReady();
     const states = getStoredOrgModuleStates(orgId);
     const match = states.find((s) => s.moduleId === moduleId);
     if (match) {

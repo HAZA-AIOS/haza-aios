@@ -20,13 +20,26 @@ export const healthModule: BackendModule = {
     router.register({
       method: "GET",
       path: "/api/v1/readiness",
-      handler(_request, response, { config }) {
-        sendJson(response, 200, {
-          status: "ready",
+      async handler(_request, response, { config, database }) {
+        let databaseStatus: "up" | "down" = "up";
+
+        try {
+          await database.ping();
+        } catch {
+          databaseStatus = "down";
+        }
+
+        const isReady = databaseStatus === "up";
+
+        sendJson(response, isReady ? 200 : 503, {
+          status: isReady ? "ready" : "not_ready",
           service: config.serviceName,
           checks: {
             config: "ok",
-            database: "not_configured_db1",
+            database: databaseStatus,
+          },
+          dependencies: {
+            database: databaseStatus,
           },
           timestamp: new Date().toISOString(),
         });

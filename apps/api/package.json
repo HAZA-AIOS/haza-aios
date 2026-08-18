@@ -4,11 +4,24 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node --watch --experimental-strip-types src/server.ts",
+    "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "build": "npx tsc -p tsconfig.json",
+    "db:check": "drizzle-kit check --config drizzle.config.ts",
+    "db:create": "tsx src/database/scripts/create-database.ts",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "db:migrate": "tsx src/database/scripts/migrate.ts",
+    "db:migrate:status": "tsx src/database/scripts/migration-status.ts",
     "lint": "npx eslint .",
     "typecheck": "npx tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "mysql2": "^3.23.3"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.23.12"
   }
 }

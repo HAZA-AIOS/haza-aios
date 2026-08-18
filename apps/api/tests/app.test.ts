@@ -4,6 +4,7 @@ import { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import { loadConfig, type ApiConfig } from "../src/config/env.js";
+import type { DatabaseClient } from "../src/database/client.js";
 
 const logger = {
   error: vi.fn(),
@@ -15,6 +16,7 @@ const logger = {
 let server: Server;
 let baseUrl: string;
 let config: ApiConfig;
+let database: DatabaseClient;
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -26,7 +28,8 @@ beforeEach(async () => {
     LOG_LEVEL: "error",
     API_BODY_LIMIT_BYTES: "256",
   });
-  server = createApp(config, logger);
+  database = createFakeDatabase();
+  server = createApp(config, logger, database);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address() as AddressInfo;
@@ -54,14 +57,33 @@ describe("api foundation", () => {
     });
   });
 
-  it("returns readiness without database dependency", async () => {
+  it("returns readiness with database dependency", async () => {
     const response = await fetch(`${baseUrl}/api/v1/readiness`);
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.checks).toEqual({
       config: "ok",
-      database: "not_configured_db1",
+      database: "up",
+    });
+    expect(body.dependencies.database).toBe("up");
+  });
+
+  it("returns not ready when database is unavailable", async () => {
+    database.ping = vi.fn().mockRejectedValue(new Error("offline"));
+    const response = await fetch(`${baseUrl}/api/v1/readiness`);
+    const body = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(body).toMatchObject({
+      status: "not_ready",
+      checks: {
+        config: "ok",
+        database: "down",
+      },
+      dependencies: {
+        database: "down",
+      },
     });
   });
 
@@ -130,3 +152,12 @@ describe("api foundation", () => {
     expect(body.error.code).toBe("PAYLOAD_TOO_LARGE");
   });
 });
+
+function createFakeDatabase(): DatabaseClient {
+  return {
+    db: {} as DatabaseClient["db"],
+    ping: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined),
+    transaction: vi.fn(async (work) => work({} as Parameters<Parameters<DatabaseClient["transaction"]>[0]>[0])),
+  };
+}

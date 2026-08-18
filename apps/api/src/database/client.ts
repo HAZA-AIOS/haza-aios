@@ -41,11 +41,7 @@ export function createDatabaseClient(config: DatabaseConfig, logger: Logger): Da
       }
     },
     async transaction(work) {
-      try {
-        return await db.transaction(work);
-      } catch (error) {
-        throw mapDatabaseError(error, "DATABASE_TRANSACTION_FAILED");
-      }
+      return db.transaction(work);
     },
   };
 }

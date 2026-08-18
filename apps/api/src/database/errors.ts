@@ -24,7 +24,7 @@ export function mapDatabaseError(error: unknown, fallback: DatabaseErrorCode = "
     return error;
   }
 
-  const candidate = error as { code?: string; errno?: number };
+  const candidate = error as { code?: string; errno?: number; cause?: unknown };
 
   if (candidate.code === "ECONNREFUSED" || candidate.code === "ETIMEDOUT" || candidate.code === "PROTOCOL_CONNECTION_LOST") {
     return new DatabaseError("DATABASE_UNAVAILABLE", "Database is unavailable.", error);
@@ -36,6 +36,13 @@ export function mapDatabaseError(error: unknown, fallback: DatabaseErrorCode = "
 
   if ([1451, 1452].includes(candidate.errno ?? 0) || candidate.code === "ER_ROW_IS_REFERENCED_2" || candidate.code === "ER_NO_REFERENCED_ROW_2") {
     return new DatabaseError("DATABASE_FOREIGN_KEY_CONSTRAINT", "A database relationship constraint was violated.", error);
+  }
+
+  if (candidate.cause) {
+    const causedBy = mapDatabaseError(candidate.cause, fallback);
+    if (causedBy.code !== fallback) {
+      return causedBy;
+    }
   }
 
   return new DatabaseError(fallback, "Database operation failed.", error);

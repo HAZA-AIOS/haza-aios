@@ -68,6 +68,16 @@ describe("ModuleRegistry & ModuleRuntime", () => {
   });
 
   describe("ModuleRuntime", () => {
+    it("self-initializes the default catalog when no module has been registered yet", () => {
+      const available = ModuleRuntime.getAvailableModulesForOrg("org-mentor-school");
+      const educationSuite = available.find((item) => item.module.slug === "education-sis");
+
+      expect(available.length).toBeGreaterThan(0);
+      expect(educationSuite?.module.name).toBe("Education & SIS Suite");
+      expect(educationSuite?.state.status).toBe("activated");
+      expect(educationSuite?.state.enabled).toBe(true);
+    });
+
     it("retrieves available modules with tenant state", () => {
       ModuleRegistry.register(dummyModule);
       const available = ModuleRuntime.getAvailableModulesForOrg("org-test");

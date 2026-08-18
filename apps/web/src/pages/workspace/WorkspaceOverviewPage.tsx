@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useOrganization } from "../../org/use-organization";
 import { AppShell } from "../../components/AppShell";
 import { AdminPageHeader } from "@haza-aios/ui";
-import { Link } from "../../routes/router";
+import { navigate } from "../../routes/navigation";
 import { 
   Settings, BookOpen, Users, GraduationCap, Calendar, 
   Activity, Stethoscope, PieChart, ShieldCheck, ArrowRight 
@@ -30,13 +30,22 @@ export function WorkspaceOverviewPage() {
         
         return [
           {
+            id: "edu-sis-suite",
+            title: "Education & SIS Suite",
+            description: "Open the active SIS module catalog and all education module controls",
+            icon: GraduationCap,
+            color: "text-red-400",
+            bg: "bg-red-400/10",
+            path: "/workspace/modules"
+          },
+          {
             id: "edu-1",
             title: `${orgType} General Setting`,
             description: `Configure ${orgType.toLowerCase()} basic information and settings`,
             icon: Settings,
             color: "text-blue-400",
             bg: "bg-blue-400/10",
-            path: "#"
+            path: "/workspace/settings"
           },
           {
             id: "edu-2",
@@ -45,7 +54,7 @@ export function WorkspaceOverviewPage() {
             icon: BookOpen,
             color: "text-amber-400",
             bg: "bg-amber-400/10",
-            path: "#"
+            path: "/workspace/education/academic/subjects"
           },
           {
             id: "edu-3",
@@ -90,7 +99,61 @@ export function WorkspaceOverviewPage() {
             icon: Calendar,
             color: "text-rose-400",
             bg: "bg-rose-400/10",
-            path: "#"
+            path: "/workspace/education/timetable"
+          },
+          {
+            id: "edu-exams",
+            title: "Exams & Results",
+            description: "Manage examinations, assessments, marks, and published results",
+            icon: BookOpen,
+            color: "text-cyan-400",
+            bg: "bg-cyan-400/10",
+            path: "/workspace/education/examinations"
+          },
+          {
+            id: "edu-finance",
+            title: "Fees & Finance",
+            description: "Manage fee structures, invoices, payments, receipts, and reports",
+            icon: PieChart,
+            color: "text-amber-400",
+            bg: "bg-amber-400/10",
+            path: "/workspace/education/finance"
+          },
+          {
+            id: "edu-communication",
+            title: "Communication",
+            description: "Publish announcements, send messages, and review delivery history",
+            icon: Activity,
+            color: "text-sky-400",
+            bg: "bg-sky-400/10",
+            path: "/workspace/education/communication"
+          },
+          {
+            id: "edu-parent-portal",
+            title: "Parent Portal",
+            description: "Review parent self-service dashboards and update requests",
+            icon: Users,
+            color: "text-lime-400",
+            bg: "bg-lime-400/10",
+            path: "/workspace/education/portal/parent"
+          },
+          {
+            id: "edu-student-portal",
+            title: "Student Portal",
+            description: "Review student self-service dashboards, academics, and notifications",
+            icon: GraduationCap,
+            color: "text-fuchsia-400",
+            bg: "bg-fuchsia-400/10",
+            path: "/workspace/education/portal/student"
+          },
+          {
+            id: "edu-analytics",
+            title: "Analytics & Reports",
+            description: "Review SIS analytics, reports, data quality, and operational health",
+            icon: PieChart,
+            color: "text-orange-400",
+            bg: "bg-orange-400/10",
+            path: "/workspace/education/analytics"
           }
         ];
       }
@@ -103,7 +166,7 @@ export function WorkspaceOverviewPage() {
             icon: Settings,
             color: "text-blue-400",
             bg: "bg-blue-400/10",
-            path: "#"
+            path: "/workspace/settings"
           },
           {
             id: "hc-2",
@@ -112,7 +175,7 @@ export function WorkspaceOverviewPage() {
             icon: Activity,
             color: "text-rose-400",
             bg: "bg-rose-400/10",
-            path: "#"
+            path: "/workspace/members"
           },
           {
             id: "hc-3",
@@ -121,7 +184,7 @@ export function WorkspaceOverviewPage() {
             icon: Calendar,
             color: "text-emerald-400",
             bg: "bg-emerald-400/10",
-            path: "#"
+            path: "/workspace"
           },
           {
             id: "hc-4",
@@ -130,7 +193,7 @@ export function WorkspaceOverviewPage() {
             icon: Stethoscope,
             color: "text-purple-400",
             bg: "bg-purple-400/10",
-            path: "#"
+            path: "/workspace/members"
           }
         ];
       default:
@@ -161,7 +224,7 @@ export function WorkspaceOverviewPage() {
             icon: PieChart,
             color: "text-amber-400",
             bg: "bg-amber-400/10",
-            path: "#"
+            path: "/workspace/modules"
           },
           {
             id: "corp-4",
@@ -170,7 +233,7 @@ export function WorkspaceOverviewPage() {
             icon: ShieldCheck,
             color: "text-purple-400",
             bg: "bg-purple-400/10",
-            path: "#"
+            path: "/admin/audit-log"
           }
         ];
     }
@@ -196,10 +259,14 @@ export function WorkspaceOverviewPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {modules.map((mod) => (
-              <Link 
-                key={mod.id} 
-                to={mod.path}
-                className="group flex items-center p-5 rounded-2xl border border-white/5 bg-[#0f141f] hover:bg-slate-900/80 hover:border-white/10 transition-all duration-300"
+              <a
+                key={mod.id}
+                href={mod.path}
+                onClick={(event) => {
+                  event.preventDefault();
+                  navigate(mod.path);
+                }}
+                className="group flex items-center p-5 rounded-2xl border border-white/5 bg-[#0f141f] hover:bg-slate-900/80 hover:border-white/10 transition-all duration-300 text-left"
               >
                 <div className={`shrink-0 flex items-center justify-center w-12 h-12 rounded-xl ${mod.bg} ${mod.color} mr-4 transition-transform group-hover:scale-110`}>
                   <mod.icon className="w-6 h-6" />
@@ -215,7 +282,7 @@ export function WorkspaceOverviewPage() {
                 <div className="shrink-0 text-slate-600 group-hover:text-slate-300 transition-colors">
                   <ArrowRight className="w-4 h-4" />
                 </div>
-              </Link>
+              </a>
             ))}
           </div>
         )}

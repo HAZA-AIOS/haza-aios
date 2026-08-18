@@ -297,5 +297,3 @@ export function initModuleRegistry(): void {
   }
 }
 
-// Auto-run initialization
-initModuleRegistry();

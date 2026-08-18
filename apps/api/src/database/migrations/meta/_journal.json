@@ -8,6 +8,13 @@
       "when": 1787037977818,
       "tag": "0000_calm_agent_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1787042238699,
+      "tag": "0001_friendly_lord_hawal",
+      "breakpoints": true
     }
   ]
 }

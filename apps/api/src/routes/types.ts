@@ -13,6 +13,7 @@ export type RouteContext = {
   database: DatabaseClient;
   logger: Logger;
   requestContext: RequestContext;
+  routeParams: Record<string, string>;
   url: URL;
 };
 

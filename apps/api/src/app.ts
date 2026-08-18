@@ -11,6 +11,7 @@ import { applySecurityHeaders } from "./middleware/security.js";
 import { foundationModule } from "./modules/foundation/foundation.module.js";
 import { healthModule } from "./modules/health/health.module.js";
 import { registerModules } from "./modules/module-registry.js";
+import { platformModule } from "./modules/platform/platform.module.js";
 import { ApiRouter } from "./routes/router.js";
 
 export function createApp(config: ApiConfig, logger: Logger = createLogger(config), database: DatabaseClient = createDatabaseClient(config.database, logger)) {
@@ -19,6 +20,7 @@ export function createApp(config: ApiConfig, logger: Logger = createLogger(confi
   registerModules(router, [
     healthModule,
     foundationModule,
+    platformModule,
   ]);
 
   return createServer(async (request, response) => {
@@ -38,11 +40,12 @@ export function createApp(config: ApiConfig, logger: Logger = createLogger(confi
       apiRequest.body = await readJsonBody(request, config.bodyLimitBytes);
       const route = router.match(request.method, url.pathname);
 
-      await route(apiRequest, response, {
+      await route.handler(apiRequest, response, {
         config,
         database,
         logger,
         requestContext,
+        routeParams: route.params,
         url,
       });
 

@@ -15,6 +15,13 @@
       "when": 1787042238699,
       "tag": "0001_friendly_lord_hawal",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787046176071,
+      "tag": "0002_long_bruce_banner",
+      "breakpoints": true
     }
   ]
 }

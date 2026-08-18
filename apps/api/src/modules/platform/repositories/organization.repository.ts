@@ -35,10 +35,13 @@ export class OrganizationRepository {
     return organization;
   }
 
-  async createBootstrapRecords(input: { organizationId: string; ownerId: string; workspaceName: string; workspaceCode: string; timezone: string; currency: string }): Promise<void> {
+  async createBootstrapRecords(input: { organizationId: string; ownerId: string; workspaceName: string; workspaceCode: string; timezone: string; currency: string }): Promise<{ membershipId: string; workspaceId: string }> {
     const now = new Date();
+    const workspaceId = randomUUID();
+    const membershipId = randomUUID();
+
     await this.context.db.insert(workspaces).values({
-      id: randomUUID(),
+      id: workspaceId,
       organizationId: input.organizationId,
       name: input.workspaceName,
       code: input.workspaceCode,
@@ -58,7 +61,7 @@ export class OrganizationRepository {
       updatedAt: now,
     });
     await this.context.db.insert(organizationMemberships).values({
-      id: randomUUID(),
+      id: membershipId,
       organizationId: input.organizationId,
       userId: input.ownerId,
       role: "Owner",
@@ -67,6 +70,8 @@ export class OrganizationRepository {
       createdAt: now,
       updatedAt: now,
     });
+
+    return { membershipId, workspaceId };
   }
 
   async getById(id: string): Promise<OrganizationRecord | null> {

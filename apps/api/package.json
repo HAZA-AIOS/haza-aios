@@ -1,0 +1,14 @@
+{
+  "name": "api",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --experimental-strip-types src/server.ts",
+    "start": "node dist/server.js",
+    "build": "npx tsc -p tsconfig.json",
+    "lint": "npx eslint .",
+    "typecheck": "npx tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  }
+}

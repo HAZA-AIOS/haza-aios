@@ -39,7 +39,7 @@ describeDatabase("DB-3 platform tenant core", () => {
       LOG_LEVEL: "error",
     });
     database = createDatabaseClient(config.database, createLogger(config));
-    await migrate(database.db, { migrationsFolder });
+    await migrateIfNeeded(database);
   });
 
   afterAll(async () => {
@@ -235,4 +235,14 @@ async function closeServer(server: Server): Promise<void> {
   if (!server.listening) return;
   server.close();
   await once(server, "close");
+}
+
+async function migrateIfNeeded(database: DatabaseClient): Promise<void> {
+  try {
+    await migrate(database.db, { migrationsFolder });
+  } catch (error) {
+    const code = (error as { cause?: { code?: string } }).cause?.code;
+    if (code === "ER_TABLE_EXISTS_ERROR") return;
+    throw error;
+  }
 }

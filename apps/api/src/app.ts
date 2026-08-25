@@ -9,6 +9,7 @@ import { readJsonBody } from "./middleware/body.js";
 import { createRequestContext } from "./middleware/request-context.js";
 import { applySecurityHeaders } from "./middleware/security.js";
 import { authModule } from "./modules/auth/auth.module.js";
+import { educationModule } from "./modules/education/education.module.js";
 import { foundationModule } from "./modules/foundation/foundation.module.js";
 import { healthModule } from "./modules/health/health.module.js";
 import { registerModules } from "./modules/module-registry.js";
@@ -23,6 +24,7 @@ export function createApp(config: ApiConfig, logger: Logger = createLogger(confi
     foundationModule,
     authModule,
     platformModule,
+    educationModule,
   ]);
 
   return createServer(async (request, response) => {

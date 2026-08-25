@@ -53,11 +53,8 @@ class ApiClient {
     }
 
     if (!response.ok) {
-      throw new ApiError(
-        response.statusText || "Request failed",
-        response.status,
-        await readBody(response),
-      );
+      const details = await readBody(response);
+      throw new ApiError((readErrorMessage(details) ?? response.statusText) || "Request failed", response.status, details);
     }
 
     if (response.status === 204) {
@@ -82,3 +79,11 @@ const apiClient = new ApiClient();
 
 export { ApiClient, ApiError, apiClient };
 export type { RequestOptions };
+
+function readErrorMessage(details: unknown): string | null {
+  if (!details || typeof details !== "object") return null;
+  const error = (details as { error?: unknown }).error;
+  if (!error || typeof error !== "object") return null;
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" && message ? message : null;
+}

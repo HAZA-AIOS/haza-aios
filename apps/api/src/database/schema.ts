@@ -1,4 +1,4 @@
-import { boolean, char, datetime, index, json, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { boolean, char, datetime, index, int, json, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 export const organizationStatus = mysqlEnum("organization_status", ["active", "suspended", "archived"]);
 export const workspaceStatus = mysqlEnum("workspace_status", ["active", "archived"]);
@@ -205,8 +205,239 @@ export const securityEvents = mysqlTable("security_events", {
   index("security_events_type_idx").on(table.eventType),
 ]);
 
+
+export const academicYearStatus = mysqlEnum("academic_year_status", ["planned", "active", "completed", "archived"]);
+export const academicTermStatus = mysqlEnum("academic_term_status", ["planned", "active", "completed"]);
+export const academicEntityStatus = mysqlEnum("academic_entity_status", ["active", "inactive"]);
+export const studentStatus = mysqlEnum("student_status", ["applicant", "active", "inactive", "withdrawn", "graduated", "transferred", "archived"]);
+export const gender = mysqlEnum("gender", ["male", "female", "other", "prefer_not_to_say"]);
+export const guardianRelationship = mysqlEnum("guardian_relationship", ["father", "mother", "guardian", "other"]);
+export const enrollmentStatus = mysqlEnum("enrollment_status", ["active", "completed", "dropped", "transferred"]);
+export const staffType = mysqlEnum("staff_type", ["teacher", "administrator", "coordinator", "accountant", "counselor", "librarian", "it_staff", "support_staff", "other"]);
+export const staffStatus = mysqlEnum("staff_status", ["active", "inactive", "on_leave", "suspended", "resigned", "terminated", "archived"]);
+export const employmentStatus = mysqlEnum("employment_status", ["full_time", "part_time", "contract", "temporary", "volunteer"]);
+
+export const academicYears = mysqlTable("academic_years", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  name: varchar("name", { length: 120 }).notNull(),
+  startDate: varchar("start_date", { length: 20 }).notNull(),
+  endDate: varchar("end_date", { length: 20 }).notNull(),
+  status: academicYearStatus.notNull().default("planned"),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("academic_years_workspace_name_unique").on(table.workspaceId, table.name),
+  index("academic_years_workspace_status_idx").on(table.workspaceId, table.status),
+]);
+
+export const academicTerms = mysqlTable("academic_terms", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  academicYearId: char("academic_year_id", { length: 36 }).notNull().references(() => academicYears.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  name: varchar("name", { length: 120 }).notNull(),
+  startDate: varchar("start_date", { length: 20 }).notNull(),
+  endDate: varchar("end_date", { length: 20 }).notNull(),
+  status: academicTermStatus.notNull().default("planned"),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("academic_terms_year_name_unique").on(table.academicYearId, table.name),
+  index("academic_terms_workspace_year_idx").on(table.workspaceId, table.academicYearId),
+]);
+
+export const gradeLevels = mysqlTable("grade_levels", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  name: varchar("name", { length: 120 }).notNull(),
+  level: int("level").notNull(),
+  order: int("display_order").notNull(),
+  status: academicEntityStatus.notNull().default("active"),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("grade_levels_workspace_name_unique").on(table.workspaceId, table.name),
+  index("grade_levels_workspace_order_idx").on(table.workspaceId, table.order),
+]);
+
+export const sections = mysqlTable("sections", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  gradeId: char("grade_id", { length: 36 }).notNull().references(() => gradeLevels.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  name: varchar("name", { length: 120 }).notNull(),
+  capacity: int("capacity"),
+  status: academicEntityStatus.notNull().default("active"),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("sections_grade_name_unique").on(table.gradeId, table.name),
+  index("sections_workspace_grade_idx").on(table.workspaceId, table.gradeId),
+]);
+
+export const subjects = mysqlTable("subjects", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  name: varchar("name", { length: 160 }).notNull(),
+  code: varchar("code", { length: 60 }).notNull(),
+  description: varchar("description", { length: 1000 }),
+  status: academicEntityStatus.notNull().default("active"),
+  displayOrder: int("display_order").notNull().default(0),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("subjects_workspace_code_unique").on(table.workspaceId, table.code),
+  index("subjects_workspace_order_idx").on(table.workspaceId, table.displayOrder),
+]);
+
+export const classSubjects = mysqlTable("class_subjects", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  gradeId: char("grade_id", { length: 36 }).notNull().references(() => gradeLevels.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  subjectId: char("subject_id", { length: 36 }).notNull().references(() => subjects.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("class_subjects_grade_subject_unique").on(table.gradeId, table.subjectId),
+  index("class_subjects_workspace_grade_idx").on(table.workspaceId, table.gradeId),
+]);
+
+export const staffDepartments = mysqlTable("staff_departments", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  name: varchar("name", { length: 160 }).notNull(),
+  description: varchar("description", { length: 1000 }),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("staff_departments_workspace_name_unique").on(table.workspaceId, table.name),
+]);
+
+export const staffMembers = mysqlTable("staff_members", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  employeeNumber: varchar("employee_number", { length: 80 }).notNull(),
+  userId: char("user_id", { length: 36 }).references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  firstName: varchar("first_name", { length: 120 }).notNull(),
+  middleName: varchar("middle_name", { length: 120 }),
+  lastName: varchar("last_name", { length: 120 }).notNull(),
+  preferredName: varchar("preferred_name", { length: 120 }),
+  dateOfBirth: varchar("date_of_birth", { length: 20 }),
+  gender: gender,
+  phone: varchar("phone", { length: 80 }),
+  email: varchar("email", { length: 255 }),
+  address: varchar("address", { length: 1000 }),
+  photoUrl: varchar("photo_url", { length: 1000 }),
+  hireDate: varchar("hire_date", { length: 20 }).notNull(),
+  staffType: staffType.notNull().default("teacher"),
+  employmentStatus: employmentStatus.notNull().default("full_time"),
+  status: staffStatus.notNull().default("active"),
+  departmentId: char("department_id", { length: 36 }).references(() => staffDepartments.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  qualifications: text("qualifications"),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("staff_members_workspace_employee_unique").on(table.workspaceId, table.employeeNumber),
+  index("staff_members_workspace_status_idx").on(table.workspaceId, table.status),
+]);
+
+export const teachingAssignments = mysqlTable("teaching_assignments", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  staffId: char("staff_id", { length: 36 }).notNull().references(() => staffMembers.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  academicYear: varchar("academic_year", { length: 120 }).notNull(),
+  gradeId: char("grade_id", { length: 36 }).notNull().references(() => gradeLevels.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  sectionId: char("section_id", { length: 36 }).references(() => sections.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  subjectId: char("subject_id", { length: 36 }).notNull().references(() => subjects.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("teaching_assignments_unique").on(table.workspaceId, table.staffId, table.academicYear, table.gradeId, table.sectionId, table.subjectId),
+  index("teaching_assignments_workspace_staff_idx").on(table.workspaceId, table.staffId),
+]);
+
+export const students = mysqlTable("students", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  userId: char("user_id", { length: 36 }).references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  admissionNumber: varchar("admission_number", { length: 80 }).notNull(),
+  studentNumber: varchar("student_number", { length: 80 }),
+  firstName: varchar("first_name", { length: 120 }).notNull(),
+  middleName: varchar("middle_name", { length: 120 }),
+  lastName: varchar("last_name", { length: 120 }).notNull(),
+  preferredName: varchar("preferred_name", { length: 120 }),
+  dateOfBirth: varchar("date_of_birth", { length: 20 }).notNull(),
+  gender: gender.notNull(),
+  nationality: varchar("nationality", { length: 120 }),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 80 }),
+  address: varchar("address", { length: 1000 }),
+  photoUrl: varchar("photo_url", { length: 1000 }),
+  admissionDate: varchar("admission_date", { length: 20 }).notNull(),
+  status: studentStatus.notNull().default("applicant"),
+  portalAccessEnabled: boolean("portal_access_enabled").notNull().default(false),
+  metadata: json("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("students_workspace_admission_unique").on(table.workspaceId, table.admissionNumber),
+  index("students_workspace_status_idx").on(table.workspaceId, table.status),
+]);
+
+export const guardians = mysqlTable("guardians", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  userId: char("user_id", { length: 36 }).references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  firstName: varchar("first_name", { length: 120 }).notNull(),
+  lastName: varchar("last_name", { length: 120 }).notNull(),
+  relationship: guardianRelationship.notNull().default("guardian"),
+  email: varchar("email", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 80 }).notNull(),
+  address: varchar("address", { length: 1000 }),
+  occupation: varchar("occupation", { length: 255 }),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  index("guardians_workspace_email_idx").on(table.workspaceId, table.email),
+]);
+
+export const studentGuardians = mysqlTable("student_guardians", {
+  id: char("id", { length: 36 }).primaryKey(),
+  studentId: char("student_id", { length: 36 }).notNull().references(() => students.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  guardianId: char("guardian_id", { length: 36 }).notNull().references(() => guardians.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  isEmergencyContact: boolean("is_emergency_contact").notNull().default(false),
+  isPrimaryContact: boolean("is_primary_contact").notNull().default(false),
+  portalAccessEnabled: boolean("portal_access_enabled").notNull().default(false),
+  authorizedForPortal: boolean("authorized_for_portal").notNull().default(false),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("student_guardians_student_guardian_unique").on(table.studentId, table.guardianId),
+]);
+
+export const enrollments = mysqlTable("enrollments", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  studentId: char("student_id", { length: 36 }).notNull().references(() => students.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  academicYear: varchar("academic_year", { length: 120 }).notNull(),
+  gradeId: char("grade_id", { length: 36 }).notNull().references(() => gradeLevels.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  sectionId: char("section_id", { length: 36 }).notNull().references(() => sections.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  enrollmentDate: varchar("enrollment_date", { length: 40 }).notNull(),
+  status: enrollmentStatus.notNull().default("active"),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("enrollments_student_year_active_guard").on(table.studentId, table.academicYear, table.status),
+  index("enrollments_workspace_student_idx").on(table.workspaceId, table.studentId),
+  index("enrollments_workspace_class_idx").on(table.workspaceId, table.gradeId, table.sectionId),
+]);
 export const schema = {
-  authSessions,
+  academicTerms,
+  academicYears,
+  classSubjects,
+  enrollments,
+  gradeLevels,
+  guardians,  authSessions,
   internalDatabaseChecks,
   membershipRoles,
   organizationMemberships,
@@ -216,7 +447,14 @@ export const schema = {
   permissions,
   rolePermissions,
   roles,
+  sections,
   securityEvents,
+  staffDepartments,
+  staffMembers,
+  studentGuardians,
+  students,
+  subjects,
+  teachingAssignments,
   users,
   workspaceMemberships,
   workspaces,

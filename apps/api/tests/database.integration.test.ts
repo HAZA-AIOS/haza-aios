@@ -24,7 +24,7 @@ describeDatabase("database integration", () => {
     });
     const logger = createLogger(config);
     database = createDatabaseClient(config.database, logger);
-    await migrate(database.db, { migrationsFolder });
+    await migrateIfNeeded(database);
   });
 
   afterAll(async () => {
@@ -70,3 +70,13 @@ describeDatabase("database integration", () => {
     expect(rows).toHaveLength(0);
   });
 });
+
+async function migrateIfNeeded(database: DatabaseClient): Promise<void> {
+  try {
+    await migrate(database.db, { migrationsFolder });
+  } catch (error) {
+    const code = (error as { cause?: { code?: string } }).cause?.code;
+    if (code === "ER_TABLE_EXISTS_ERROR") return;
+    throw error;
+  }
+}

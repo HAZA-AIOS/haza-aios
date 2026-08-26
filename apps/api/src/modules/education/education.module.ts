@@ -203,5 +203,83 @@ export const educationModule: BackendModule = {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
       sendJson(response, 201, { enrollment: await new SisService(database).transferStudent(tenant, routeParams.studentId, String(body(request).sectionId ?? "")) });
     }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/attendance/sessions", async handler(request, response, { database, routeParams, url }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { sessions: await new SisService(database).listAttendanceSessions(tenant, { academicYearId: url.searchParams.get("academicYearId") ?? undefined, date: url.searchParams.get("date") ?? undefined, gradeId: url.searchParams.get("gradeId") ?? undefined, sectionId: url.searchParams.get("sectionId") ?? undefined }) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/attendance/sessions", async handler(request, response, { database, routeParams }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { session: await new SisService(database).createAttendanceSession(tenant, body(request)) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/attendance/sessions/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { session: await new SisService(database).getAttendanceSession(tenant, routeParams.id) });
+    }});
+    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/attendance/sessions/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { session: await new SisService(database).updateAttendanceSession(tenant, routeParams.id, body(request)) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/attendance/sessions/:id/records", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { records: await new SisService(database).listAttendanceRecords(tenant, routeParams.id) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/attendance/sessions/:id/records", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      const payload = body(request);
+      sendJson(response, 200, { records: await new SisService(database).saveAttendanceRecords(tenant, routeParams.id, Array.isArray(payload.records) ? payload.records as Array<{ studentId: string; status: string; note?: string }> : [], String(payload.markedBy ?? "")) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/attendance/students/:studentId/history", async handler(request, response, { database, routeParams, url }) {
+      assertUuid(routeParams.studentId, "studentId");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { history: await new SisService(database).getStudentAttendanceHistory(tenant, routeParams.studentId, url.searchParams.get("academicYearId") ?? undefined) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/attendance/students/:studentId/summary", async handler(request, response, { database, routeParams, url }) {
+      assertUuid(routeParams.studentId, "studentId");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { summary: await new SisService(database).getStudentAttendanceSummary(tenant, routeParams.studentId, url.searchParams.get("academicYearId") ?? undefined) });
+    }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/timetable/schedules/:academicYearId", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.academicYearId, "academicYearId");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { schedule: await new SisService(database).getSchoolSchedule(tenant, routeParams.academicYearId) });
+    }});
+    router.register({ method: "PUT", path: "/api/v1/organizations/:organizationId/sis/timetable/schedules", async handler(request, response, { database, routeParams }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { schedule: await new SisService(database).saveSchoolSchedule(tenant, body(request)) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/timetable/periods", async handler(request, response, { database, routeParams }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { periods: await new SisService(database).listPeriods(tenant) });
+    }});
+    router.register({ method: "PUT", path: "/api/v1/organizations/:organizationId/sis/timetable/periods", async handler(request, response, { database, routeParams }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { period: await new SisService(database).savePeriod(tenant, body(request)) });
+    }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/timetable/periods/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      await new SisService(database).deletePeriod(tenant, routeParams.id);
+      sendJson(response, 200, { ok: true });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/timetable/entries", async handler(request, response, { database, routeParams, url }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { entries: await new SisService(database).listTimetableEntries(tenant, { academicYearId: url.searchParams.get("academicYearId") ?? undefined, termId: url.searchParams.get("termId") ?? undefined, gradeId: url.searchParams.get("gradeId") ?? undefined, sectionId: url.searchParams.get("sectionId") ?? undefined, teacherId: url.searchParams.get("teacherId") ?? undefined, dayOfWeek: url.searchParams.get("dayOfWeek") ?? undefined, periodId: url.searchParams.get("periodId") ?? undefined }) });
+    }});
+    router.register({ method: "PUT", path: "/api/v1/organizations/:organizationId/sis/timetable/entries", async handler(request, response, { database, routeParams }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { entry: await new SisService(database).saveTimetableEntry(tenant, body(request)) });
+    }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/timetable/entries/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      await new SisService(database).deleteTimetableEntry(tenant, routeParams.id);
+      sendJson(response, 200, { ok: true });
+    }});
   },
 };

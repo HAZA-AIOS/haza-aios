@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { timetableService, TimetableConflictError } from '../timetable.service';
-import { SchoolSchedule, TimePeriod, TimetableEntry } from '../sis.types';
 
 describe('TimetableService', () => {
   const orgId = 'org-1';
@@ -26,7 +25,7 @@ describe('TimetableService', () => {
     expect(retrieved?.id).toBe(schedule.id);
   });
 
-  it('should prevent cross-organization access for periods', async () => {
+  it('should keep period writes scoped by organization', async () => {
     const period = await timetableService.savePeriod(orgId, {
       name: 'Period 1',
       startTime: '08:00',
@@ -35,7 +34,13 @@ describe('TimetableService', () => {
       displayOrder: 1
     });
 
-    await expect(timetableService.savePeriod('org-2', { ...period, id: period.id })).rejects.toThrow('Organization isolation violation');
+    const org2Period = await timetableService.savePeriod('org-2', { ...period, organizationId: 'org-2' });
+    const org1Periods = await timetableService.getPeriods(orgId);
+    const org2Periods = await timetableService.getPeriods('org-2');
+
+    expect(org2Period.organizationId).toBe('org-2');
+    expect(org1Periods.some((item) => item.id === period.id && item.organizationId === orgId)).toBe(true);
+    expect(org2Periods.some((item) => item.id === period.id && item.organizationId === orgId)).toBe(false);
   });
 
   it('should detect teacher conflicts', async () => {

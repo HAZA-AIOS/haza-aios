@@ -87,7 +87,7 @@ export const AgentRunPage: React.FC = () => {
   return (
     <AppShell>
       <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
-        <div className="max-w-5xl mx-auto p-6 space-y-8 animate-fade-in w-full">
+        <div className="max-w-7xl space-y-8 animate-fade-in w-full">
           <div className="flex items-center justify-between">
             <div>
               <button 

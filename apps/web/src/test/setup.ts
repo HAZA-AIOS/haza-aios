@@ -15,6 +15,11 @@ type StudentRow = Row & { admissionNumber: string; firstName: string; lastName: 
 type EnrollmentRow = Row & { studentId: string; academicYear: string; gradeId: string; sectionId: string; enrollmentDate: string; status: string };
 type StaffRow = Row & { employeeNumber: string; staffType: string; status: string };
 type TeachingAssignmentRow = Row & { staffId: string; academicYear: string; gradeId: string; sectionId?: string; subjectId: string; isActive: boolean };
+type AttendanceSessionRow = Row & { academicYearId: string; date: string; gradeId: string; sectionId: string; sessionType: string; status: string };
+type AttendanceRecordRow = Row & { sessionId: string; studentId: string; status: string; note?: string; markedAt: string; markedBy: string };
+type SchoolScheduleRow = Row & { academicYearId: string; workingDays: number[]; scheduleStartTime: string; scheduleEndTime: string };
+type TimePeriodRow = Row & { name: string; startTime: string; endTime: string; type: string; displayOrder: number };
+type TimetableEntryRow = Row & { academicYearId: string; termId?: string; gradeId: string; sectionId: string; subjectId: string; teacherId: string; roomId?: string; dayOfWeek: number; periodId: string };
 
 vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url, "http://test.local");
@@ -58,6 +63,8 @@ async function handleSis(url: URL, init?: RequestInit): Promise<Response> {
   if (parts[0] === "students" && parts[2] === "transfer") return transferStudent(orgId, parts[1], String(input.sectionId ?? ""));
   if (parts[0] === "students") return students(method, orgId, parts[1], input, url);
   if (parts[0] === "enrollments") return enrollments(method, orgId, parts[1], input, url);
+  if (parts[0] === "attendance") return attendance(method, orgId, parts, input, url);
+  if (parts[0] === "timetable") return timetable(method, orgId, parts, input, url);
 
   return json({ error: { code: "NOT_FOUND" } }, 404);
 }
@@ -194,6 +201,113 @@ function transferStudent(orgId: string, studentId: string, newSectionId: string)
   current.status = "transferred";
   const next = makeRow(orgId, { studentId, academicYear: current.academicYear, gradeId: current.gradeId, sectionId: newSectionId, enrollmentDate: new Date().toISOString(), status: "active" }) as EnrollmentRow;
   rows.push(next); write("haza-aios.sis.enrollments", rows); return json({ enrollment: next }, 201);
+}
+
+function attendance(method: string, orgId: string, parts: string[], input: Record<string, unknown>, url: URL) {
+  if (parts[1] === "sessions" && parts[3] === "records") return attendanceRecords(method, orgId, parts[2], input);
+  if (parts[1] === "sessions") return attendanceSessions(method, orgId, parts[2], input, url);
+  if (parts[1] === "students" && parts[3] === "history") {
+    const sessions = read<AttendanceSessionRow>("haza-aios.sis.attendance-sessions");
+    const records = read<AttendanceRecordRow>("haza-aios.sis.attendance-records").filter((record) => record.organizationId === orgId && record.studentId === parts[2]);
+    return json({ history: records.map((record) => ({ record, session: sessions.find((session) => session.id === record.sessionId) })).filter((item) => item.session) });
+  }
+  if (parts[1] === "students" && parts[3] === "summary") {
+    const records = read<AttendanceRecordRow>("haza-aios.sis.attendance-records").filter((record) => record.organizationId === orgId && record.studentId === parts[2]);
+    const summary = { totalSessions: records.length, present: 0, absent: 0, late: 0, excused: 0, attendancePercentage: 100 };
+    for (const record of records) {
+      if (record.status === "present") summary.present += 1;
+      if (record.status === "absent") summary.absent += 1;
+      if (record.status === "late") summary.late += 1;
+      if (record.status === "excused") summary.excused += 1;
+    }
+    const counted = summary.present + summary.late + summary.absent;
+    summary.attendancePercentage = counted > 0 ? Math.round(((summary.present + summary.late) / counted) * 100) : 100;
+    return json({ summary });
+  }
+  return json({ error: { code: "NOT_FOUND" } }, 404);
+}
+
+function attendanceSessions(method: string, orgId: string, id: string | undefined, input: Record<string, unknown>, url: URL) {
+  const rows = read<AttendanceSessionRow>("haza-aios.sis.attendance-sessions");
+  if (method === "GET" && id) return json({ session: rows.find((row) => row.id === id && row.organizationId === orgId) ?? null });
+  if (method === "GET") return json({ sessions: rows.filter((row) => row.organizationId === orgId && matches(row, url)) });
+  if (method === "POST") {
+    const existing = rows.find((row) => row.organizationId === orgId && row.academicYearId === input.academicYearId && row.date === input.date && row.gradeId === input.gradeId && row.sectionId === input.sectionId && row.sessionType === input.sessionType);
+    if (existing) return json({ session: existing }, 201);
+    const row = makeRow(orgId, { ...input, sessionType: input.sessionType ?? "daily", status: input.status ?? "draft" }, `sess-${Date.now()}`) as AttendanceSessionRow;
+    rows.push(row); write("haza-aios.sis.attendance-sessions", rows); return json({ session: row }, 201);
+  }
+  const row = update(rows, orgId, id, input, "Attendance session"); write("haza-aios.sis.attendance-sessions", rows); return json({ session: row });
+}
+
+function attendanceRecords(method: string, orgId: string, sessionId: string, input: Record<string, unknown>) {
+  const rows = read<AttendanceRecordRow>("haza-aios.sis.attendance-records");
+  if (method === "GET") return json({ records: rows.filter((row) => row.organizationId === orgId && row.sessionId === sessionId) });
+  const saved: AttendanceRecordRow[] = [];
+  for (const item of Array.isArray(input.records) ? input.records as Array<Record<string, unknown>> : []) {
+    const index = rows.findIndex((row) => row.organizationId === orgId && row.sessionId === sessionId && row.studentId === item.studentId);
+    if (index >= 0) {
+      rows[index] = { ...rows[index], status: String(item.status), note: item.note as string | undefined, markedBy: String(input.markedBy ?? ""), updatedAt: new Date().toISOString() };
+      saved.push(rows[index]);
+    } else {
+      const row = makeRow(orgId, { sessionId, studentId: item.studentId, status: item.status, note: item.note, markedAt: new Date().toISOString(), markedBy: input.markedBy ?? "" }, `rec-${Date.now()}-${saved.length}`) as AttendanceRecordRow;
+      rows.push(row); saved.push(row);
+    }
+  }
+  write("haza-aios.sis.attendance-records", rows); return json({ records: saved });
+}
+
+function timetable(method: string, orgId: string, parts: string[], input: Record<string, unknown>, url: URL) {
+  if (parts[1] === "schedules" && method === "GET") {
+    const schedule = read<SchoolScheduleRow>("haza-aios.sis.school-schedules").find((row) => row.organizationId === orgId && row.academicYearId === parts[2]) ?? null;
+    return json({ schedule });
+  }
+  if (parts[1] === "schedules") return saveSchedule(orgId, input);
+  if (parts[1] === "periods" && method === "DELETE") return deletePeriod(orgId, parts[2]);
+  if (parts[1] === "periods") return periods(method, orgId, input);
+  if (parts[1] === "entries" && method === "DELETE") return deleteTimetableEntry(orgId, parts[2]);
+  if (parts[1] === "entries") return entries(method, orgId, input, url);
+  return json({ error: { code: "NOT_FOUND" } }, 404);
+}
+
+function saveSchedule(orgId: string, input: Record<string, unknown>) {
+  const rows = read<SchoolScheduleRow>("haza-aios.sis.school-schedules");
+  const index = rows.findIndex((row) => row.organizationId === orgId && row.academicYearId === input.academicYearId);
+  const row = makeRow(orgId, input, index >= 0 ? rows[index].id : `schedule-${Date.now()}`) as SchoolScheduleRow;
+  if (index >= 0) rows[index] = row; else rows.push(row);
+  write("haza-aios.sis.school-schedules", rows); return json({ schedule: row });
+}
+
+function periods(method: string, orgId: string, input: Record<string, unknown>) {
+  const rows = read<TimePeriodRow>("haza-aios.sis.time-periods");
+  if (method === "GET") return json({ periods: rows.filter((row) => row.organizationId === orgId).sort((a, b) => a.displayOrder - b.displayOrder) });
+  const index = input.id ? rows.findIndex((row) => row.id === input.id && row.organizationId === orgId) : -1;
+  const row = makeRow(orgId, input, index >= 0 ? rows[index].id : `period-${Date.now()}`) as TimePeriodRow;
+  if (index >= 0) rows[index] = row; else rows.push(row);
+  write("haza-aios.sis.time-periods", rows); return json({ period: row });
+}
+
+function deletePeriod(orgId: string, id: string) {
+  write("haza-aios.sis.time-periods", read<TimePeriodRow>("haza-aios.sis.time-periods").filter((row) => !(row.organizationId === orgId && row.id === id)));
+  write("haza-aios.sis.timetable-entries", read<TimetableEntryRow>("haza-aios.sis.timetable-entries").filter((row) => !(row.organizationId === orgId && row.periodId === id)));
+  return json({ ok: true });
+}
+
+function entries(method: string, orgId: string, input: Record<string, unknown>, url: URL) {
+  const rows = read<TimetableEntryRow>("haza-aios.sis.timetable-entries");
+  if (method === "GET") return json({ entries: rows.filter((row) => row.organizationId === orgId && matches(row, url)) });
+  const sameSlot = rows.filter((row) => row.organizationId === orgId && row.academicYearId === input.academicYearId && row.dayOfWeek === input.dayOfWeek && row.periodId === input.periodId && row.id !== input.id);
+  if (sameSlot.some((row) => row.teacherId === input.teacherId)) throw new DomainError("Teacher already has a class in this period.", 409);
+  if (sameSlot.some((row) => row.gradeId === input.gradeId && row.sectionId === input.sectionId)) throw new DomainError("Class section already has a timetable entry in this period.", 409);
+  const index = input.id ? rows.findIndex((row) => row.id === input.id && row.organizationId === orgId) : -1;
+  const row = makeRow(orgId, input, index >= 0 ? rows[index].id : `timetable-${Date.now()}`) as TimetableEntryRow;
+  if (index >= 0) rows[index] = row; else rows.push(row);
+  write("haza-aios.sis.timetable-entries", rows); return json({ entry: row });
+}
+
+function deleteTimetableEntry(orgId: string, id: string) {
+  write("haza-aios.sis.timetable-entries", read<TimetableEntryRow>("haza-aios.sis.timetable-entries").filter((row) => !(row.organizationId === orgId && row.id === id)));
+  return json({ ok: true });
 }
 
 function makeRow(orgId: string, input: Record<string, unknown>, id: string = crypto.randomUUID()): Row {

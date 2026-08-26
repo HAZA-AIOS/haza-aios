@@ -71,7 +71,7 @@ export const AcademicYearsPage: React.FC = () => {
 
   return (
     <AppShell>
-      <div className="max-w-6xl mx-auto p-6 space-y-6 animate-in fade-in duration-500">
+      <div className="max-w-7xl space-y-6 animate-in fade-in duration-500">
         
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">

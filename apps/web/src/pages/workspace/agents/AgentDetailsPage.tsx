@@ -65,7 +65,7 @@ export const AgentDetailsPage: React.FC = () => {
 
   return (
     <AppShell>
-      <div className="space-y-8 p-6 max-w-5xl mx-auto">
+      <div className="space-y-8 max-w-7xl">
         <Button variant="ghost" onClick={() => navigate("/workspace/agents")} className="mb-4 text-muted-foreground hover:text-foreground">
         &larr; Back to Marketplace
       </Button>

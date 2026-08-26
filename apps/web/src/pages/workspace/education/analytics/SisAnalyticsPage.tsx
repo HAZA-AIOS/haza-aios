@@ -115,7 +115,7 @@ export function SisAnalyticsPage({ initialTab = "overview" }: { initialTab?: Ana
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-7xl space-y-6 p-6">
+      <div className="max-w-7xl space-y-6">
         <AdminPageHeader
           title="SIS Analytics & Reports"
           description="Operational analytics, filtered reporting, CSV export, data quality checks, and SIS readiness."

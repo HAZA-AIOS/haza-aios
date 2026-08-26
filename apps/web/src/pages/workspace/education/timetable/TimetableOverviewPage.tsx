@@ -42,7 +42,7 @@ export function TimetableOverviewPage() {
 
   return (
     <AppShell>
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-semibold text-white">Timetable & Scheduling</h1>

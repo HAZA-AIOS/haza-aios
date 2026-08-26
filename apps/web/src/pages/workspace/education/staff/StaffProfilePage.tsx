@@ -83,7 +83,7 @@ export function StaffProfilePage() {
       {/* Top Background Banner */}
       <div className="h-48 bg-gradient-to-r from-indigo-900/40 to-slate-900/40 border-b border-indigo-500/10"></div>
       
-      <div className="max-w-7xl mx-auto px-8 pb-12 -mt-16 space-y-8">
+      <div className="max-w-7xl pb-12 -mt-16 space-y-8">
         
         {/* Header Profile Card */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl flex flex-col md:flex-row gap-6 relative">

@@ -216,6 +216,10 @@ export const enrollmentStatus = mysqlEnum("enrollment_status", ["active", "compl
 export const staffType = mysqlEnum("staff_type", ["teacher", "administrator", "coordinator", "accountant", "counselor", "librarian", "it_staff", "support_staff", "other"]);
 export const staffStatus = mysqlEnum("staff_status", ["active", "inactive", "on_leave", "suspended", "resigned", "terminated", "archived"]);
 export const employmentStatus = mysqlEnum("employment_status", ["full_time", "part_time", "contract", "temporary", "volunteer"]);
+export const attendanceStatus = mysqlEnum("attendance_status", ["present", "absent", "late", "excused"]);
+export const attendanceSessionType = mysqlEnum("attendance_session_type", ["daily", "period", "subject"]);
+export const attendanceSessionStatus = mysqlEnum("attendance_session_status", ["draft", "completed"]);
+export const periodType = mysqlEnum("period_type", ["teaching", "break", "activity"]);
 
 export const academicYears = mysqlTable("academic_years", {
   id: char("id", { length: 36 }).primaryKey(),
@@ -431,8 +435,97 @@ export const enrollments = mysqlTable("enrollments", {
   index("enrollments_workspace_student_idx").on(table.workspaceId, table.studentId),
   index("enrollments_workspace_class_idx").on(table.workspaceId, table.gradeId, table.sectionId),
 ]);
+
+export const attendanceSessions = mysqlTable("attendance_sessions", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  academicYearId: char("academic_year_id", { length: 36 }).notNull().references(() => academicYears.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  attendanceDate: varchar("attendance_date", { length: 20 }).notNull(),
+  gradeId: char("grade_id", { length: 36 }).notNull().references(() => gradeLevels.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  sectionId: char("section_id", { length: 36 }).notNull().references(() => sections.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  subjectId: char("subject_id", { length: 36 }).references(() => subjects.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  teacherId: char("teacher_id", { length: 36 }).references(() => staffMembers.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  sessionType: attendanceSessionType.notNull().default("daily"),
+  status: attendanceSessionStatus.notNull().default("draft"),
+  markedBy: varchar("marked_by", { length: 120 }),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("attendance_sessions_scope_unique").on(table.workspaceId, table.academicYearId, table.attendanceDate, table.gradeId, table.sectionId, table.sessionType, table.subjectId),
+  index("attendance_sessions_workspace_date_idx").on(table.workspaceId, table.attendanceDate),
+  index("attendance_sessions_class_idx").on(table.workspaceId, table.academicYearId, table.gradeId, table.sectionId),
+]);
+
+export const attendanceRecords = mysqlTable("attendance_records", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  sessionId: char("session_id", { length: 36 }).notNull().references(() => attendanceSessions.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  enrollmentId: char("enrollment_id", { length: 36 }).notNull().references(() => enrollments.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  studentId: char("student_id", { length: 36 }).notNull().references(() => students.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  status: attendanceStatus.notNull().default("present"),
+  note: varchar("note", { length: 1000 }),
+  markedAt: timestamp("marked_at", { fsp: 3 }).notNull().defaultNow(),
+  markedBy: varchar("marked_by", { length: 120 }).notNull(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("attendance_records_session_enrollment_unique").on(table.sessionId, table.enrollmentId),
+  index("attendance_records_workspace_student_idx").on(table.workspaceId, table.studentId),
+  index("attendance_records_session_idx").on(table.sessionId),
+]);
+
+export const schoolSchedules = mysqlTable("school_schedules", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  academicYearId: char("academic_year_id", { length: 36 }).notNull().references(() => academicYears.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  workingDays: json("working_days").$type<number[]>().notNull(),
+  scheduleStartTime: varchar("schedule_start_time", { length: 10 }).notNull(),
+  scheduleEndTime: varchar("schedule_end_time", { length: 10 }).notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("school_schedules_workspace_year_unique").on(table.workspaceId, table.academicYearId),
+]);
+
+export const timePeriods = mysqlTable("time_periods", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  name: varchar("name", { length: 120 }).notNull(),
+  startTime: varchar("start_time", { length: 10 }).notNull(),
+  endTime: varchar("end_time", { length: 10 }).notNull(),
+  type: periodType.notNull().default("teaching"),
+  displayOrder: int("display_order").notNull().default(0),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("time_periods_workspace_name_unique").on(table.workspaceId, table.name),
+  index("time_periods_workspace_order_idx").on(table.workspaceId, table.displayOrder),
+]);
+
+export const timetableEntries = mysqlTable("timetable_entries", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  academicYearId: char("academic_year_id", { length: 36 }).notNull().references(() => academicYears.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  termId: char("term_id", { length: 36 }).references(() => academicTerms.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  gradeId: char("grade_id", { length: 36 }).notNull().references(() => gradeLevels.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  sectionId: char("section_id", { length: 36 }).notNull().references(() => sections.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  subjectId: char("subject_id", { length: 36 }).notNull().references(() => subjects.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  teacherId: char("teacher_id", { length: 36 }).notNull().references(() => staffMembers.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  periodId: char("period_id", { length: 36 }).notNull().references(() => timePeriods.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  roomId: varchar("room_id", { length: 120 }),
+  dayOfWeek: int("day_of_week").notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("timetable_entries_class_slot_unique").on(table.workspaceId, table.academicYearId, table.gradeId, table.sectionId, table.dayOfWeek, table.periodId),
+  uniqueIndex("timetable_entries_teacher_slot_unique").on(table.workspaceId, table.academicYearId, table.teacherId, table.dayOfWeek, table.periodId),
+  uniqueIndex("timetable_entries_room_slot_unique").on(table.workspaceId, table.academicYearId, table.roomId, table.dayOfWeek, table.periodId),
+  index("timetable_entries_workspace_teacher_idx").on(table.workspaceId, table.teacherId),
+  index("timetable_entries_workspace_class_idx").on(table.workspaceId, table.gradeId, table.sectionId),
+]);
 export const schema = {
   academicTerms,
+  attendanceRecords,
+  attendanceSessions,
   academicYears,
   classSubjects,
   enrollments,
@@ -449,12 +542,15 @@ export const schema = {
   roles,
   sections,
   securityEvents,
+  schoolSchedules,
   staffDepartments,
   staffMembers,
   studentGuardians,
   students,
   subjects,
   teachingAssignments,
+  timePeriods,
+  timetableEntries,
   users,
   workspaceMemberships,
   workspaces,

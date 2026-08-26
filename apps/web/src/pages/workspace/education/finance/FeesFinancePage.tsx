@@ -326,7 +326,7 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-7xl space-y-6 p-6">
+      <div className="max-w-7xl space-y-6">
         <AdminPageHeader
           title="Fees & Finance"
           description="Manage SIS fee structures, billing, payments, receipts, balances, and practical finance reports."

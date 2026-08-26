@@ -70,7 +70,7 @@ export function AddStaffPage() {
   return (
     <AppShell>
       <div className="flex-1 overflow-auto bg-slate-950 text-slate-300">
-        <div className="max-w-4xl mx-auto p-8 space-y-6">
+        <div className="max-w-7xl space-y-6">
           {/* Header */}
           <div>
             <Link to="/workspace/education/staff" className="text-slate-400 hover:text-white transition-colors flex items-center gap-2 mb-4 text-sm w-fit">

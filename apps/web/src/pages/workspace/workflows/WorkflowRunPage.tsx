@@ -72,7 +72,7 @@ export const WorkflowRunPage: React.FC = () => {
   if (!workflow) return <div>Workflow not found</div>;
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-8">
+    <div className="max-w-7xl space-y-8">
       <div>
         <button 
           onClick={() => navigate(`/workspace/workflows/${workflow.id}`)}

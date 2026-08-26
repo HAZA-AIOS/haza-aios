@@ -254,7 +254,7 @@ export function CommunicationCenterPage({ initialTab = "overview" }: Communicati
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-7xl space-y-6 p-6">
+      <div className="max-w-7xl space-y-6">
         <AdminPageHeader
           title="Communication Center"
           description="Manage announcements, communications, in-app notifications, templates, delivery history, and provider-ready channels."

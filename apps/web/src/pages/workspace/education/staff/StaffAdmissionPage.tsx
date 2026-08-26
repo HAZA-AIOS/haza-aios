@@ -61,7 +61,7 @@ export function StaffAdmissionPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="max-w-7xl space-y-6">
       <div className="flex items-center gap-4">
         <button 
           onClick={() => navigate("/workspace/education/staff")}

@@ -134,7 +134,7 @@ export const StudentAdmissionPage: React.FC = () => {
 
   return (
     <AppShell>
-      <div className="max-w-4xl mx-auto p-6 space-y-6">
+      <div className="max-w-7xl space-y-6">
         <div className="flex items-center gap-4">
           <Link to="/workspace/education/students" className="text-slate-400 hover:text-white transition-colors">
             <ArrowLeft className="w-5 h-5" />

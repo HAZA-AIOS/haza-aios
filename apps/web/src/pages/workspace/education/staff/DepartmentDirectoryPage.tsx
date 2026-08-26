@@ -41,7 +41,7 @@ export function DepartmentDirectoryPage() {
 
   return (
     <AppShell>
-      <div className="space-y-6 max-w-7xl mx-auto p-8">
+      <div className="max-w-7xl space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
           <Link to="/workspace/education/staff" className="text-slate-400 hover:text-white transition-colors">

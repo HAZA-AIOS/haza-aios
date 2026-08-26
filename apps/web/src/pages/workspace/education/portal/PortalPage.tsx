@@ -115,7 +115,7 @@ export function PortalPage({ mode }: PortalPageProps) {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-7xl space-y-6 p-6">
+      <div className="max-w-7xl space-y-6">
         <AdminPageHeader
           title={mode === "parent" ? "Parent Portal" : "Student Portal"}
           description={mode === "parent" ? "Secure self-service access for linked children, school updates, fees, and academic progress." : "Secure self-service access to your own academic profile, timetable, results, and notifications."}

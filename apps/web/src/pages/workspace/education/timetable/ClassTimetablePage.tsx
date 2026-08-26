@@ -84,7 +84,7 @@ export function ClassTimetablePage() {
 
   return (
     <AppShell>
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Link to="/workspace/education/timetable" className="text-slate-400 hover:text-white transition-colors">

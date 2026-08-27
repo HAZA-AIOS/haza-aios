@@ -1,4 +1,5 @@
 import { workspaceService } from "@/workspace/workspace-service";
+import { jsonBody, sisRequest } from "./sis-api";
 import { AcademicService } from "./academic.service";
 import { AttendanceService } from "./attendance.service";
 import { CommunicationService } from "./communication.service";
@@ -32,30 +33,6 @@ import type {
   StudentPortalDashboard,
 } from "./sis.types";
 
-const PORTAL_REQUESTS_KEY = "haza-aios.sis.portal.update-requests";
-const PORTAL_POLICIES_KEY = "haza-aios.sis.portal.policies";
-
-function readCollection<T>(key: string): T[] {
-  const data = localStorage.getItem(key);
-  if (!data) return [];
-  try {
-    return JSON.parse(data) as T[];
-  } catch {
-    return [];
-  }
-}
-
-function writeCollection<T>(key: string, values: T[]): void {
-  localStorage.setItem(key, JSON.stringify(values));
-}
-
-function createId(prefix: string): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
 function studentName(student: Student): string {
   return [student.firstName, student.lastName].filter(Boolean).join(" ");
 }
@@ -86,40 +63,14 @@ function assertActor(actor: PortalActor, role: PortalRole, organizationId: strin
 }
 
 export class PortalServiceClass {
-  private getRequestsDb(): PortalUpdateRequest[] {
-    return readCollection<PortalUpdateRequest>(PORTAL_REQUESTS_KEY);
-  }
-
-  private saveRequestsDb(requests: PortalUpdateRequest[]): void {
-    writeCollection(PORTAL_REQUESTS_KEY, requests);
-  }
-
-  private getPoliciesDb(): PortalPolicy[] {
-    return readCollection<PortalPolicy>(PORTAL_POLICIES_KEY);
-  }
-
-  private savePoliciesDb(policies: PortalPolicy[]): void {
-    writeCollection(PORTAL_POLICIES_KEY, policies);
-  }
-
   async getPolicy(organizationId: string): Promise<PortalPolicy> {
-    return this.getPoliciesDb().find((policy) => policy.organizationId === organizationId) || {
-      organizationId,
-      studentFinanceVisible: false,
-      studentMessagingEnabled: false,
-      parentMessagingEnabled: true,
-    };
+    const response = await sisRequest<{ policy: PortalPolicy }>(organizationId, "/portal/policy");
+    return response.policy;
   }
 
   async savePolicy(organizationId: string, updates: Partial<Omit<PortalPolicy, "organizationId">>): Promise<PortalPolicy> {
-    const policies = this.getPoliciesDb();
-    const index = policies.findIndex((policy) => policy.organizationId === organizationId);
-    const saved = { ...(index >= 0 ? policies[index] : await this.getPolicy(organizationId)), ...updates, organizationId };
-    if (index >= 0) policies[index] = saved;
-    else policies.push(saved);
-    this.savePoliciesDb(policies);
-    await this.audit(organizationId, "Portal Policy Updated", "Updated parent and student portal policy.");
-    return saved;
+    const response = await sisRequest<{ policy: PortalPolicy }>(organizationId, "/portal/policy", { method: "PUT", ...jsonBody(updates) });
+    return response.policy;
   }
 
   async resolveParentStudents(organizationId: string, userId: string): Promise<Array<{ student: Student; guardian: StudentGuardian }>> {
@@ -185,41 +136,23 @@ export class PortalServiceClass {
     input: { studentId?: string; type: PortalUpdateRequestType; subject: string; details: string },
   ): Promise<PortalUpdateRequest> {
     if (!input.subject.trim() || !input.details.trim()) throw new Error("Update request subject and details are required.");
-    if (actor.role === "parent" && input.studentId) {
-      await this.getParentStudentDashboard(actor, input.studentId);
-    }
+    if (actor.role === "parent" && input.studentId) await this.getParentStudentDashboard(actor, input.studentId);
     if (actor.role === "student") {
       const student = await this.resolveStudentAccount(actor.organizationId, actor.userId);
       if (input.studentId && input.studentId !== student.id) throw new Error("Forbidden: update request student mismatch.");
     }
-    const now = new Date().toISOString();
-    const request: PortalUpdateRequest = {
-      id: createId("portal-request"),
-      organizationId: actor.organizationId,
-      requesterUserId: actor.userId,
-      requesterRole: actor.role,
-      studentId: input.studentId,
-      type: input.type,
-      subject: input.subject.trim(),
-      details: input.details.trim(),
-      status: "submitted",
-      createdAt: now,
-      updatedAt: now,
-    };
-    const requests = this.getRequestsDb();
-    requests.push(request);
-    this.saveRequestsDb(requests);
-    await this.audit(actor.organizationId, "Portal Update Request Submitted", `Submitted ${request.type} request.`);
-    return request;
+    const response = await sisRequest<{ request: PortalUpdateRequest }>(actor.organizationId, "/portal/requests", {
+      method: "POST",
+      ...jsonBody({ actor, input }),
+    });
+    await this.audit(actor.organizationId, "Portal Update Request Submitted", "Submitted " + input.type + " request.");
+    return response.request;
   }
 
   async getUpdateRequests(actor: PortalActor): Promise<PortalUpdateRequest[]> {
-    return this.getRequestsDb().filter(
-      (request) =>
-        request.organizationId === actor.organizationId &&
-        request.requesterUserId === actor.userId &&
-        request.requesterRole === actor.role,
-    );
+    const params = new URLSearchParams({ userId: actor.userId, role: actor.role });
+    const response = await sisRequest<{ requests: PortalUpdateRequest[] }>(actor.organizationId, "/portal/requests?" + params.toString());
+    return response.requests;
   }
 
   private async assertActiveMembership(organizationId: string, userId: string): Promise<void> {

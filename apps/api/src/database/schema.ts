@@ -656,6 +656,231 @@ export const resultPublications = mysqlTable("result_publications", {
   uniqueIndex("result_publications_scope_unique").on(table.workspaceId, table.examinationId, table.gradeId, table.sectionId),
   index("result_publications_workspace_exam_idx").on(table.workspaceId, table.examinationId),
 ]);
+
+export const financeFeeCategories = mysqlTable("finance_fee_categories", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  code: varchar("code", { length: 80 }).notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  status: varchar("status", { length: 40 }).notNull().default("active"),
+  displayOrder: int("display_order").notNull().default(0),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("finance_fee_categories_workspace_code_unique").on(table.workspaceId, table.code),
+  index("finance_fee_categories_workspace_status_idx").on(table.workspaceId, table.status),
+]);
+
+export const financeFeeStructures = mysqlTable("finance_fee_structures", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  academicYearId: char("academic_year_id", { length: 36 }).notNull().references(() => academicYears.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  gradeId: char("grade_id", { length: 36 }).notNull().references(() => gradeLevels.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  feeCategoryId: char("fee_category_id", { length: 36 }).notNull().references(() => financeFeeCategories.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  name: varchar("name", { length: 180 }).notNull(),
+  amountCents: int("amount_cents").notNull(),
+  status: varchar("status", { length: 40 }).notNull().default("active"),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  index("finance_fee_structures_workspace_year_idx").on(table.workspaceId, table.academicYearId),
+  index("finance_fee_structures_class_idx").on(table.workspaceId, table.gradeId),
+]);
+
+export const financeStudentFeeAssignments = mysqlTable("finance_student_fee_assignments", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  studentId: char("student_id", { length: 36 }).notNull().references(() => students.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  enrollmentId: char("enrollment_id", { length: 36 }).notNull().references(() => enrollments.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  feeStructureId: char("fee_structure_id", { length: 36 }).notNull().references(() => financeFeeStructures.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  status: varchar("status", { length: 40 }).notNull().default("active"),
+  amountCents: int("amount_cents").notNull(),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("finance_assignments_student_structure_unique").on(table.workspaceId, table.studentId, table.enrollmentId, table.feeStructureId),
+  index("finance_assignments_student_idx").on(table.workspaceId, table.studentId),
+]);
+
+export const financeDiscounts = mysqlTable("finance_discounts", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  studentId: char("student_id", { length: 36 }).references(() => students.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  feeCategoryId: char("fee_category_id", { length: 36 }).references(() => financeFeeCategories.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  name: varchar("name", { length: 180 }).notNull(),
+  discountType: varchar("discount_type", { length: 40 }).notNull(),
+  status: varchar("status", { length: 40 }).notNull().default("active"),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  index("finance_discounts_student_idx").on(table.workspaceId, table.studentId),
+  index("finance_discounts_category_idx").on(table.workspaceId, table.feeCategoryId),
+]);
+
+export const financeInvoices = mysqlTable("finance_invoices", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  studentId: char("student_id", { length: 36 }).notNull().references(() => students.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  enrollmentId: char("enrollment_id", { length: 36 }).notNull().references(() => enrollments.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  academicYearId: char("academic_year_id", { length: 36 }).notNull().references(() => academicYears.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  invoiceNumber: varchar("invoice_number", { length: 80 }).notNull(),
+  issueDate: varchar("issue_date", { length: 20 }).notNull(),
+  dueDate: varchar("due_date", { length: 20 }).notNull(),
+  status: varchar("status", { length: 40 }).notNull().default("draft"),
+  totalCents: int("total_cents").notNull().default(0),
+  paidAmountCents: int("paid_amount_cents").notNull().default(0),
+  balanceCents: int("balance_cents").notNull().default(0),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("finance_invoices_workspace_number_unique").on(table.workspaceId, table.invoiceNumber),
+  index("finance_invoices_student_idx").on(table.workspaceId, table.studentId),
+  index("finance_invoices_status_idx").on(table.workspaceId, table.status),
+]);
+
+export const financePayments = mysqlTable("finance_payments", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  invoiceId: char("invoice_id", { length: 36 }).notNull().references(() => financeInvoices.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  studentId: char("student_id", { length: 36 }).notNull().references(() => students.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  amountCents: int("amount_cents").notNull(),
+  paymentDate: varchar("payment_date", { length: 20 }).notNull(),
+  paymentMethod: varchar("payment_method", { length: 40 }).notNull(),
+  referenceNumber: varchar("reference_number", { length: 120 }),
+  status: varchar("status", { length: 40 }).notNull().default("recorded"),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  index("finance_payments_invoice_idx").on(table.workspaceId, table.invoiceId),
+  index("finance_payments_student_idx").on(table.workspaceId, table.studentId),
+  index("finance_payments_reference_idx").on(table.workspaceId, table.referenceNumber),
+]);
+
+export const financeReceipts = mysqlTable("finance_receipts", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  invoiceId: char("invoice_id", { length: 36 }).notNull().references(() => financeInvoices.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  paymentId: char("payment_id", { length: 36 }).notNull().references(() => financePayments.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  studentId: char("student_id", { length: 36 }).notNull().references(() => students.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  receiptNumber: varchar("receipt_number", { length: 80 }).notNull(),
+  amountCents: int("amount_cents").notNull(),
+  receiptDate: varchar("receipt_date", { length: 20 }).notNull(),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("finance_receipts_workspace_number_unique").on(table.workspaceId, table.receiptNumber),
+  index("finance_receipts_student_idx").on(table.workspaceId, table.studentId),
+]);
+
+export const communicationTemplates = mysqlTable("communication_templates", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  name: varchar("name", { length: 180 }).notNull(),
+  category: varchar("category", { length: 80 }).notNull(),
+  status: varchar("status", { length: 40 }).notNull().default("active"),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [index("communication_templates_workspace_idx").on(table.workspaceId, table.status)]);
+
+export const announcements = mysqlTable("announcements", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  title: varchar("title", { length: 220 }).notNull(),
+  status: varchar("status", { length: 40 }).notNull().default("draft"),
+  priority: varchar("priority", { length: 40 }).notNull().default("normal"),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [index("announcements_workspace_status_idx").on(table.workspaceId, table.status)]);
+
+export const communicationMessages = mysqlTable("communication_messages", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  subject: varchar("subject", { length: 220 }).notNull(),
+  status: varchar("status", { length: 40 }).notNull().default("sent"),
+  priority: varchar("priority", { length: 40 }).notNull().default("normal"),
+  idempotencyKey: varchar("idempotency_key", { length: 160 }),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("communication_messages_idempotency_unique").on(table.workspaceId, table.idempotencyKey),
+  index("communication_messages_workspace_status_idx").on(table.workspaceId, table.status),
+]);
+
+export const sisNotifications = mysqlTable("sis_notifications", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  recipientKind: varchar("recipient_kind", { length: 40 }).notNull(),
+  recipientId: varchar("recipient_id", { length: 120 }).notNull(),
+  recipientUserId: char("recipient_user_id", { length: 36 }),
+  notificationType: varchar("notification_type", { length: 120 }).notNull(),
+  isRead: boolean("is_read").notNull().default(false),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  index("sis_notifications_recipient_idx").on(table.workspaceId, table.recipientKind, table.recipientId, table.isRead),
+  index("sis_notifications_user_idx").on(table.workspaceId, table.recipientUserId),
+]);
+
+export const communicationDeliveries = mysqlTable("communication_deliveries", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  communicationId: char("communication_id", { length: 36 }).references(() => communicationMessages.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  announcementId: char("announcement_id", { length: 36 }).references(() => announcements.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  notificationId: char("notification_id", { length: 36 }).references(() => sisNotifications.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  recipientId: varchar("recipient_id", { length: 120 }).notNull(),
+  recipientKind: varchar("recipient_kind", { length: 40 }).notNull(),
+  channel: varchar("channel", { length: 40 }).notNull(),
+  status: varchar("status", { length: 40 }).notNull(),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [index("communication_deliveries_workspace_idx").on(table.workspaceId, table.status)]);
+
+export const notificationPreferences = mysqlTable("notification_preferences", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  recipientKind: varchar("recipient_kind", { length: 40 }).notNull(),
+  recipientId: varchar("recipient_id", { length: 120 }).notNull(),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [uniqueIndex("notification_preferences_recipient_unique").on(table.workspaceId, table.recipientKind, table.recipientId)]);
+
+export const portalPolicies = mysqlTable("portal_policies", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [uniqueIndex("portal_policies_workspace_unique").on(table.workspaceId)]);
+
+export const portalUpdateRequests = mysqlTable("portal_update_requests", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  requesterUserId: char("requester_user_id", { length: 36 }).notNull(),
+  requesterRole: varchar("requester_role", { length: 40 }).notNull(),
+  studentId: char("student_id", { length: 36 }).references(() => students.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  requestType: varchar("request_type", { length: 80 }).notNull(),
+  status: varchar("status", { length: 40 }).notNull().default("submitted"),
+  payload: json("payload").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  index("portal_requests_user_idx").on(table.workspaceId, table.requesterUserId, table.requesterRole),
+  index("portal_requests_student_idx").on(table.workspaceId, table.studentId),
+]);
+
 export const schema = {
   academicTerms,
   attendanceRecords,

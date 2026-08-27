@@ -43,6 +43,13 @@
       "when": 1787800000000,
       "tag": "0005_quiet_examiner",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1787801000000,
+      "tag": "0006_firm_bursar",
+      "breakpoints": true
     }
   ]
 }

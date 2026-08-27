@@ -20,6 +20,12 @@ type AttendanceRecordRow = Row & { sessionId: string; studentId: string; status:
 type SchoolScheduleRow = Row & { academicYearId: string; workingDays: number[]; scheduleStartTime: string; scheduleEndTime: string };
 type TimePeriodRow = Row & { name: string; startTime: string; endTime: string; type: string; displayOrder: number };
 type TimetableEntryRow = Row & { academicYearId: string; termId?: string; gradeId: string; sectionId: string; subjectId: string; teacherId: string; roomId?: string; dayOfWeek: number; periodId: string };
+type ExaminationRow = Row & { name: string; academicYearId: string; termId?: string; type: string; startDate: string; endDate: string; status: string; publishedAt?: string; publishedBy?: string };
+type ExaminationSubjectRow = Row & { examinationId: string; gradeId: string; sectionId?: string; subjectId: string; maximumMarks: number; passingMarks: number; status: string; examDate?: string };
+type AssessmentRow = Row & { title: string; academicYearId: string; termId?: string; gradeId: string; sectionId: string; subjectId: string; teacherId: string; type: string; maximumMarks: number; passingMarks: number; assessmentDate: string; status: string };
+type MarkRow = Row & { sourceType: string; sourceId: string; examinationSubjectId?: string; academicYearId: string; termId?: string; gradeId: string; sectionId: string; subjectId: string; studentId: string; maximumMarks: number; obtainedMarks: number; percentage: number; grade?: string; gradePoint?: number; remarks?: string; enteredBy: string };
+type ResultPublicationRow = Row & { examinationId: string; academicYearId: string; termId?: string; gradeId: string; sectionId: string; status: string; results: StudentResultRow[]; publishedAt?: string; publishedBy?: string };
+type StudentResultRow = { studentId: string; maximumMarks: number; obtainedMarks: number; percentage: number; grade?: string; gradePoint?: number; passed: boolean; subjects: Array<{ subjectId: string; maximumMarks: number; obtainedMarks: number; percentage: number; grade?: string; gradePoint?: number; passed: boolean; remarks?: string }> };
 
 vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url, "http://test.local");
@@ -63,6 +69,13 @@ async function handleSis(url: URL, init?: RequestInit): Promise<Response> {
   if (parts[0] === "students" && parts[2] === "transfer") return transferStudent(orgId, parts[1], String(input.sectionId ?? ""));
   if (parts[0] === "students") return students(method, orgId, parts[1], input, url);
   if (parts[0] === "enrollments") return enrollments(method, orgId, parts[1], input, url);
+  if (parts[0] === "examinations") return examinations(method, orgId, parts[1], input);
+  if (parts[0] === "examination-subjects") return examinationSubjects(method, orgId, input, url);
+  if (parts[0] === "assessments") return assessments(method, orgId, input);
+  if (parts[0] === "grading-rules") return gradingRules(method, orgId, input);
+  if (parts[0] === "marks" && parts[1] === "bulk") return bulkMarks(orgId, input);
+  if (parts[0] === "marks") return marks(method, orgId, input, url);
+  if (parts[0] === "results") return results(method, orgId, parts, input, url);
   if (parts[0] === "attendance") return attendance(method, orgId, parts, input, url);
   if (parts[0] === "timetable") return timetable(method, orgId, parts, input, url);
 
@@ -201,6 +214,148 @@ function transferStudent(orgId: string, studentId: string, newSectionId: string)
   current.status = "transferred";
   const next = makeRow(orgId, { studentId, academicYear: current.academicYear, gradeId: current.gradeId, sectionId: newSectionId, enrollmentDate: new Date().toISOString(), status: "active" }) as EnrollmentRow;
   rows.push(next); write("haza-aios.sis.enrollments", rows); return json({ enrollment: next }, 201);
+}
+
+
+function examinations(method: string, orgId: string, id: string | undefined, input: Record<string, unknown>) {
+  const rows = read<ExaminationRow>("haza-aios.sis.examinations");
+  if (method === "GET") return json({ examinations: rows.filter((row) => row.organizationId === orgId) });
+  if (method === "POST") {
+    const row = makeRow(orgId, { ...input, name: String(input.name ?? "").trim() }, `exam-${Date.now()}`) as ExaminationRow;
+    rows.push(row); write("haza-aios.sis.examinations", rows); return json({ examination: row }, 201);
+  }
+  const row = update(rows, orgId, id, input, "Examination"); write("haza-aios.sis.examinations", rows); return json({ examination: row });
+}
+
+function examinationSubjects(method: string, orgId: string, input: Record<string, unknown>, url: URL) {
+  const rows = read<ExaminationSubjectRow>("haza-aios.sis.examination-subjects");
+  if (method === "GET") return json({ subjects: rows.filter((row) => row.organizationId === orgId && (!url.searchParams.get("examinationId") || row.examinationId === url.searchParams.get("examinationId"))) });
+  const row = makeRow(orgId, input, `exam-subject-${Date.now()}`) as ExaminationSubjectRow;
+  rows.push(row); write("haza-aios.sis.examination-subjects", rows); return json({ subject: row }, 201);
+}
+
+function assessments(method: string, orgId: string, input: Record<string, unknown>) {
+  const rows = read<AssessmentRow>("haza-aios.sis.assessments");
+  if (method === "GET") return json({ assessments: rows.filter((row) => row.organizationId === orgId) });
+  const row = makeRow(orgId, input, `assessment-${Date.now()}`) as AssessmentRow;
+  rows.push(row); write("haza-aios.sis.assessments", rows); return json({ assessment: row }, 201);
+}
+
+function gradingRules(method: string, orgId: string, input: Record<string, unknown>) {
+  const rows = read<Row & { grade: string; minPercentage: number; maxPercentage: number; gradePoint?: number }>("haza-aios.sis.grading-rules");
+  if (method === "GET") {
+    if (!rows.some((row) => row.organizationId === orgId)) {
+      const defaults = [
+        { grade: "A", minPercentage: 80, maxPercentage: 100, gradePoint: 4 },
+        { grade: "B", minPercentage: 70, maxPercentage: 79.99, gradePoint: 3 },
+        { grade: "C", minPercentage: 60, maxPercentage: 69.99, gradePoint: 2 },
+        { grade: "D", minPercentage: 50, maxPercentage: 59.99, gradePoint: 1 },
+        { grade: "F", minPercentage: 0, maxPercentage: 49.99, gradePoint: 0 },
+      ].map((rule) => makeRow(orgId, rule) as Row & { grade: string; minPercentage: number; maxPercentage: number; gradePoint?: number });
+      rows.push(...defaults); write("haza-aios.sis.grading-rules", rows);
+    }
+    return json({ rules: rows.filter((row) => row.organizationId === orgId).sort((a, b) => b.minPercentage - a.minPercentage) });
+  }
+  const index = input.id ? rows.findIndex((row) => row.id === input.id && row.organizationId === orgId) : -1;
+  const row = makeRow(orgId, input, index >= 0 ? rows[index].id : undefined);
+  if (index >= 0) rows[index] = row as typeof rows[number]; else rows.push(row as typeof rows[number]);
+  write("haza-aios.sis.grading-rules", rows); return json({ rule: row });
+}
+
+function marks(method: string, orgId: string, input: Record<string, unknown>, url: URL) {
+  const rows = read<MarkRow>("haza-aios.sis.marks");
+  if (method === "GET") return json({ marks: rows.filter((row) => row.organizationId === orgId && matches(row, url)) });
+  return json({ mark: saveMark(orgId, input) });
+}
+
+function bulkMarks(orgId: string, input: Record<string, unknown>) {
+  const saved = (Array.isArray(input.marks) ? input.marks as Record<string, unknown>[] : []).map((mark) => saveMark(orgId, mark));
+  return json({ marks: saved });
+}
+
+function saveMark(orgId: string, input: Record<string, unknown>): MarkRow {
+  const rows = read<MarkRow>("haza-aios.sis.marks");
+  const source = resolveMarkSource(orgId, input);
+  const percent = Math.round((Number(input.obtainedMarks) / source.maximumMarks) * 10000) / 100;
+  const grade = gradeFor(orgId, percent);
+  const index = rows.findIndex((row) => row.organizationId === orgId && row.sourceType === input.sourceType && row.sourceId === input.sourceId && row.studentId === input.studentId && row.subjectId === source.subjectId);
+  const row = makeRow(orgId, { ...input, ...source, percentage: percent, grade: grade.grade, gradePoint: grade.gradePoint }, index >= 0 ? rows[index].id : `mark-${Date.now()}`) as MarkRow;
+  if (index >= 0) rows[index] = row; else rows.push(row);
+  write("haza-aios.sis.marks", rows);
+  return row;
+}
+
+function results(method: string, orgId: string, parts: string[], input: Record<string, unknown>, url: URL) {
+  if (parts[1] === "calculate") return json({ results: calculateResults(orgId, String(url.searchParams.get("examinationId")), String(url.searchParams.get("gradeId")), String(url.searchParams.get("sectionId"))) });
+  if (parts[1] === "publish") {
+    const rows = read<ResultPublicationRow>("haza-aios.sis.results");
+    const results = calculateResults(orgId, String(input.examinationId), String(input.gradeId), String(input.sectionId));
+    const exams = read<ExaminationRow>("haza-aios.sis.examinations");
+    const exam = exams.find((row) => row.organizationId === orgId && row.id === input.examinationId);
+    const publishedAt = new Date().toISOString();
+    const publication = makeRow(orgId, { examinationId: input.examinationId, academicYearId: exam?.academicYearId, termId: exam?.termId, gradeId: input.gradeId, sectionId: input.sectionId, status: "published", results, publishedAt, publishedBy: input.publishedBy }, `result-${Date.now()}`) as ResultPublicationRow;
+    rows.push(publication); write("haza-aios.sis.results", rows);
+    if (exam) { exam.status = "published"; exam.publishedAt = publishedAt; exam.publishedBy = String(input.publishedBy ?? "system"); write("haza-aios.sis.examinations", exams); }
+    return json({ publication });
+  }
+  if (parts[1] === "publications") return json({ publications: read<ResultPublicationRow>("haza-aios.sis.results").filter((row) => row.organizationId === orgId && (!url.searchParams.get("examinationId") || row.examinationId === url.searchParams.get("examinationId"))) });
+  if (parts[1] === "students") {
+    const publication = read<ResultPublicationRow>("haza-aios.sis.results").find((row) => row.organizationId === orgId && row.examinationId === url.searchParams.get("examinationId") && row.results.some((result) => result.studentId === parts[2]));
+    return json({ result: publication?.results.find((result) => result.studentId === parts[2]) ?? null });
+  }
+  if (parts[1] === "performance") {
+    const calculated = calculateResults(orgId, String(url.searchParams.get("examinationId")), String(url.searchParams.get("gradeId")), String(url.searchParams.get("sectionId")));
+    const subjectId = url.searchParams.get("subjectId");
+    const subjectRows = calculated.map((result) => result.subjects.find((subject) => subject.subjectId === subjectId)).filter((subject): subject is StudentResultRow["subjects"][number] => Boolean(subject));
+    if (!subjectRows.length) return json({ performance: null });
+    const scores = subjectRows.map((row) => row.obtainedMarks);
+    return json({ performance: { subjectId, maximumMarks: subjectRows[0].maximumMarks, average: Math.round((scores.reduce((sum, score) => sum + score, 0) / scores.length) * 100) / 100, highest: Math.max(...scores), lowest: Math.min(...scores), passRate: Math.round((subjectRows.filter((row) => row.passed).length / subjectRows.length) * 10000) / 100, gradeDistribution: {} } });
+  }
+  return json({ error: { code: "NOT_FOUND" } }, 404);
+}
+
+function calculateResults(orgId: string, examinationId: string, gradeId: string, sectionId: string): StudentResultRow[] {
+  const exam = read<ExaminationRow>("haza-aios.sis.examinations").find((row) => row.organizationId === orgId && row.id === examinationId);
+  const year = read<Row & { name: string }>("haza-aios.sis.academic-years").find((row) => row.id === exam?.academicYearId && row.organizationId === orgId);
+  const examSubjects = read<ExaminationSubjectRow>("haza-aios.sis.examination-subjects").filter((row) => row.organizationId === orgId && row.examinationId === examinationId && row.gradeId === gradeId && (!row.sectionId || row.sectionId === sectionId));
+  const enrollments = read<EnrollmentRow>("haza-aios.sis.enrollments").filter((row) => row.organizationId === orgId && row.academicYear === year?.name && row.gradeId === gradeId && row.sectionId === sectionId && row.status === "active");
+  const allMarks = read<MarkRow>("haza-aios.sis.marks").filter((row) => row.organizationId === orgId && row.sourceType === "examination" && row.sourceId === examinationId);
+  return enrollments.map((enrollment) => {
+    const subjects = examSubjects.map((subject) => {
+      const mark = allMarks.find((row) => row.studentId === enrollment.studentId && row.subjectId === subject.subjectId);
+      const obtainedMarks = mark?.obtainedMarks ?? 0;
+      const pct = Math.round((obtainedMarks / subject.maximumMarks) * 10000) / 100;
+      const grade = gradeFor(orgId, pct);
+      return { subjectId: subject.subjectId, maximumMarks: subject.maximumMarks, obtainedMarks, percentage: pct, grade: grade.grade, gradePoint: grade.gradePoint, passed: obtainedMarks >= subject.passingMarks, remarks: mark?.remarks };
+    });
+    const maximumMarks = subjects.reduce((sum, item) => sum + item.maximumMarks, 0);
+    const obtainedMarks = subjects.reduce((sum, item) => sum + item.obtainedMarks, 0);
+    const pct = maximumMarks ? Math.round((obtainedMarks / maximumMarks) * 10000) / 100 : 0;
+    const grade = gradeFor(orgId, pct);
+    return { studentId: enrollment.studentId, maximumMarks, obtainedMarks, percentage: pct, grade: grade.grade, gradePoint: grade.gradePoint, passed: subjects.every((item) => item.passed), subjects };
+  });
+}
+
+function resolveMarkSource(orgId: string, input: Record<string, unknown>) {
+  if (input.sourceType === "assessment") {
+    const assessment = read<AssessmentRow>("haza-aios.sis.assessments").find((row) => row.organizationId === orgId && row.id === input.sourceId);
+    return { academicYearId: assessment?.academicYearId ?? "", termId: assessment?.termId, gradeId: assessment?.gradeId ?? "", sectionId: assessment?.sectionId ?? "", subjectId: assessment?.subjectId ?? "", maximumMarks: assessment?.maximumMarks ?? 0 };
+  }
+  const examSubject = read<ExaminationSubjectRow>("haza-aios.sis.examination-subjects").find((row) => row.organizationId === orgId && row.id === input.examinationSubjectId);
+  const exam = read<ExaminationRow>("haza-aios.sis.examinations").find((row) => row.organizationId === orgId && row.id === input.sourceId);
+  return { examinationSubjectId: examSubject?.id, academicYearId: exam?.academicYearId ?? "", termId: exam?.termId, gradeId: examSubject?.gradeId ?? "", sectionId: examSubject?.sectionId ?? "", subjectId: examSubject?.subjectId ?? "", maximumMarks: examSubject?.maximumMarks ?? 0 };
+}
+
+function gradeFor(orgId: string, percent: number): { grade?: string; gradePoint?: number } {
+  const rows = read<Row & { grade: string; minPercentage: number; maxPercentage: number; gradePoint?: number }>("haza-aios.sis.grading-rules").filter((row) => row.organizationId === orgId);
+  const rule = (rows.length ? rows : [
+    { grade: "A", minPercentage: 80, maxPercentage: 100, gradePoint: 4 },
+    { grade: "B", minPercentage: 70, maxPercentage: 79.99, gradePoint: 3 },
+    { grade: "C", minPercentage: 60, maxPercentage: 69.99, gradePoint: 2 },
+    { grade: "D", minPercentage: 50, maxPercentage: 59.99, gradePoint: 1 },
+    { grade: "F", minPercentage: 0, maxPercentage: 49.99, gradePoint: 0 },
+  ]).find((item) => percent >= item.minPercentage && percent <= item.maxPercentage);
+  return rule ? { grade: rule.grade, gradePoint: rule.gradePoint } : {};
 }
 
 function attendance(method: string, orgId: string, parts: string[], input: Record<string, unknown>, url: URL) {

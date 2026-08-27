@@ -220,6 +220,13 @@ export const attendanceStatus = mysqlEnum("attendance_status", ["present", "abse
 export const attendanceSessionType = mysqlEnum("attendance_session_type", ["daily", "period", "subject"]);
 export const attendanceSessionStatus = mysqlEnum("attendance_session_status", ["draft", "completed"]);
 export const periodType = mysqlEnum("period_type", ["teaching", "break", "activity"]);
+export const examinationType = mysqlEnum("examination_type", ["monthly_test", "mid_term", "final_term", "annual", "entry_assessment", "other"]);
+export const examinationStatus = mysqlEnum("examination_status", ["draft", "scheduled", "in_progress", "completed", "published", "archived"]);
+export const assessmentType = mysqlEnum("assessment_type", ["class_test", "assignment", "quiz", "project", "practical", "oral", "other"]);
+export const assessmentStatus = mysqlEnum("assessment_status", ["draft", "assigned", "in_progress", "completed", "published", "archived"]);
+export const examSubjectStatus = mysqlEnum("exam_subject_status", ["draft", "scheduled", "completed", "cancelled"]);
+export const markSourceType = mysqlEnum("mark_source_type", ["examination", "assessment"]);
+export const resultStatus = mysqlEnum("result_status", ["draft", "in_progress", "completed", "published", "archived"]);
 
 export const academicYears = mysqlTable("academic_years", {
   id: char("id", { length: 36 }).primaryKey(),
@@ -522,6 +529,133 @@ export const timetableEntries = mysqlTable("timetable_entries", {
   index("timetable_entries_workspace_teacher_idx").on(table.workspaceId, table.teacherId),
   index("timetable_entries_workspace_class_idx").on(table.workspaceId, table.gradeId, table.sectionId),
 ]);
+
+export const examinations = mysqlTable("examinations", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  name: varchar("name", { length: 180 }).notNull(),
+  academicYearId: char("academic_year_id", { length: 36 }).notNull().references(() => academicYears.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  termId: char("term_id", { length: 36 }).references(() => academicTerms.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  type: examinationType.notNull().default("other"),
+  startDate: varchar("start_date", { length: 20 }).notNull(),
+  endDate: varchar("end_date", { length: 20 }).notNull(),
+  status: examinationStatus.notNull().default("draft"),
+  description: varchar("description", { length: 1000 }),
+  publishedAt: varchar("published_at", { length: 40 }),
+  publishedBy: varchar("published_by", { length: 120 }),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("examinations_workspace_name_year_unique").on(table.workspaceId, table.name, table.academicYearId),
+  index("examinations_workspace_year_idx").on(table.workspaceId, table.academicYearId),
+  index("examinations_workspace_status_idx").on(table.workspaceId, table.status),
+]);
+
+export const examinationSubjects = mysqlTable("examination_subjects", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  examinationId: char("examination_id", { length: 36 }).notNull().references(() => examinations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  gradeId: char("grade_id", { length: 36 }).notNull().references(() => gradeLevels.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  sectionId: char("section_id", { length: 36 }).references(() => sections.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  subjectId: char("subject_id", { length: 36 }).notNull().references(() => subjects.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  maximumMarks: int("maximum_marks").notNull(),
+  passingMarks: int("passing_marks").notNull(),
+  weightage: int("weightage"),
+  examDate: varchar("exam_date", { length: 20 }),
+  status: examSubjectStatus.notNull().default("draft"),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("exam_subjects_scope_unique").on(table.workspaceId, table.examinationId, table.gradeId, table.sectionId, table.subjectId),
+  index("exam_subjects_workspace_exam_idx").on(table.workspaceId, table.examinationId),
+  index("exam_subjects_class_idx").on(table.workspaceId, table.gradeId, table.sectionId),
+]);
+
+export const assessments = mysqlTable("assessments", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  title: varchar("title", { length: 180 }).notNull(),
+  academicYearId: char("academic_year_id", { length: 36 }).notNull().references(() => academicYears.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  termId: char("term_id", { length: 36 }).references(() => academicTerms.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  gradeId: char("grade_id", { length: 36 }).notNull().references(() => gradeLevels.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  sectionId: char("section_id", { length: 36 }).notNull().references(() => sections.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  subjectId: char("subject_id", { length: 36 }).notNull().references(() => subjects.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  teacherId: char("teacher_id", { length: 36 }).notNull().references(() => staffMembers.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  type: assessmentType.notNull().default("other"),
+  maximumMarks: int("maximum_marks").notNull(),
+  passingMarks: int("passing_marks").notNull(),
+  weightage: int("weightage"),
+  assessmentDate: varchar("assessment_date", { length: 20 }).notNull(),
+  status: assessmentStatus.notNull().default("draft"),
+  description: varchar("description", { length: 1000 }),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  index("assessments_workspace_date_idx").on(table.workspaceId, table.assessmentDate),
+  index("assessments_class_idx").on(table.workspaceId, table.gradeId, table.sectionId),
+  index("assessments_teacher_idx").on(table.workspaceId, table.teacherId),
+]);
+
+export const gradingRules = mysqlTable("grading_rules", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  grade: varchar("grade", { length: 20 }).notNull(),
+  minPercentageBasisPoints: int("min_percentage_basis_points").notNull(),
+  maxPercentageBasisPoints: int("max_percentage_basis_points").notNull(),
+  gradePointBasisPoints: int("grade_point_basis_points"),
+  description: varchar("description", { length: 500 }),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("grading_rules_workspace_grade_unique").on(table.workspaceId, table.grade),
+  index("grading_rules_workspace_min_idx").on(table.workspaceId, table.minPercentageBasisPoints),
+]);
+
+export const markRecords = mysqlTable("mark_records", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  sourceType: markSourceType.notNull(),
+  sourceId: char("source_id", { length: 36 }).notNull(),
+  examinationSubjectId: char("examination_subject_id", { length: 36 }).references(() => examinationSubjects.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  academicYearId: char("academic_year_id", { length: 36 }).notNull().references(() => academicYears.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  termId: char("term_id", { length: 36 }).references(() => academicTerms.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  gradeId: char("grade_id", { length: 36 }).notNull().references(() => gradeLevels.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  sectionId: char("section_id", { length: 36 }).notNull().references(() => sections.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  subjectId: char("subject_id", { length: 36 }).notNull().references(() => subjects.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  studentId: char("student_id", { length: 36 }).notNull().references(() => students.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  maximumMarks: int("maximum_marks").notNull(),
+  obtainedMarks: int("obtained_marks").notNull(),
+  percentageBasisPoints: int("percentage_basis_points").notNull(),
+  grade: varchar("grade", { length: 20 }),
+  gradePointBasisPoints: int("grade_point_basis_points"),
+  remarks: varchar("remarks", { length: 1000 }),
+  enteredBy: varchar("entered_by", { length: 120 }).notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("mark_records_source_student_subject_unique").on(table.workspaceId, table.sourceType, table.sourceId, table.studentId, table.subjectId),
+  index("mark_records_workspace_student_idx").on(table.workspaceId, table.studentId),
+  index("mark_records_source_idx").on(table.workspaceId, table.sourceType, table.sourceId),
+]);
+
+export const resultPublications = mysqlTable("result_publications", {
+  id: char("id", { length: 36 }).primaryKey(),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  examinationId: char("examination_id", { length: 36 }).notNull().references(() => examinations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  academicYearId: char("academic_year_id", { length: 36 }).notNull().references(() => academicYears.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  termId: char("term_id", { length: 36 }).references(() => academicTerms.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  gradeId: char("grade_id", { length: 36 }).notNull().references(() => gradeLevels.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  sectionId: char("section_id", { length: 36 }).notNull().references(() => sections.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  status: resultStatus.notNull().default("draft"),
+  results: json("results").$type<Array<Record<string, unknown>>>().notNull(),
+  publishedAt: varchar("published_at", { length: 40 }),
+  publishedBy: varchar("published_by", { length: 120 }),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("result_publications_scope_unique").on(table.workspaceId, table.examinationId, table.gradeId, table.sectionId),
+  index("result_publications_workspace_exam_idx").on(table.workspaceId, table.examinationId),
+]);
 export const schema = {
   academicTerms,
   attendanceRecords,
@@ -532,12 +666,14 @@ export const schema = {
   gradeLevels,
   guardians,  authSessions,
   internalDatabaseChecks,
+  markRecords,
   membershipRoles,
   organizationMemberships,
   organizationModules,
   organizationSettings,
   organizations,
   permissions,
+  resultPublications,
   rolePermissions,
   roles,
   sections,

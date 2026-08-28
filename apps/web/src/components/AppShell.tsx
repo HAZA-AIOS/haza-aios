@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useAuth } from "@/auth/use-auth";
 import { useOrganization } from "@/org/use-organization";
 import { navigate, usePathname } from "@/routes/navigation";
@@ -27,6 +27,7 @@ function AppShell({ children }: AppShellProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [dynamicModuleNavItems, setDynamicModuleNavItems] = useState<NavItem[]>([]);
 
   // Detect admin mode by pathname
   const isAdminMode = pathname.startsWith("/admin");
@@ -159,14 +160,42 @@ function AppShell({ children }: AppShellProps) {
     },
   ];
 
-  // Dynamic module navigation for current organization
-  const dynamicModuleNavItems: NavItem[] = currentOrganization
-    ? ModuleRuntime.getActiveModuleNavigationForOrg(currentOrganization.id).map((item) => ({
-        label: item.label,
-        path: item.route,
-        icon: <span className="text-base">{item.icon || "📦"}</span>,
-      }))
-    : [];
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!currentOrganization) {
+      Promise.resolve().then(() => {
+        if (isMounted) setDynamicModuleNavItems([]);
+      });
+      return;
+    }
+
+    const fallbackItems = ModuleRuntime.getActiveModuleNavigationForOrg(currentOrganization.id).map((item) => ({
+      label: item.label,
+      path: item.route,
+      icon: <span className="text-base">{item.icon || "📦"}</span>,
+    }));
+    Promise.resolve().then(() => {
+      if (isMounted) setDynamicModuleNavItems(fallbackItems);
+    });
+
+    ModuleRuntime.getAvailableModulesForOrgAsync(currentOrganization.id)
+      .then(() => {
+        if (!isMounted) return;
+        setDynamicModuleNavItems(ModuleRuntime.getActiveModuleNavigationForOrg(currentOrganization.id).map((item) => ({
+          label: item.label,
+          path: item.route,
+          icon: <span className="text-base">{item.icon || "📦"}</span>,
+        })));
+      })
+      .catch(() => {
+        if (isMounted) setDynamicModuleNavItems(fallbackItems);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentOrganization]);
 
   const orgNavItems = [...baseOrgNavItems, ...dynamicModuleNavItems];
   const navItems = isAdminMode ? adminNavItems : orgNavItems;

@@ -5,11 +5,22 @@ import { assertUuid, createTenantContext } from "./tenant-context.js";
 import { OrganizationModuleService } from "./services/organization-module.service.js";
 import { OrganizationService } from "./services/organization.service.js";
 import { WorkspaceService } from "./services/workspace.service.js";
-import { validateCreateOrganization, validateCreateWorkspace, validateEnableModule, validateUpdateOrganization, validateUpdateWorkspace } from "./validation/platform-validation.js";
+import { validateCreateOrganization, validateCreateWorkspace, validateEnableModule, validateUpdateModuleConfiguration, validateUpdateOrganization, validateUpdateWorkspace } from "./validation/platform-validation.js";
+import type { OrganizationModuleRecord, OrganizationModuleWithCatalog, PlatformModuleRecord } from "./platform.types.js";
 
 export const platformModule: BackendModule = {
   name: "platform",
   register(router) {
+    router.register({
+      method: "GET",
+      path: "/api/v1/modules",
+      async handler(request, response, { database }) {
+        await new AuthService(database).authenticateRequest(request);
+        const modules = await new OrganizationModuleService(database).listCatalog();
+        sendJson(response, 200, { modules: modules.map(toPlatformModuleDto) });
+      },
+    });
+
     router.register({
       method: "GET",
       path: "/api/v1/organizations",
@@ -135,7 +146,7 @@ export const platformModule: BackendModule = {
         const tenant = createTenantContext(routeParams.organizationId);
         await new AuthService(database).requireOrganizationPermission(request, tenant.organizationId, "module.read");
         const modules = await new OrganizationModuleService(database).listModules(tenant.organizationId);
-        sendJson(response, 200, { modules });
+        sendJson(response, 200, { modules: modules.map(toOrganizationModuleDto) });
       },
     });
 
@@ -149,7 +160,21 @@ export const platformModule: BackendModule = {
           ...validateEnableModule(tenant.organizationId, request.body),
           activatedBy: auth.user.id,
         });
-        sendJson(response, 201, { module });
+        sendJson(response, 201, { module: toModuleStateDto(module) });
+      },
+    });
+
+    router.register({
+      method: "PATCH",
+      path: "/api/v1/organizations/:organizationId/modules/:moduleKey/config",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(request, tenant.organizationId, "module.manage");
+        const module = await new OrganizationModuleService(database).updateConfiguration({
+          ...validateUpdateModuleConfiguration(tenant.organizationId, routeParams.moduleKey, request.body),
+          activatedBy: auth.user.id,
+        });
+        sendJson(response, 200, { module: toModuleStateDto(module) });
       },
     });
 
@@ -160,8 +185,57 @@ export const platformModule: BackendModule = {
         const tenant = createTenantContext(routeParams.organizationId);
         await new AuthService(database).requireOrganizationPermission(request, tenant.organizationId, "module.manage");
         const module = await new OrganizationModuleService(database).disableModule(tenant.organizationId, routeParams.moduleKey);
-        sendJson(response, 200, { module });
+        sendJson(response, 200, { module: toModuleStateDto(module) });
       },
     });
   },
 };
+
+function toPlatformModuleDto(module: PlatformModuleRecord) {
+  return {
+    id: module.id,
+    key: module.key,
+    name: module.name,
+    description: module.description,
+    category: module.category,
+    industry: module.industry,
+    version: module.version,
+    status: module.status,
+    isCore: module.isCore,
+    metadata: module.metadata,
+    createdAt: module.createdAt.toISOString(),
+    updatedAt: module.updatedAt.toISOString(),
+  };
+}
+
+function toModuleStateDto(state: OrganizationModuleRecord) {
+  return {
+    id: state.id,
+    organizationId: state.organizationId,
+    moduleKey: state.moduleKey,
+    status: state.status,
+    enabled: state.enabled,
+    settings: state.settings ?? {},
+    activatedAt: state.activatedAt.toISOString(),
+    activatedBy: state.activatedBy,
+    createdAt: state.createdAt.toISOString(),
+    updatedAt: state.updatedAt.toISOString(),
+  };
+}
+
+function toOrganizationModuleDto(item: OrganizationModuleWithCatalog) {
+  return {
+    catalog: toPlatformModuleDto(item.catalog),
+    state: item.state ? toModuleStateDto(item.state) : {
+      organizationId: "",
+      moduleKey: item.catalog.key,
+      status: "deactivated",
+      enabled: false,
+      settings: {},
+      activatedAt: null,
+      activatedBy: null,
+      createdAt: null,
+      updatedAt: null,
+    },
+  };
+}

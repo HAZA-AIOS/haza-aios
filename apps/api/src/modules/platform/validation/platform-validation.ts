@@ -1,5 +1,5 @@
 import { ApiError } from "../../../common/errors/api-error.js";
-import type { CreateOrganizationInput, CreateWorkspaceInput, EnableModuleInput, UpdateOrganizationInput, UpdateWorkspaceInput } from "../platform.types.js";
+import type { CreateOrganizationInput, CreateWorkspaceInput, EnableModuleInput, UpdateModuleConfigurationInput, UpdateOrganizationInput, UpdateWorkspaceInput } from "../platform.types.js";
 
 const organizationStatuses = new Set(["active", "suspended", "archived"]);
 const workspaceStatuses = new Set(["active", "archived"]);
@@ -118,6 +118,27 @@ export function validateEnableModule(organizationId: string, body: unknown): Ena
   };
 }
 
+export function validateUpdateModuleConfiguration(organizationId: string, moduleKey: string, body: unknown): UpdateModuleConfigurationInput {
+  const input = asRecord(body);
+  const settings = asRecord(input.settings);
+
+  for (const [key, value] of Object.entries(settings)) {
+    if (!/^[a-zA-Z0-9_.-]+$/.test(key)) {
+      throw issue("settings", "settings keys may contain only letters, numbers, dots, underscores, and hyphens");
+    }
+    if (!isJsonSafe(value)) {
+      throw issue("settings", "settings must contain JSON-safe values only");
+    }
+  }
+
+  return {
+    organizationId,
+    moduleKey,
+    settings,
+    activatedBy: optionalString(input.activatedBy, "activatedBy"),
+  };
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw issue("body", "body must be a JSON object");
@@ -154,6 +175,14 @@ function normalizeCurrency(value: string): string {
     throw issue("currency", "currency must be a 3-letter ISO currency code");
   }
   return currency;
+}
+
+function isJsonSafe(value: unknown): boolean {
+  if (value === null) return true;
+  if (["string", "number", "boolean"].includes(typeof value)) return true;
+  if (Array.isArray(value)) return value.every(isJsonSafe);
+  if (typeof value === "object") return Object.values(value as Record<string, unknown>).every(isJsonSafe);
+  return false;
 }
 
 function issue(field: string, message: string): ApiError {

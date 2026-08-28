@@ -19,6 +19,25 @@ export const internalDatabaseChecks = mysqlTable("internal_database_checks", {
   updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
 });
 
+export const platformModules = mysqlTable("platform_modules", {
+  id: char("id", { length: 36 }).primaryKey(),
+  key: varchar("module_key", { length: 120 }).notNull(),
+  name: varchar("name", { length: 180 }).notNull(),
+  description: varchar("description", { length: 1000 }).notNull(),
+  category: varchar("category", { length: 80 }).notNull(),
+  industry: varchar("industry", { length: 80 }).notNull(),
+  version: varchar("version", { length: 80 }).notNull(),
+  status: varchar("status", { length: 40 }).notNull().default("available"),
+  isCore: boolean("is_core").notNull().default(false),
+  metadata: json("metadata").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("platform_modules_key_unique").on(table.key),
+  index("platform_modules_status_idx").on(table.status),
+  index("platform_modules_industry_idx").on(table.industry),
+]);
+
 export const organizations = mysqlTable("organizations", {
   id: char("id", { length: 36 }).primaryKey(),
   name: varchar("name", { length: 180 }).notNull(),
@@ -92,7 +111,7 @@ export const organizationSettings = mysqlTable("organization_settings", {
 export const organizationModules = mysqlTable("organization_modules", {
   id: char("id", { length: 36 }).primaryKey(),
   organizationId: char("organization_id", { length: 36 }).notNull().references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
-  moduleKey: varchar("module_key", { length: 120 }).notNull(),
+  moduleKey: varchar("module_key", { length: 120 }).notNull().references(() => platformModules.key, { onDelete: "restrict", onUpdate: "cascade" }),
   status: moduleStatus.notNull().default("activated"),
   enabled: boolean("enabled").notNull().default(true),
   settings: json("settings").$type<Record<string, unknown>>(),
@@ -911,6 +930,7 @@ export const schema = {
   membershipRoles,
   organizationMemberships,
   organizationModules,
+  platformModules,
   organizationSettings,
   organizations,
   permissions,

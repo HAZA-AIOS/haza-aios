@@ -116,12 +116,46 @@ describeDatabase("DB-3 platform tenant core", () => {
     const orgBModules = await service.listModules(orgB.id);
 
     expect(enabled.enabled).toBe(true);
-    expect(orgAModules.some((item) => item.moduleKey === "education-sis")).toBe(true);
-    expect(orgBModules.some((item) => item.moduleKey === "education-sis")).toBe(false);
+    expect(orgAModules.some((item) => item.catalog.key === "education-sis" && item.state?.enabled)).toBe(true);
+    expect(orgBModules.some((item) => item.catalog.key === "education-sis" && item.state?.enabled)).toBe(false);
 
     const disabled = await service.disableModule(orgA.id, "education-sis");
     expect(disabled.enabled).toBe(false);
     expect(disabled.status).toBe("deactivated");
+  });
+
+  it("persists platform module catalog and protects duplicate activation/configuration", async () => {
+    const orgA = await createTestOrganization(database, "module-db10-a");
+    const service = new OrganizationModuleService(database);
+
+    const catalog = await service.listCatalog();
+    expect(catalog.map((module) => module.key)).toEqual(expect.arrayContaining(["education-sis", "demo-analytics"]));
+
+    const first = await service.enableModule({
+      organizationId: orgA.id,
+      moduleKey: "education-sis",
+      activatedBy: "db10-test",
+      settings: { defaultView: "dashboard" },
+    });
+    const second = await service.enableModule({
+      organizationId: orgA.id,
+      moduleKey: "education-sis",
+      activatedBy: "db10-test",
+      settings: { defaultView: "reports" },
+    });
+    const configured = await service.updateConfiguration({
+      organizationId: orgA.id,
+      moduleKey: "education-sis",
+      settings: { analyticsEnabled: true },
+      activatedBy: "db10-test",
+    });
+    const orgModules = await service.listModules(orgA.id);
+    const education = orgModules.find((item) => item.catalog.key === "education-sis");
+
+    expect(second.id).toBe(first.id);
+    expect(configured.settings).toMatchObject({ defaultView: "reports", analyticsEnabled: true });
+    expect(education?.state?.id).toBe(first.id);
+    expect(orgModules.filter((item) => item.catalog.key === "education-sis" && item.state)).toHaveLength(1);
   });
 
   it("rolls back tenant records when a transaction fails", async () => {
@@ -204,6 +238,48 @@ describeDatabase("DB-3 platform tenant core", () => {
 
       expect(moduleResponse.status).toBe(201);
       expect(moduleBody.module).toMatchObject({ moduleKey: "demo-analytics", enabled: true });
+
+      const catalogResponse = await fetch(`${baseUrl}/api/v1/modules`, {
+        headers: { authorization: `Bearer ${created.session.accessToken}` },
+      });
+      const catalogBody = await catalogResponse.json() as { modules: Array<{ key: string }> };
+
+      expect(catalogResponse.status).toBe(200);
+      expect(catalogBody.modules.map((item) => item.key)).toContain("education-sis");
+
+      const configResponse = await fetch(`${baseUrl}/api/v1/organizations/${organizationId}/modules/demo-analytics/config`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", authorization: `Bearer ${created.session.accessToken}` },
+        body: JSON.stringify({ settings: { pinned: true } }),
+      });
+      const configBody = await configResponse.json() as { module: { settings: { pinned: boolean } } };
+
+      expect(configResponse.status).toBe(200);
+      expect(configBody.module.settings.pinned).toBe(true);
+
+      const secondCreateResponse = await fetch(`${baseUrl}/api/v1/auth/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-request-id": `db10-${suffix}` },
+        body: JSON.stringify({
+          firstName: "API",
+          lastName: "Second",
+          email: `api-second-${suffix}@example.com`,
+          password: "password123",
+          organizationName: `API Second ${suffix}`,
+          industry: "Education",
+          organizationType: "School",
+          country: "United States",
+        }),
+      });
+      const secondCreated = await secondCreateResponse.json() as { session: { accessToken: string }; memberships: Array<{ organizationId: string }> };
+      const forbiddenResponse = await fetch(`${baseUrl}/api/v1/organizations/${secondCreated.memberships[0].organizationId}/modules`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${created.session.accessToken}` },
+        body: JSON.stringify({ moduleKey: "education-sis" }),
+      });
+
+      expect(secondCreateResponse.status).toBe(201);
+      expect(forbiddenResponse.status).toBe(404);
 
       const invalidResponse = await fetch(`${baseUrl}/api/v1/organizations/not-a-uuid`);
       const invalidBody = await invalidResponse.json() as { error: { code: string } };

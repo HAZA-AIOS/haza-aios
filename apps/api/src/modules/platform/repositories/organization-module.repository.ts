@@ -8,7 +8,8 @@ export class OrganizationModuleRepository {
   constructor(private readonly context: RepositoryContext) {}
 
   async listByOrganization(organizationId: string): Promise<OrganizationModuleRecord[]> {
-    return this.context.db.select().from(organizationModules).where(eq(organizationModules.organizationId, organizationId));
+    const rows = await this.context.db.select().from(organizationModules).where(eq(organizationModules.organizationId, organizationId));
+    return rows.map(normalizeOrganizationModule);
   }
 
   async getByKeyForOrganization(organizationId: string, moduleKey: string): Promise<OrganizationModuleRecord | null> {
@@ -16,7 +17,7 @@ export class OrganizationModuleRepository {
       eq(organizationModules.organizationId, organizationId),
       eq(organizationModules.moduleKey, moduleKey),
     )).limit(1);
-    return rows[0] ?? null;
+    return rows[0] ? normalizeOrganizationModule(rows[0]) : null;
   }
 
   async enable(input: EnableModuleInput): Promise<OrganizationModuleRecord> {
@@ -68,4 +69,37 @@ export class OrganizationModuleRepository {
 
     return this.getByKeyForOrganization(organizationId, moduleKey);
   }
+
+  async updateSettings(organizationId: string, moduleKey: string, settings: Record<string, unknown>): Promise<OrganizationModuleRecord | null> {
+    await this.context.db.update(organizationModules).set({
+      settings,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(organizationModules.organizationId, organizationId),
+      eq(organizationModules.moduleKey, moduleKey),
+    ));
+
+    return this.getByKeyForOrganization(organizationId, moduleKey);
+  }
+}
+
+function normalizeOrganizationModule(row: OrganizationModuleRecord): OrganizationModuleRecord {
+  return {
+    ...row,
+    settings: normalizeJsonRecord(row.settings),
+  };
+}
+
+function normalizeJsonRecord(value: unknown): Record<string, unknown> | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return normalizeJsonRecord(parsed);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  return null;
 }

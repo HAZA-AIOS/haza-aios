@@ -1,5 +1,7 @@
 import { ModuleRegistry } from "./module-registry";
 import { initModuleRegistry } from "./index";
+import { apiClient } from "../api/api-client";
+import { readStoredAuth } from "../auth/auth-storage";
 import type {
   ModuleContract,
   OrganizationModuleState,
@@ -8,12 +10,41 @@ import type {
 } from "./module.types";
 
 const orgModulesStorageKeyPrefix = "haza-aios.org-modules.";
+const runtimeStateCache = new Map<string, OrganizationModuleState[]>();
+
+type ApiCatalogModule = {
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  industry: string;
+  version: string;
+  status: string;
+  isCore: boolean;
+  metadata: Record<string, unknown>;
+};
+
+type ApiModuleState = {
+  organizationId: string;
+  moduleKey: string;
+  status: "activated" | "deactivated";
+  enabled: boolean;
+  settings?: Record<string, unknown>;
+  activatedAt?: string | null;
+  activatedBy?: string | null;
+};
+
+type ApiOrganizationModule = {
+  catalog: ApiCatalogModule;
+  state: ApiModuleState;
+};
 
 function getOrgModulesKey(orgId: string): string {
   return `${orgModulesStorageKeyPrefix}${orgId}`;
 }
 
 function getStoredOrgModuleStates(orgId: string): OrganizationModuleState[] {
+  if (import.meta.env.MODE !== "test") return [];
   const data = localStorage.getItem(getOrgModulesKey(orgId));
   if (!data) return [];
   try {
@@ -24,6 +55,10 @@ function getStoredOrgModuleStates(orgId: string): OrganizationModuleState[] {
 }
 
 function saveStoredOrgModuleStates(orgId: string, states: OrganizationModuleState[]): void {
+  if (import.meta.env.MODE !== "test") {
+    runtimeStateCache.set(orgId, states);
+    return;
+  }
   localStorage.setItem(getOrgModulesKey(orgId), JSON.stringify(states));
 }
 
@@ -47,7 +82,7 @@ export const ModuleRuntime = {
   }> {
     ensureModuleRegistryReady();
     const allModules = ModuleRegistry.getAll();
-    const storedStates = getStoredOrgModuleStates(orgId);
+    const storedStates = runtimeStateCache.get(orgId) ?? getStoredOrgModuleStates(orgId);
 
     return allModules.map((module) => {
       const existing = storedStates.find((s) => s.moduleId === module.id);
@@ -63,6 +98,37 @@ export const ModuleRuntime = {
 
       return { module, state };
     });
+  },
+
+  async getAvailableModulesForOrgAsync(orgId: string): Promise<Array<{
+    module: ModuleContract;
+    state: OrganizationModuleState;
+  }>> {
+    ensureModuleRegistryReady();
+
+    if (import.meta.env.MODE === "test") {
+      return this.getAvailableModulesForOrg(orgId);
+    }
+
+    const auth = readStoredAuth();
+    const response = await apiClient.request<{ modules: ApiOrganizationModule[] }>(
+      `/api/v1/organizations/${orgId}/modules`,
+      { authToken: auth?.session.accessToken }
+    );
+    const allModules = ModuleRegistry.getAll();
+    const states: OrganizationModuleState[] = [];
+
+    const available = response.modules.flatMap((item) => {
+      const module = allModules.find((candidate) => candidate.slug === item.catalog.key);
+      if (!module) return [];
+
+      const state = toOrganizationModuleState(orgId, module.id, item.state);
+      states.push(state);
+      return [{ module: mergeCatalogMetadata(module, item.catalog), state }];
+    });
+
+    runtimeStateCache.set(orgId, states);
+    return available;
   },
 
   /**
@@ -112,6 +178,39 @@ export const ModuleRuntime = {
 
     saveStoredOrgModuleStates(orgId, storedStates);
     return updatedState;
+  },
+
+  async toggleModuleActivationForOrgAsync(
+    orgId: string,
+    moduleId: string,
+    activate: boolean
+  ): Promise<OrganizationModuleState> {
+    ensureModuleRegistryReady();
+    const targetModule = ModuleRegistry.get(moduleId);
+    if (!targetModule) {
+      throw new Error(`Cannot toggle activation: Module "${moduleId}" is not registered.`);
+    }
+
+    if (import.meta.env.MODE === "test") {
+      return this.toggleModuleActivationForOrg(orgId, moduleId, activate);
+    }
+
+    const auth = readStoredAuth();
+    const response = activate
+      ? await apiClient.request<{ module: ApiModuleState }>(`/api/v1/organizations/${orgId}/modules`, {
+          method: "POST",
+          authToken: auth?.session.accessToken,
+          body: JSON.stringify({ moduleKey: targetModule.slug, enabled: true }),
+        })
+      : await apiClient.request<{ module: ApiModuleState }>(`/api/v1/organizations/${orgId}/modules/${targetModule.slug}`, {
+          method: "DELETE",
+          authToken: auth?.session.accessToken,
+        });
+
+    const state = toOrganizationModuleState(orgId, moduleId, response.module);
+    const cached = runtimeStateCache.get(orgId) ?? [];
+    runtimeStateCache.set(orgId, upsertState(cached, state));
+    return state;
   },
 
   /**
@@ -188,4 +287,63 @@ export const ModuleRuntime = {
     }
     saveStoredOrgModuleStates(orgId, states);
   },
+
+  async updateModuleConfigurationForOrgAsync(
+    orgId: string,
+    moduleId: string,
+    settings: Record<string, unknown>
+  ): Promise<OrganizationModuleState> {
+    ensureModuleRegistryReady();
+    const targetModule = ModuleRegistry.get(moduleId);
+    if (!targetModule) {
+      throw new Error(`Cannot configure module: Module "${moduleId}" is not registered.`);
+    }
+
+    if (import.meta.env.MODE === "test") {
+      this.updateModuleConfigurationForOrg(orgId, moduleId, settings);
+      return this.getAvailableModulesForOrg(orgId).find((item) => item.module.id === moduleId)?.state as OrganizationModuleState;
+    }
+
+    const auth = readStoredAuth();
+    const response = await apiClient.request<{ module: ApiModuleState }>(
+      `/api/v1/organizations/${orgId}/modules/${targetModule.slug}/config`,
+      {
+        method: "PATCH",
+        authToken: auth?.session.accessToken,
+        body: JSON.stringify({ settings }),
+      }
+    );
+    const state = toOrganizationModuleState(orgId, moduleId, response.module);
+    const cached = runtimeStateCache.get(orgId) ?? [];
+    runtimeStateCache.set(orgId, upsertState(cached, state));
+    return state;
+  },
 };
+
+function toOrganizationModuleState(orgId: string, moduleId: string, state: ApiModuleState): OrganizationModuleState {
+  return {
+    organizationId: state.organizationId || orgId,
+    moduleId,
+    status: state.status,
+    enabled: state.enabled,
+    activatedAt: state.activatedAt ?? undefined,
+    activatedBy: state.activatedBy ?? undefined,
+    settings: state.settings ?? {},
+  };
+}
+
+function mergeCatalogMetadata(module: ModuleContract, catalog: ApiCatalogModule): ModuleContract {
+  return {
+    ...module,
+    name: catalog.name || module.name,
+    description: catalog.description || module.description,
+    version: catalog.version || module.version,
+    metadata: { ...module.metadata, ...catalog.metadata },
+  };
+}
+
+function upsertState(states: OrganizationModuleState[], next: OrganizationModuleState): OrganizationModuleState[] {
+  const index = states.findIndex((state) => state.moduleId === next.moduleId);
+  if (index === -1) return [...states, next];
+  return states.map((state, position) => position === index ? next : state);
+}

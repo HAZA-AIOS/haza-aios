@@ -16,12 +16,12 @@ export function WorkspaceModulesPage() {
   // Check write access (only Owners and Admins can toggle module activation)
   const hasWriteAccess = currentMembership?.role === "Owner" || currentMembership?.role === "Admin";
 
-  const loadModules = useCallback(() => {
+  const loadModules = useCallback(async () => {
     if (!currentOrganization) return;
     try {
       setIsLoading(true);
       setError(null);
-      const list = ModuleRuntime.getAvailableModulesForOrg(currentOrganization.id);
+      const list = await ModuleRuntime.getAvailableModulesForOrgAsync(currentOrganization.id);
       setModules(list);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load modules from registry.");
@@ -36,7 +36,7 @@ export function WorkspaceModulesPage() {
     });
   }, [loadModules]);
 
-  const handleToggleModule = (moduleId: string, isCurrentlyActive: boolean) => {
+  const handleToggleModule = async (moduleId: string, isCurrentlyActive: boolean) => {
     if (!currentOrganization) return;
     if (!hasWriteAccess) {
       setError("Unauthorized: Only Admins or Owners can toggle module activation.");
@@ -45,12 +45,12 @@ export function WorkspaceModulesPage() {
 
     try {
       setError(null);
-      ModuleRuntime.toggleModuleActivationForOrg(
+      await ModuleRuntime.toggleModuleActivationForOrgAsync(
         currentOrganization.id,
         moduleId,
         !isCurrentlyActive
       );
-      loadModules();
+      await loadModules();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to toggle module activation state.");
     }

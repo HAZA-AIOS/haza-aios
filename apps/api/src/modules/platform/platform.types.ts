@@ -49,6 +49,21 @@ export type OrganizationSettingsRecord = {
   updatedAt: Date;
 };
 
+export type PlatformModuleRecord = {
+  id: string;
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  industry: string;
+  version: string;
+  status: string;
+  isCore: boolean;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type OrganizationModuleRecord = {
   id: string;
   organizationId: string;
@@ -60,6 +75,11 @@ export type OrganizationModuleRecord = {
   activatedBy: string | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type OrganizationModuleWithCatalog = {
+  catalog: PlatformModuleRecord;
+  state: OrganizationModuleRecord | null;
 };
 
 export type OrganizationMembershipRecord = {
@@ -112,4 +132,23 @@ export type EnableModuleInput = {
   enabled?: boolean;
   settings?: Record<string, unknown>;
   activatedBy?: string;
+};
+
+export type UpdateModuleConfigurationInput = {
+  organizationId: string;
+  moduleKey: string;
+  settings: Record<string, unknown>;
+  activatedBy?: string;
+};
+
+export type UpsertPlatformModuleInput = {
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  industry: string;
+  version: string;
+  status: string;
+  isCore: boolean;
+  metadata: Record<string, unknown>;
 };

@@ -4,6 +4,7 @@ export const organizationStatus = mysqlEnum("organization_status", ["active", "s
 export const workspaceStatus = mysqlEnum("workspace_status", ["active", "archived"]);
 export const workspaceType = mysqlEnum("workspace_type", ["primary", "general", "industry"]);
 export const moduleStatus = mysqlEnum("organization_module_status", ["activated", "deactivated"]);
+export const agentLifecycleStatus = mysqlEnum("agent_lifecycle_status", ["draft", "available", "configured", "active", "paused", "disabled", "archived"]);
 export const membershipRole = mysqlEnum("organization_membership_role", ["Owner", "Admin", "Member"]);
 export const membershipStatus = mysqlEnum("organization_membership_status", ["active", "pending", "suspended"]);
 export const userStatus = mysqlEnum("user_status", ["active", "inactive", "suspended", "pending", "archived"]);
@@ -36,6 +37,70 @@ export const platformModules = mysqlTable("platform_modules", {
   uniqueIndex("platform_modules_key_unique").on(table.key),
   index("platform_modules_status_idx").on(table.status),
   index("platform_modules_industry_idx").on(table.industry),
+]);
+
+export const aiAgentTemplates = mysqlTable("ai_agent_templates", {
+  id: char("id", { length: 36 }).primaryKey(),
+  slug: varchar("slug", { length: 140 }).notNull(),
+  name: varchar("name", { length: 180 }).notNull(),
+  description: varchar("description", { length: 1000 }).notNull(),
+  version: varchar("version", { length: 80 }).notNull(),
+  category: varchar("category", { length: 80 }).notNull(),
+  industry: varchar("industry", { length: 80 }).notNull(),
+  status: agentLifecycleStatus.notNull().default("available"),
+  icon: varchar("icon", { length: 80 }).notNull(),
+  capabilities: json("capabilities").$type<Array<Record<string, unknown>>>().notNull(),
+  requiredPermissions: json("required_permissions").$type<string[]>().notNull(),
+  configurationSchema: json("configuration_schema").$type<Record<string, unknown>>().notNull(),
+  inputSchema: json("input_schema").$type<Record<string, unknown>>().notNull(),
+  outputSchema: json("output_schema").$type<Record<string, unknown>>().notNull(),
+  metadata: json("metadata").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("ai_agent_templates_slug_unique").on(table.slug),
+  index("ai_agent_templates_status_idx").on(table.status),
+  index("ai_agent_templates_industry_idx").on(table.industry),
+  index("ai_agent_templates_category_idx").on(table.category),
+]);
+
+export const aiAgentDefinitions = mysqlTable("ai_agent_definitions", {
+  id: char("id", { length: 36 }).primaryKey(),
+  organizationId: char("organization_id", { length: 36 }).notNull().references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  workspaceId: char("workspace_id", { length: 36 }).notNull().references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  templateId: char("template_id", { length: 36 }).references(() => aiAgentTemplates.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  agentKey: varchar("agent_key", { length: 160 }).notNull(),
+  name: varchar("name", { length: 180 }).notNull(),
+  description: varchar("description", { length: 1000 }).notNull(),
+  status: agentLifecycleStatus.notNull().default("active"),
+  enabled: boolean("enabled").notNull().default(true),
+  instructions: text("instructions"),
+  configuration: json("configuration").$type<Record<string, unknown>>().notNull(),
+  modelProvider: varchar("model_provider", { length: 120 }).notNull(),
+  modelSelection: varchar("model_selection", { length: 160 }).notNull(),
+  createdBy: char("created_by", { length: 36 }).notNull().references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  archivedAt: timestamp("archived_at", { fsp: 3 }),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("ai_agent_definitions_workspace_key_unique").on(table.workspaceId, table.agentKey),
+  uniqueIndex("ai_agent_definitions_workspace_template_unique").on(table.workspaceId, table.templateId),
+  index("ai_agent_definitions_org_status_idx").on(table.organizationId, table.status),
+  index("ai_agent_definitions_workspace_status_idx").on(table.workspaceId, table.status),
+  index("ai_agent_definitions_template_idx").on(table.templateId),
+]);
+
+export const aiAgentToolAssignments = mysqlTable("ai_agent_tool_assignments", {
+  id: char("id", { length: 36 }).primaryKey(),
+  agentId: char("agent_id", { length: 36 }).notNull().references(() => aiAgentDefinitions.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  toolKey: varchar("tool_key", { length: 160 }).notNull(),
+  status: varchar("status", { length: 40 }).notNull().default("active"),
+  configuration: json("configuration").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+}, (table) => [
+  uniqueIndex("ai_agent_tool_assignments_agent_tool_unique").on(table.agentId, table.toolKey),
+  index("ai_agent_tool_assignments_agent_status_idx").on(table.agentId, table.status),
 ]);
 
 export const organizations = mysqlTable("organizations", {
@@ -902,6 +967,9 @@ export const portalUpdateRequests = mysqlTable("portal_update_requests", {
 
 export const schema = {
   academicTerms,
+  aiAgentDefinitions,
+  aiAgentTemplates,
+  aiAgentToolAssignments,
   attendanceRecords,
   attendanceSessions,
   academicYears,

@@ -43,11 +43,11 @@ export const AgentBuilderPage: React.FC = () => {
 
   useEffect(() => {
     if (!currentOrganization || !id) return;
-    AgentService.getInstance(id, currentOrganization.id).then(inst => {
+    AgentService.getInstance(id, currentOrganization.id).then(async inst => {
       if (inst) {
         setInstance(inst);
         setConfigDraft(JSON.parse(JSON.stringify(inst.configuration)));
-        const tpl = AgentService.getTemplate(inst.agentTemplateId);
+        const tpl = inst.agentTemplateId ? await AgentService.getTemplateForOrg(inst.agentTemplateId, currentOrganization.id) : undefined;
         setTemplate(tpl || null);
       }
     });

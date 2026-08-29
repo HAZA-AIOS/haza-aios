@@ -1,14 +1,21 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AgentService } from "./agent-service";
-import type { AgentTemplate, AgentInstance } from "./agent.types";
+import type { AgentTemplate, AgentInstance, AgentConfiguration } from "./agent.types";
 import { useOrganization } from "../org/use-organization";
 
 export function useAgentTemplates() {
+  const { currentOrganization } = useOrganization();
   const [templates, setTemplates] = useState<AgentTemplate[]>([]);
   
   useEffect(() => {
-    setTemplates(AgentService.getAvailableTemplates());
-  }, []);
+    Promise.resolve().then(async () => {
+      if (!currentOrganization) {
+        setTemplates([]);
+        return;
+      }
+      setTemplates(await AgentService.getAvailableTemplatesForOrg(currentOrganization.id));
+    });
+  }, [currentOrganization]);
 
   return { templates };
 }
@@ -18,17 +25,17 @@ export function useAgentInstances() {
   const [instances, setInstances] = useState<AgentInstance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchInstances = async () => {
+  const fetchInstances = useCallback(async () => {
     if (!currentOrganization) return;
     setIsLoading(true);
     const data = await AgentService.getInstances(currentOrganization.id);
     setInstances(data);
     setIsLoading(false);
-  };
+  }, [currentOrganization]);
 
   useEffect(() => {
-    fetchInstances();
-  }, [currentOrganization]);
+    Promise.resolve().then(fetchInstances);
+  }, [fetchInstances]);
 
   const activateAgent = async (templateId: string) => {
     if (!currentOrganization) return;
@@ -42,7 +49,7 @@ export function useAgentInstances() {
     await fetchInstances();
   };
 
-  const updateConfiguration = async (instanceId: string, config: any) => {
+  const updateConfiguration = async (instanceId: string, config: Partial<AgentConfiguration>) => {
     if (!currentOrganization) return;
     await AgentService.updateConfiguration(instanceId, currentOrganization.id, config);
     await fetchInstances();

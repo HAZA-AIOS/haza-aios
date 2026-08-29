@@ -28,6 +28,8 @@ export const corePermissions: PermissionSeed[] = [
   { key: "workspace.manage", description: "Manage workspace records." },
   { key: "module.read", description: "Read organization module activation." },
   { key: "module.manage", description: "Manage organization module activation." },
+  { key: "agent.read", description: "Read organization AI agent registry and configuration." },
+  { key: "agent.manage", description: "Manage organization AI agent definitions and configuration." },
   { key: "member.read", description: "Read organization members." },
   { key: "member.manage", description: "Manage organization members and roles." },
 ];

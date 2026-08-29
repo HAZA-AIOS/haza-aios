@@ -8,6 +8,7 @@ import { applyCors } from "./middleware/cors.js";
 import { readJsonBody } from "./middleware/body.js";
 import { createRequestContext } from "./middleware/request-context.js";
 import { applySecurityHeaders } from "./middleware/security.js";
+import { agentsModule } from "./modules/agents/agents.module.js";
 import { authModule } from "./modules/auth/auth.module.js";
 import { educationModule } from "./modules/education/education.module.js";
 import { foundationModule } from "./modules/foundation/foundation.module.js";
@@ -24,6 +25,7 @@ export function createApp(config: ApiConfig, logger: Logger = createLogger(confi
     foundationModule,
     authModule,
     platformModule,
+    agentsModule,
     educationModule,
   ]);
 

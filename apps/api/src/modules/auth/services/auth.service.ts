@@ -19,6 +19,8 @@ const ownerPermissions: PermissionKey[] = [
   "workspace.manage",
   "module.read",
   "module.manage",
+  "agent.read",
+  "agent.manage",
   "member.read",
   "member.manage",
 ];
@@ -29,6 +31,8 @@ const adminPermissions: PermissionKey[] = [
   "workspace.manage",
   "module.read",
   "module.manage",
+  "agent.read",
+  "agent.manage",
   "member.read",
   "member.manage",
 ];
@@ -37,6 +41,7 @@ const memberPermissions: PermissionKey[] = [
   "organization.read",
   "workspace.read",
   "module.read",
+  "agent.read",
   "member.read",
 ];
 

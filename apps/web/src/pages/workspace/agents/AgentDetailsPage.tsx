@@ -24,7 +24,7 @@ export const AgentDetailsPage: React.FC = () => {
     const load = async () => {
       setLoading(true);
       // Try resolving as template first
-      const tpl = AgentService.getTemplate(id);
+      const tpl = await AgentService.getTemplateForOrg(id, currentOrganization.id);
       if (tpl) {
         setTemplate(tpl);
         // See if there's an active instance for this template
@@ -36,7 +36,7 @@ export const AgentDetailsPage: React.FC = () => {
         const inst = await AgentService.getInstance(id, currentOrganization.id);
         if (inst) {
           setInstance(inst);
-          const instTpl = AgentService.getTemplate(inst.agentTemplateId);
+          const instTpl = inst.agentTemplateId ? await AgentService.getTemplateForOrg(inst.agentTemplateId, currentOrganization.id) : undefined;
           setTemplate(instTpl || null);
         }
       }

@@ -3,11 +3,16 @@ import { navigate, usePathname } from "@/routes/navigation";
 import { useOrganization } from "@/org/use-organization";
 import { AgentService } from "@/agents/agent-service";
 import { Runtime } from "@/agents/runtime/AgentRuntime";
-import type { AgentInstance, AgentRun } from "@/agents/agent.types";
+import type { AgentInstance, AgentRun, AgentTemplate } from "@/agents/agent.types";
 import { AppShell } from "@/components/AppShell";
-import { Button, Card, CardHeader, CardTitle, CardContent, Input, Textarea } from "@haza-aios/ui";
+import { Button, Card, CardHeader, CardTitle, CardContent, Textarea } from "@haza-aios/ui";
 import { RunStatusBadge, ExecutionTimeline, RunOutputViewer } from "@haza-aios/ui";
 import { WorksheetCreatorUI } from "./WorksheetCreatorUI";
+
+type TimelineStep = {
+  label: string;
+  status: "pending" | "active" | "completed" | "failed";
+};
 
 export const AgentRunPage: React.FC = () => {
   const pathname = usePathname();
@@ -16,6 +21,7 @@ export const AgentRunPage: React.FC = () => {
   
   const { currentOrganization } = useOrganization();
   const [instance, setInstance] = useState<AgentInstance | null>(null);
+  const [template, setTemplate] = useState<AgentTemplate | null>(null);
   const [input, setInput] = useState("");
   
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
@@ -25,12 +31,15 @@ export const AgentRunPage: React.FC = () => {
     if (!currentOrganization || !id) return;
     AgentService.getInstance(id, currentOrganization.id).then(inst => {
       setInstance(inst || null);
+      if (inst?.agentTemplateId) {
+        AgentService.getTemplateForOrg(inst.agentTemplateId, currentOrganization.id).then((resolved) => setTemplate(resolved || null));
+      }
     });
   }, [id, currentOrganization]);
 
   // Poll for run updates if we have an active run
   useEffect(() => {
-    let interval: any;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (currentRunId && currentOrganization && (currentRun?.status === "running" || currentRun?.status === "queued" || currentRun?.status === "waiting")) {
       interval = setInterval(async () => {
         const runs = await AgentService.getRuns(currentOrganization.id, id);
@@ -58,7 +67,7 @@ export const AgentRunPage: React.FC = () => {
         input,
         requestedBy: "current_user_placeholder", // Typically from auth context
         executionMode: "manual"
-      }, instance, () => AgentService as any); // cast for dynamic generic resolution
+      }, instance, () => AgentService);
       
       setCurrentRunId(run.id);
       setCurrentRun(run);
@@ -71,17 +80,17 @@ export const AgentRunPage: React.FC = () => {
 
   const handleCancel = async () => {
     if (currentRunId) {
-      await Runtime.cancelExecution(currentRunId, () => AgentService as any);
+      await Runtime.cancelExecution(currentRunId, () => AgentService);
     }
   };
 
-  const getSteps = () => {
+  const getSteps = (): TimelineStep[] => {
     if (!currentRun) return [];
     return [
       { label: "Queued", status: currentRun.status === "queued" ? "active" : "completed" },
       { label: "Execution & Model Call", status: ["running", "waiting"].includes(currentRun.status) ? "active" : (["completed", "failed", "cancelled"].includes(currentRun.status) && currentRun.status !== "queued" ? "completed" : "pending") },
       { label: "Completed", status: currentRun.status === "completed" ? "completed" : (currentRun.status === "failed" ? "failed" : "pending") }
-    ] as any;
+    ];
   };
 
   return (
@@ -105,7 +114,7 @@ export const AgentRunPage: React.FC = () => {
             </Button>
           </div>
 
-          {instance.agentTemplateId === "template-worksheet-creator" ? (
+          {template?.slug === "worksheet-creator" || instance.agentTemplateId === "template-worksheet-creator" ? (
             <WorksheetCreatorUI instance={instance} organizationId={currentOrganization?.id || ""} />
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

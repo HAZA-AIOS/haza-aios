@@ -3,12 +3,14 @@ import { Link } from "@/routes/router";
 import { useOrganization } from "@/org/use-organization";
 import { AppShell } from "@/components/AppShell";
 import { timetableService } from "@/modules/education/sis/timetable.service";
-import type { TimePeriod, SchoolSchedule, PeriodType } from "@/modules/education/sis/sis.types";
+import { AcademicService } from "@/modules/education/sis/academic.service";
+import type { AcademicYear, TimePeriod, SchoolSchedule, PeriodType } from "@/modules/education/sis/sis.types";
 import { DashboardCard, Button } from "@haza-aios/ui";
 
 export function ScheduleConfigPage() {
   const { currentOrganization: currentOrg } = useOrganization();
   const [schedule, setSchedule] = useState<SchoolSchedule | null>(null);
+  const [activeYear, setActiveYear] = useState<AcademicYear | null>(null);
   const [periods, setPeriods] = useState<TimePeriod[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -21,10 +23,12 @@ export function ScheduleConfigPage() {
     async function loadData() {
       if (!currentOrg) return;
       try {
-        const [sch, per] = await Promise.all([
-          timetableService.getSchoolSchedule(currentOrg.id, 'current-year'),
+        const [year, per] = await Promise.all([
+          AcademicService.getActiveAcademicYear(currentOrg.id),
           timetableService.getPeriods(currentOrg.id)
         ]);
+        const sch = year ? await timetableService.getSchoolSchedule(currentOrg.id, year.id) : null;
+        setActiveYear(year);
         if (sch) {
           setSchedule(sch);
           setStart(sch.scheduleStartTime);
@@ -43,9 +47,13 @@ export function ScheduleConfigPage() {
 
   const saveSchedule = async () => {
     if (!currentOrg) return;
+    if (!activeYear) {
+      alert("Create and activate an academic year before saving schedule settings.");
+      return;
+    }
     try {
       const saved = await timetableService.saveSchoolSchedule(currentOrg.id, {
-        academicYearId: 'current-year',
+        academicYearId: activeYear.id,
         workingDays: days,
         scheduleStartTime: start,
         scheduleEndTime: end
@@ -204,3 +212,4 @@ export function ScheduleConfigPage() {
     </AppShell>
   );
 }
+

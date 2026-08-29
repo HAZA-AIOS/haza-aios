@@ -3,6 +3,7 @@ import { Link } from "@/routes/router";
 import { useOrganization } from "@/org/use-organization";
 import { AppShell } from "@/components/AppShell";
 import { timetableService } from "@/modules/education/sis/timetable.service";
+import { AcademicService } from "@/modules/education/sis/academic.service";
 import type { TimePeriod, SchoolSchedule, TimetableEntry } from "@/modules/education/sis/sis.types";
 import { DashboardCard } from "@haza-aios/ui";
 
@@ -18,12 +19,12 @@ export function TeacherTimetablePage() {
     async function loadData() {
       if (!currentOrg) return;
       try {
-        const [sch, per, ent] = await Promise.all([
-          timetableService.getSchoolSchedule(currentOrg.id, 'current-year'),
+        const [activeYear, per, ent] = await Promise.all([
+          AcademicService.getActiveAcademicYear(currentOrg.id),
           timetableService.getPeriods(currentOrg.id),
           timetableService.getTimetableEntries(currentOrg.id, { teacherId })
         ]);
-        setSchedule(sch);
+        setSchedule(activeYear ? await timetableService.getSchoolSchedule(currentOrg.id, activeYear.id) : null);
         setPeriods(per);
         setEntries(ent);
       } catch (err) {
@@ -119,3 +120,4 @@ export function TeacherTimetablePage() {
     </AppShell>
   );
 }
+

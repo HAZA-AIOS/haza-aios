@@ -157,6 +157,7 @@ function requiredString(value: unknown, field: string): string {
 
 function optionalString(value: unknown, field: string): string | undefined {
   if (value === undefined || value === null) return undefined;
+  if (typeof value === "string" && value.trim().length === 0) return undefined;
   return requiredString(value, field);
 }
 

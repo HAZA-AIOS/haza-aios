@@ -26,7 +26,7 @@ class ApiClient {
   private readonly onUnauthorized?: () => void;
 
   constructor({ baseUrl = appConfig.apiBaseUrl, onUnauthorized }: ApiClientOptions = {}) {
-    this.baseUrl = baseUrl?.replace(/\/$/, "") ?? "";
+    this.baseUrl = baseUrl?.trim().replace(/\/$/, "") ?? "";
     this.onUnauthorized = onUnauthorized;
   }
 

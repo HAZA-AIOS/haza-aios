@@ -2,11 +2,22 @@ import { sendJson } from "../../common/http/json.js";
 import type { BackendModule } from "../module-registry.js";
 import { AuthService, readBearerToken, readCookie } from "./services/auth.service.js";
 import { buildExpiredSessionCookie, buildSessionCookie, sessionCookieName } from "./services/token.service.js";
-import { validateLogin, validateRegister } from "./validation/auth-validation.js";
+import { validateCreateUser, validateLogin, validateRegister } from "./validation/auth-validation.js";
 
 export const authModule: BackendModule = {
   name: "auth",
   register(router) {
+    router.register({
+      method: "POST",
+      path: "/api/v1/auth/register-identity",
+      async handler(request, response, { config, database }) {
+        const input = validateCreateUser(request.body);
+        const result = await new AuthService(database).registerIdentity(input);
+        response.setHeader("set-cookie", buildSessionCookie(result.session.accessToken, new Date(result.session.expiresAt), config.nodeEnv === "production"));
+        sendJson(response, 201, result);
+      },
+    });
+
     router.register({
       method: "POST",
       path: "/api/v1/auth/register",

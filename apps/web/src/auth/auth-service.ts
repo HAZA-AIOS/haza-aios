@@ -67,15 +67,9 @@ const authService: AuthService = {
   },
 
   async register(input) {
-    const auth = await requestOrTestFixture(() => apiClient.request<AuthResult>("/api/v1/auth/register", {
+    const auth = await requestOrTestFixture(() => apiClient.request<AuthResult>("/api/v1/auth/register-identity", {
       method: "POST",
-      body: JSON.stringify({
-        ...input,
-        organizationName: `${input.firstName.trim()} ${input.lastName.trim()} Workspace`,
-        organizationType: "Company",
-        industry: "General",
-        country: "United States",
-      }),
+      body: JSON.stringify(input),
     }), () => {
       if (!input.firstName.trim() || !input.lastName.trim()) {
         throw new Error("Enter your first and last name.");

@@ -34,7 +34,7 @@ function RegisterPage() {
     }
 
     await auth.register({ firstName, lastName, email, password });
-    navigate("/verify-email");
+    navigate("/organization/create");
   }
 
   return (

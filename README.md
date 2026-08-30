@@ -6,7 +6,13 @@ HAZA AIOS is a modular platform for organization operations, tenant workspaces, 
 
 The Education Student Information System (SIS) is the most developed industry module. Platform core, SIS persistence, module registry persistence, and AI Agent registry/configuration persistence are implemented through DB-11. Later phases are planned for agent runtime, memory, knowledge, workflow, audit, metering, and production hardening persistence.
 
-## Public Showcase Notice`r`n`r`nThis repository is public for portfolio/evaluation purposes. Copyright retained. No commercial reuse, redistribution, sublicensing, or production deployment is permitted without written permission from HAZA AIOS.`r`n`r`nThis is a source-available showcase repository, not an open-source project. It is intended to demonstrate engineering work, architecture, and implementation progress for review purposes.`r`n`r`n## Vision
+## Public Showcase Notice
+
+This repository is public for portfolio/evaluation purposes. Copyright retained. No commercial reuse, redistribution, sublicensing, or production deployment is permitted without written permission from HAZA AIOS.
+
+This is a source-available showcase repository, not an open-source project. It is intended to demonstrate engineering work, architecture, and implementation progress for review purposes.
+
+## Vision
 
 HAZA AIOS is designed around three cooperating layers:
 
@@ -473,3 +479,4 @@ HAZA AIOS is under active development. Platform foundations and the Education SI
 ## License
 
 This repository is source-available for portfolio/evaluation purposes only. It is not open source. See [LICENSE](LICENSE).
+

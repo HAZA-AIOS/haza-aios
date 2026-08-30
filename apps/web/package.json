@@ -4,13 +4,15 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "typecheck": "tsc -b --pretty",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "dev": "npx vite",
+    "build": "npx tsc -b && npx vite build",
+    "lint": "npx eslint .",
+    "preview": "npx vite preview",
+    "typecheck": "npx tsc -b --pretty",
+    "format": "npx prettier --write .",
+    "format:check": "npx prettier --check .",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.3.1",
@@ -20,6 +22,8 @@
     "@fortawesome/react-fontawesome": "^3.5.0",
     "@haza-aios/ui": "0.1.0",
     "@tailwindcss/vite": "^4.3.3",
+    "aos": "^2.3.4",
+    "framer-motion": "^13.0.0",
     "motion": "^13.0.0",
     "radix-ui": "^1.6.7",
     "react": "^19.2.8",

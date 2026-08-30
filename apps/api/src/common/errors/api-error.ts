@@ -1,0 +1,29 @@
+export type ApiErrorCode =
+  | "BAD_REQUEST"
+  | "DATABASE_FOREIGN_KEY_CONSTRAINT"
+  | "DATABASE_QUERY_FAILED"
+  | "DATABASE_TRANSACTION_FAILED"
+  | "DATABASE_UNAVAILABLE"
+  | "DATABASE_UNIQUE_CONSTRAINT"
+  | "FORBIDDEN"
+  | "INVALID_CREDENTIALS"
+  | "NOT_FOUND"
+  | "PAYLOAD_TOO_LARGE"
+  | "UNAUTHENTICATED"
+  | "USER_NOT_ACTIVE"
+  | "VALIDATION_FAILED"
+  | "INTERNAL_SERVER_ERROR";
+
+export class ApiError extends Error {
+  readonly statusCode: number;
+  readonly code: ApiErrorCode;
+  readonly details?: unknown;
+
+  constructor(statusCode: number, code: ApiErrorCode, message: string, details?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.statusCode = statusCode;
+    this.code = code;
+    this.details = details;
+  }
+}

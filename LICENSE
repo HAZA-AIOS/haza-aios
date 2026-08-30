@@ -1,8 +1,10 @@
-HAZA AIOS
-Copyright © 2026 HAZA AIOS. All rights reserved.
+HAZA AIOS Source-Available Showcase License
+Copyright (c) 2026 HAZA AIOS. All rights reserved.
 
-This software and its source code are proprietary and confidential.
+This repository is made publicly visible for portfolio, evaluation, review, and demonstration purposes only.
 
-No permission is granted to copy, modify, distribute, sublicense,
-publish, or commercially exploit this software without explicit
-written authorization from HAZA AIOS.
+Permission is granted to view and evaluate the source code in this repository through GitHub's standard repository interface. No permission is granted to copy, modify, distribute, sublicense, publish derivative works, deploy, host, resell, commercially exploit, or use this software in production without explicit written authorization from HAZA AIOS.
+
+All trademarks, product names, architecture, documentation, source code, designs, and related materials remain the property of HAZA AIOS or their respective owners.
+
+This software is provided "as is" without warranty of any kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, and non-infringement. HAZA AIOS is not liable for any claim, damages, or other liability arising from use of this repository.

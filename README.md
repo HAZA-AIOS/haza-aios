@@ -4,9 +4,9 @@ Multi-Industry AI Operating System for Organizations
 
 HAZA AIOS is a modular platform for organization operations, tenant workspaces, industry-specific modules, AI agent workflows, automation, analytics, and reporting. The repository currently contains a React web application, a TypeScript API, shared UI/package foundations, persistent platform/auth/SIS backend services, and the active database retrofit documentation.
 
-The Education Student Information System (SIS) is the most developed industry module. Platform core and SIS persistence are implemented through DB-9. Later phases are planned for deeper platform module-registry persistence and AI Agent persistence.
+The Education Student Information System (SIS) is the most developed industry module. Platform core, SIS persistence, module registry persistence, and AI Agent registry/configuration persistence are implemented through DB-11. Later phases are planned for agent runtime, memory, knowledge, workflow, audit, metering, and production hardening persistence.
 
-## Vision
+## Public Showcase Notice`r`n`r`nThis repository is public for portfolio/evaluation purposes. Copyright retained. No commercial reuse, redistribution, sublicensing, or production deployment is permitted without written permission from HAZA AIOS.`r`n`r`nThis is a source-available showcase repository, not an open-source project. It is intended to demonstrate engineering work, architecture, and implementation progress for review purposes.`r`n`r`n## Vision
 
 HAZA AIOS is designed around three cooperating layers:
 
@@ -66,7 +66,7 @@ haza-aios/
 |   `-- types/               # Shared types package placeholder
 |-- docs/
 |   |-- architecture/        # Platform, tenancy, auth, modules, agent architecture
-|   |-- database-migration/  # DB-1 through DB-9 implementation documentation
+|   |-- database-migration/  # DB-1 through DB-11 implementation documentation
 |   |-- development/         # Frontend and design-system documentation
 |   `-- product/             # Product documentation area
 |-- scripts/                 # Repository scripts
@@ -88,11 +88,11 @@ Implemented persistent platform capabilities include:
 - Server-side authentication, tenant context resolution, permission checks, and tenant-scoped repository access.
 - Workspace shell, organization switching, protected routes, member management, active modules, settings, and platform-admin UI foundations.
 
-Module registry persistence is the next database phase. Current module definitions still include code/runtime registry concepts that DB-10 is expected to move further into persistent platform core.
+Module registry persistence is implemented through DB-10. DB-11 adds persistent AI Agent registry and configuration foundations, while later database phases are planned for runtime, conversations, memory, knowledge, and workflow persistence.
 
 ## Education SIS
 
-Education is currently the most complete industry module. Its data-bearing workflows have been migrated through DB-9.
+Education is currently the most complete industry module. Its data-bearing workflows have been migrated through DB-9, with platform module registry persistence through DB-10 and AI Agent registry/configuration persistence through DB-11.
 
 | Module | Original Epic | Persistence Status | Backend/API Status |
 | --- | --- | --- | --- |
@@ -158,8 +158,8 @@ React -> API -> Authentication -> Tenant Context -> RBAC -> Domain Services -> R
 | DB-7 | Examination, Assessment & Results Persistence | COMPLETE |
 | DB-8 | Finance, Communication & Portal Persistence | COMPLETE |
 | DB-9 | SIS Analytics & Reporting Persistence | COMPLETE |
-| DB-10 | Platform Core & Module Registry Persistence | PLANNED |
-| DB-11 | AI Agent Registry Persistence | PLANNED |
+| DB-10 | Platform Core & Module Registry Persistence | COMPLETE |
+| DB-11 | AI Agent Registry & Configuration Persistence | COMPLETE |
 | DB-12 | Agent Runtime Persistence | PLANNED |
 | DB-13 | Agent Memory Persistence | PLANNED |
 | DB-14 | Agent Knowledge Persistence | PLANNED |
@@ -178,7 +178,7 @@ The repository includes an industry-neutral AI Agent Platform foundation in the 
 - Agent runtime, execution manager, result processor, context engine, tool registry, memory, knowledge, conversation, and workflow service prototypes.
 - Workspace routes for discovery, active agents, configuration, execution, and run history.
 
-Current status is prototype/platform foundation. The corresponding database persistence phases for agent registry, runtime, memory, knowledge, and workflows are planned after DB-10. Agents are intended to operate through permission-gated tools provided by host modules rather than directly mutating domain tables.
+Current status includes persistent agent template, definition, activation, configuration, model-reference, tool-assignment, and tenant-ownership foundations through DB-11. Later phases are planned for agent runtime, conversations, memory, knowledge, and workflows. Agents are intended to operate through permission-gated tools provided by host modules rather than directly mutating domain tables.
 
 ### Agent Roadmap
 
@@ -244,7 +244,7 @@ Frontend storage may still be used for legitimate UI state, preferences, test fi
 | Education SIS | COMPLETE through Epic 10J | Most developed industry module |
 | SIS Database Retrofit | COMPLETE through DB-9 | SIS business data and analytics are API/database-backed |
 | AI Agent Platform | PROTOTYPE / IN PROGRESS | Frontend platform, runtime, builder, and workflow foundations exist |
-| Agent Database Retrofit | PLANNED | DB-11 through DB-15 |
+| Agent Database Retrofit | COMPLETE through DB-11 | Registry/configuration persistence complete; runtime/memory/knowledge/workflow phases planned |
 | Production Deployment | PLANNED | Hardening and deployment work remains |
 
 ## Major Completed Development Areas
@@ -253,7 +253,7 @@ Frontend storage may still be used for legitimate UI state, preferences, test fi
 - Organization/workspace architecture, tenant switching, members, settings, module activation, and platform admin foundations.
 - Education SIS Epic 10A through 10J.
 - AI Agent Platform foundation through registry, marketplace, builder, runtime, memory, knowledge, conversation, and workflow prototype layers.
-- Database retrofit DB-0 through DB-9.
+- Database retrofit DB-0 through DB-11.
 
 ### SIS Epics
 
@@ -272,13 +272,13 @@ Frontend storage may still be used for legitimate UI state, preferences, test fi
 
 ## Current Development Focus
 
-Next database phase:
+Current active database boundary:
 
 ```text
-DB-10 - Platform Core & Module Registry Persistence
+DB-11 - AI Agent Registry & Configuration Persistence
 ```
 
-Later phases are expected to migrate remaining AI Agent/platform persistence: agent registry, runtime, memory, knowledge, workflow, audit/operations, usage/metering, and production hardening.
+Later phases are expected to migrate remaining AI Agent/platform persistence: runtime, conversations, memory, knowledge, workflow, audit/operations, usage/metering, and production hardening.
 
 ## Development Setup
 
@@ -424,11 +424,11 @@ For data-bearing features, UI alone is not complete. The project standard is:
 
 - Platform foundation and organization workspace.
 - Education SIS Epic 10A through 10J.
-- Database retrofit DB-0 through DB-9.
+- Database retrofit DB-0 through DB-11.
 
 ### Next
 
-- DB-10 - Platform Core & Module Registry Persistence.
+- DB-11 - AI Agent Registry & Configuration Persistence.
 
 ### Planned
 
@@ -454,7 +454,7 @@ For data-bearing features, UI alone is not complete. The project standard is:
 - [DB-6 Attendance & Timetable Persistence](docs/database-migration/19-db6-attendance-timetable-persistence.md)
 - [DB-7 Examination, Assessment & Results Persistence](docs/database-migration/20-db7-examination-assessment-results-persistence.md)
 - [DB-8 Finance, Communication & Portal Persistence](docs/database-migration/21-db8-finance-communication-portal-persistence.md)
-- [DB-9 SIS Analytics & Reporting Persistence](docs/database-migration/22-db9-sis-analytics-reporting-persistence.md)
+- [DB-9 SIS Analytics & Reporting Persistence](docs/database-migration/22-db9-sis-analytics-reporting-persistence.md)`r`n- [DB-10 Platform Core & Module Registry Persistence](docs/database-migration/23-db10-platform-core-module-registry-persistence.md)`r`n- [DB-11 AI Agent Registry & Configuration Persistence](docs/database-migration/24-db11-ai-agent-registry-configuration-persistence.md)
 - [Organization Workspace Architecture](docs/architecture/organization-workspace.md)
 - [Organization & Multi-Tenancy Architecture](docs/architecture/organizations.md)
 - [Authentication Architecture](docs/architecture/authentication.md)
@@ -468,8 +468,8 @@ For data-bearing features, UI alone is not complete. The project standard is:
 
 ## Project Stage
 
-HAZA AIOS is under active development. Platform foundations and the Education SIS are substantially implemented, and SIS persistence is complete through DB-9. Later AI Agent persistence, production deployment hardening, and broader multi-industry modules remain planned/in progress.
+HAZA AIOS is under active development. Platform foundations and the Education SIS are substantially implemented, SIS persistence is complete through DB-9, platform module registry persistence is complete through DB-10, and AI Agent registry/configuration persistence is complete through DB-11. Later agent runtime persistence, production deployment hardening, and broader multi-industry modules remain planned/in progress.
 
 ## License
 
-This repository is proprietary and confidential. See [LICENSE](LICENSE).
+This repository is source-available for portfolio/evaluation purposes only. It is not open source. See [LICENSE](LICENSE).

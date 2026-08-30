@@ -6,7 +6,7 @@ HAZA AIOS is a source-available showcase repository, not an open-source communit
 
 External pull requests, feature requests, and issue reports may be reviewed at the owner's discretion, but no general right to modify, redistribute, sublicense, deploy, or commercially reuse the code is granted.
 
-By submitting feedback, issues, or pull requests, you confirm that you have the right to share the submitted material and that your submission does not include secrets, private data, third-party confidential material, or unlicensed code.
+By submitting feedback, issues, or pull requests, you confirm that you have the right to share the submitted material and that your submission does not include secrets, private data, non-public third-party material, or unlicensed code.
 
 ## Public Review Guidelines
 

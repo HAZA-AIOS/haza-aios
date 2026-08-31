@@ -39,6 +39,8 @@ export type PermissionKey =
   | "workspace.manage"
   | "module.read"
   | "module.manage"
+  | "agent.read"
+  | "agent.manage"
   | "member.read"
   | "member.manage";
 

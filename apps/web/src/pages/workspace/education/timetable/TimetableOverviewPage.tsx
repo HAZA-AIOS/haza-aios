@@ -3,6 +3,7 @@ import { Link } from "@/routes/router";
 import { useOrganization } from "@/org/use-organization";
 import { AppShell } from "@/components/AppShell";
 import { timetableService } from "@/modules/education/sis/timetable.service";
+import { AcademicService } from "@/modules/education/sis/academic.service";
 import type { TimePeriod, SchoolSchedule } from "@/modules/education/sis/sis.types";
 import { DashboardCard, StatCard, Button } from "@haza-aios/ui";
 
@@ -16,12 +17,11 @@ export function TimetableOverviewPage() {
     async function loadData() {
       if (!currentOrg) return;
       try {
-        // Assume 'current-year' is active year for now, in a real app this would come from AcademicService
-        const [sch, per] = await Promise.all([
-          timetableService.getSchoolSchedule(currentOrg.id, 'current-year'),
+        const [activeYear, per] = await Promise.all([
+          AcademicService.getActiveAcademicYear(currentOrg.id),
           timetableService.getPeriods(currentOrg.id)
         ]);
-        setSchedule(sch);
+        setSchedule(activeYear ? await timetableService.getSchoolSchedule(currentOrg.id, activeYear.id) : null);
         setPeriods(per);
       } catch (err) {
         console.error("Error loading timetable data", err);
@@ -134,3 +134,4 @@ export function TimetableOverviewPage() {
     </AppShell>
   );
 }
+

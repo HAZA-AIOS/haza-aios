@@ -3,6 +3,7 @@ import { Link } from "@/routes/router";
 import { useOrganization } from "@/org/use-organization";
 import { AppShell } from "@/components/AppShell";
 import { timetableService } from "@/modules/education/sis/timetable.service";
+import { AcademicService } from "@/modules/education/sis/academic.service";
 import type { TimePeriod, SchoolSchedule, TimetableEntry } from "@/modules/education/sis/sis.types";
 import { DashboardCard } from "@haza-aios/ui";
 
@@ -16,16 +17,22 @@ export function ClassTimetablePage() {
   // Mock selection
   const gradeId = "grade-1";
   const sectionId = "section-a";
-  const academicYearId = "current-year";
 
   useEffect(() => {
     async function loadData() {
       if (!currentOrg) return;
       try {
-        const [sch, per, ent] = await Promise.all([
-          timetableService.getSchoolSchedule(currentOrg.id, academicYearId),
-          timetableService.getPeriods(currentOrg.id),
-          timetableService.getTimetableEntries(currentOrg.id, { academicYearId, gradeId, sectionId })
+        const [activeYear, per] = await Promise.all([
+          AcademicService.getActiveAcademicYear(currentOrg.id),
+          timetableService.getPeriods(currentOrg.id)
+        ]);
+        const [sch, ent] = await Promise.all([
+          activeYear ? timetableService.getSchoolSchedule(currentOrg.id, activeYear.id) : Promise.resolve(null),
+          timetableService.getTimetableEntries(currentOrg.id, {
+            ...(activeYear ? { academicYearId: activeYear.id } : {}),
+            gradeId,
+            sectionId,
+          })
         ]);
         setSchedule(sch);
         setPeriods(per);
@@ -41,13 +48,18 @@ export function ClassTimetablePage() {
 
   const addEntry = async (dayOfWeek: number, periodId: string) => {
     if (!currentOrg) return;
+    const activeYear = await AcademicService.getActiveAcademicYear(currentOrg.id);
+    if (!activeYear) {
+      alert("Create and activate an academic year before adding timetable entries.");
+      return;
+    }
     const teacherId = prompt("Enter Teacher ID (e.g. t1):");
     const subjectId = prompt("Enter Subject ID (e.g. s1):");
     if (!teacherId || !subjectId) return;
 
     try {
       const newEntry = await timetableService.saveTimetableEntry(currentOrg.id, {
-        academicYearId,
+        academicYearId: activeYear.id,
         gradeId,
         sectionId,
         subjectId,
@@ -155,3 +167,4 @@ export function ClassTimetablePage() {
     </AppShell>
   );
 }
+

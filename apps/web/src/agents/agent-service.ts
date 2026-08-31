@@ -1,42 +1,97 @@
-import type { AgentTemplate, AgentInstance, AgentRun } from "./agent.types";
+import type { AgentTemplate, AgentInstance, AgentRun, AgentConfiguration } from "./agent.types";
 import { AgentRegistry } from "./agent-registry";
+import { apiClient } from "@/api/api-client";
+import { readStoredAuth } from "@/auth/auth-storage";
 
 const INSTANCES_KEY = "haza-aios.agents.instances";
 const RUNS_KEY = "haza-aios.agents.runs";
 
 export class AgentServiceClass {
+  private templateCache: AgentTemplate[] = AgentRegistry.getAll();
+
   // --- Templates (Registry Wrapper) ---
   getTemplates(): AgentTemplate[] {
-    return AgentRegistry.getAll();
+    if (isTestRuntime()) registerDefaultTemplates();
+    return this.templateCache.length ? this.templateCache : AgentRegistry.getAll();
   }
 
   getTemplate(id: string): AgentTemplate | undefined {
-    return AgentRegistry.get(id);
+    return this.getTemplates().find((template) => template.id === id) ?? AgentRegistry.get(id);
   }
 
   getAvailableTemplates(): AgentTemplate[] {
-    return AgentRegistry.getAvailable();
+    return this.getTemplates().filter((template) => template.status === "available");
+  }
+
+  async getAvailableTemplatesForOrg(organizationId: string): Promise<AgentTemplate[]> {
+    if (isTestRuntime()) return this.getAvailableTemplates();
+    const auth = readStoredAuth();
+    const response = await apiClient.request<{ templates: AgentTemplate[] }>(`/api/v1/organizations/${organizationId}/agents/templates`, {
+      authToken: auth?.session.accessToken,
+    });
+    this.templateCache = response.templates;
+    response.templates.forEach((template) => AgentRegistry.register(template));
+    return response.templates;
+  }
+
+  async getTemplateForOrg(id: string, organizationId: string): Promise<AgentTemplate | undefined> {
+    const cached = this.getTemplate(id);
+    if (cached) return cached;
+    const templates = await this.getAvailableTemplatesForOrg(organizationId);
+    return templates.find((template) => template.id === id);
   }
 
   // --- Instances ---
   private getInstancesDb(): AgentInstance[] {
+    if (!isTestRuntime()) return [];
     const data = localStorage.getItem(INSTANCES_KEY);
     return data ? JSON.parse(data) : [];
   }
 
   private saveInstancesDb(instances: AgentInstance[]): void {
+    if (!isTestRuntime()) return;
     localStorage.setItem(INSTANCES_KEY, JSON.stringify(instances));
   }
 
   async getInstances(organizationId: string): Promise<AgentInstance[]> {
+    if (!isTestRuntime()) {
+      const auth = readStoredAuth();
+      const response = await apiClient.request<{ agents: AgentInstance[] }>(`/api/v1/organizations/${organizationId}/agents`, {
+        authToken: auth?.session.accessToken,
+      });
+      return response.agents;
+    }
     return this.getInstancesDb().filter(i => i.organizationId === organizationId);
   }
 
   async getInstance(id: string, organizationId: string): Promise<AgentInstance | undefined> {
+    if (!isTestRuntime()) {
+      const auth = readStoredAuth();
+      try {
+        const response = await apiClient.request<{ agent: AgentInstance }>(`/api/v1/organizations/${organizationId}/agents/${id}`, {
+          authToken: auth?.session.accessToken,
+        });
+        return response.agent;
+      } catch (error) {
+        if ((error as { status?: number }).status === 404) return undefined;
+        throw error;
+      }
+    }
     return this.getInstancesDb().find(i => i.id === id && i.organizationId === organizationId);
   }
 
-  async activateAgent(organizationId: string, templateId: string): Promise<AgentInstance> {
+  async activateAgent(organizationId: string, templateId: string, workspaceId?: string): Promise<AgentInstance> {
+    if (!isTestRuntime()) {
+      const auth = readStoredAuth();
+      const resolvedWorkspaceId = workspaceId ?? await this.getDefaultWorkspaceId(organizationId);
+      const response = await apiClient.request<{ agent: AgentInstance }>(`/api/v1/organizations/${organizationId}/agents`, {
+        method: "POST",
+        authToken: auth?.session.accessToken,
+        body: JSON.stringify({ templateId, workspaceId: resolvedWorkspaceId }),
+      });
+      return response.agent;
+    }
+
     const template = this.getTemplate(templateId);
     if (!template) throw new Error("Template not found");
 
@@ -84,7 +139,17 @@ export class AgentServiceClass {
     return newInstance;
   }
 
-  async updateConfiguration(id: string, organizationId: string, config: any): Promise<AgentInstance> {
+  async updateConfiguration(id: string, organizationId: string, config: Partial<AgentConfiguration>): Promise<AgentInstance> {
+    if (!isTestRuntime()) {
+      const auth = readStoredAuth();
+      const response = await apiClient.request<{ agent: AgentInstance }>(`/api/v1/organizations/${organizationId}/agents/${id}/configuration`, {
+        method: "PATCH",
+        authToken: auth?.session.accessToken,
+        body: JSON.stringify({ configuration: config }),
+      });
+      return response.agent;
+    }
+
     const instances = this.getInstancesDb();
     const instance = instances.find(i => i.id === id && i.organizationId === organizationId);
     if (!instance) throw new Error("Instance not found");
@@ -97,6 +162,16 @@ export class AgentServiceClass {
   }
 
   async pauseInstance(id: string, organizationId: string): Promise<AgentInstance> {
+    if (!isTestRuntime()) {
+      const auth = readStoredAuth();
+      const response = await apiClient.request<{ agent: AgentInstance }>(`/api/v1/organizations/${organizationId}/agents/${id}/status`, {
+        method: "PATCH",
+        authToken: auth?.session.accessToken,
+        body: JSON.stringify({ status: "paused" }),
+      });
+      return response.agent;
+    }
+
     const instances = this.getInstancesDb();
     const instance = instances.find(i => i.id === id && i.organizationId === organizationId);
     if (!instance) throw new Error("Instance not found");
@@ -145,6 +220,16 @@ export class AgentServiceClass {
     runs[index] = { ...runs[index], ...updates };
     this.saveRunsDb(runs);
     return runs[index];
+  }
+
+  private async getDefaultWorkspaceId(organizationId: string): Promise<string> {
+    const auth = readStoredAuth();
+    const response = await apiClient.request<{ workspaces: Array<{ id: string }> }>(`/api/v1/organizations/${organizationId}/workspaces`, {
+      authToken: auth?.session.accessToken,
+    });
+    const workspaceId = response.workspaces[0]?.id;
+    if (!workspaceId) throw new Error("Workspace not found.");
+    return workspaceId;
   }
 }
 
@@ -201,3 +286,12 @@ const mockTemplates: AT[] = [
 ];
 
 mockTemplates.forEach(t => AgentRegistry.register(t));
+
+function registerDefaultTemplates() {
+  if (AgentRegistry.getAll().length > 0) return;
+  mockTemplates.forEach(t => AgentRegistry.register(t));
+}
+
+function isTestRuntime() {
+  return import.meta.env.MODE === "test";
+}

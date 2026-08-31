@@ -6,7 +6,7 @@ import { createRepositoryContext } from "../../../database/repositories/reposito
 import { withTransaction } from "../../../database/transactions.js";
 import { OrganizationRepository } from "../../platform/repositories/organization.repository.js";
 import { generateSlug } from "../../platform/validation/platform-validation.js";
-import type { AuthContext, AuthResult, LoginInput, PermissionKey, RegisterInput, SafeUser } from "../auth.types.js";
+import type { AuthContext, AuthResult, CreateUserInput, LoginInput, PermissionKey, RegisterInput, SafeUser } from "../auth.types.js";
 import { AuthRepository, toSafeUser } from "../repositories/auth.repository.js";
 import { normalizeEmail } from "../validation/auth-validation.js";
 import { hashPassword, verifyPassword } from "./password.service.js";
@@ -19,6 +19,8 @@ const ownerPermissions: PermissionKey[] = [
   "workspace.manage",
   "module.read",
   "module.manage",
+  "agent.read",
+  "agent.manage",
   "member.read",
   "member.manage",
 ];
@@ -29,6 +31,8 @@ const adminPermissions: PermissionKey[] = [
   "workspace.manage",
   "module.read",
   "module.manage",
+  "agent.read",
+  "agent.manage",
   "member.read",
   "member.manage",
 ];
@@ -37,11 +41,32 @@ const memberPermissions: PermissionKey[] = [
   "organization.read",
   "workspace.read",
   "module.read",
+  "agent.read",
   "member.read",
 ];
 
 export class AuthService {
   constructor(private readonly database: DatabaseClient) {}
+
+  async registerIdentity(input: CreateUserInput): Promise<AuthResult> {
+    return withTransaction(this.database, async ({ tx }) => {
+      const authRepository = new AuthRepository(createRepositoryContext(tx));
+      const user = await authRepository.createUser({
+        ...input,
+        email: normalizeEmail(input.email),
+        passwordHash: await hashPassword(input.password),
+      });
+
+      await authRepository.recordSecurityEvent({ userId: user.id, eventType: "auth.register_identity" });
+      return this.issueSession(authRepository, toSafeUser(user), false);
+    }).catch((error: unknown) => {
+      const mapped = mapDatabaseError(error);
+      if (mapped.code === "DATABASE_UNIQUE_CONSTRAINT") {
+        throw new ApiError(409, "DATABASE_UNIQUE_CONSTRAINT", "User already exists.");
+      }
+      throw error;
+    });
+  }
 
   async register(input: RegisterInput): Promise<AuthResult> {
     return withTransaction(this.database, async ({ tx }) => {

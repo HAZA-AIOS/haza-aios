@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 
 import {
@@ -12,6 +12,8 @@ import {
   IndustrySelect,
 } from "@haza-aios/ui";
 
+import { ApiError } from "@/api/api-client";
+import { useAuth } from "@/auth/use-auth";
 import { useOrganization } from "@/org/use-organization";
 import { generateSlug, validateOrganization } from "@/org/org-validation";
 import type { OrganizationType } from "@/org/org.types";
@@ -19,16 +21,17 @@ import { navigate } from "@/routes/navigation";
 import { AuthShell } from "../auth/AuthShell";
 
 function CreateOrganizationPage() {
+  const auth = useAuth();
   const { createOrg, isLoading } = useOrganization();
   const [form, setForm] = useState({
     name: "",
     legalName: "",
-    organizationType: "" as OrganizationType | "",
-    industry: "",
+    organizationType: "School" as OrganizationType | "",
+    industry: "Education",
     website: "",
     email: "",
     phone: "",
-    country: "",
+    country: "United States",
     description: "",
   });
 
@@ -37,6 +40,14 @@ function CreateOrganizationPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [registeredSlug, setRegisteredSlug] = useState("");
 
+  useEffect(() => {
+    if (!auth.user?.email) return;
+    Promise.resolve().then(() => {
+      setForm((current) =>
+        current.email ? current : { ...current, email: auth.user?.email ?? "" },
+      );
+    });
+  }, [auth.user?.email]);
   const handleChange = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) {
@@ -87,9 +98,15 @@ function CreateOrganizationPage() {
       setRegisteredSlug(result.organization.slug);
       setIsSuccess(true);
     } catch (err: unknown) {
-      setApiError(
-        err instanceof Error ? err.message : "Failed to create organization. Please try again.",
-      );
+      if (err instanceof ApiError) {
+        const fieldErrors = readApiFieldErrors(err.details);
+        if (Object.keys(fieldErrors).length > 0) {
+          setErrors(fieldErrors);
+        }
+        setApiError(readApiErrorMessage(err.details) ?? err.message);
+      } else {
+        setApiError(err instanceof Error ? err.message : "Failed to create organization. Please try again.");
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
@@ -248,3 +265,53 @@ function CreateOrganizationPage() {
 }
 
 export { CreateOrganizationPage };
+
+type ApiErrorDetails = {
+  error?: {
+    message?: unknown;
+    details?: unknown;
+  };
+};
+
+function readApiErrorMessage(details: unknown): string | null {
+  if (!details || typeof details !== "object") return null;
+  const error = (details as ApiErrorDetails).error;
+  if (!error || typeof error !== "object") return null;
+  const detailText = readDetailText(error.details);
+  const message = typeof error.message === "string" ? error.message : null;
+  return detailText ? `${message ?? "Request validation failed"}: ${detailText}` : message;
+}
+
+function readApiFieldErrors(details: unknown): Record<string, string> {
+  if (!details || typeof details !== "object") return {};
+  const error = (details as ApiErrorDetails).error;
+  const detailList = Array.isArray(error?.details) ? error.details : [];
+  const fieldErrors: Record<string, string> = {};
+
+  for (const issue of detailList) {
+    if (!issue || typeof issue !== "object") continue;
+    const field = (issue as { field?: unknown }).field;
+    const message = (issue as { message?: unknown }).message;
+    if (typeof field === "string" && typeof message === "string") {
+      fieldErrors[field] = message;
+    }
+  }
+
+  return fieldErrors;
+}
+
+function readDetailText(details: unknown): string | null {
+  if (!Array.isArray(details)) return null;
+  const messages = details
+    .map((issue) => {
+      if (!issue || typeof issue !== "object") return null;
+      const field = (issue as { field?: unknown }).field;
+      const message = (issue as { message?: unknown }).message;
+      if (typeof field === "string" && typeof message === "string") return `${field}: ${message}`;
+      return typeof message === "string" ? message : null;
+    })
+    .filter((message): message is string => Boolean(message));
+
+  return messages.length > 0 ? messages.join("; ") : null;
+}
+

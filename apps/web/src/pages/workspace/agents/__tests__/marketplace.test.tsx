@@ -25,10 +25,10 @@ vi.mock("../../../../auth/use-auth", () => ({
 
 // Quick mock for UI components that might cause issues in JSDOM
 vi.mock("@haza-aios/ui/components/agent-marketplace-primitives", () => ({
-  AgentSearch: ({ onChange }: any) => (
+  AgentSearch: ({ onChange }: { onChange: (value: string) => void }) => (
     <input data-testid="search-input" onChange={(e) => onChange(e.target.value)} />
   ),
-  AgentFilters: ({ onSelectIndustry, onSelectStatus, onClear }: any) => (
+  AgentFilters: ({ onSelectIndustry, onClear }: { onSelectIndustry: (value: string) => void; onClear: () => void }) => (
     <div>
       <select data-testid="industry-select" onChange={(e) => onSelectIndustry(e.target.value)}>
         <option value="All">All</option>
@@ -37,7 +37,7 @@ vi.mock("@haza-aios/ui/components/agent-marketplace-primitives", () => ({
       <button data-testid="clear-filters" onClick={onClear}>Clear</button>
     </div>
   ),
-  AgentCategoryNav: ({ onSelectCategory }: any) => (
+  AgentCategoryNav: ({ onSelectCategory }: { onSelectCategory: (value: string) => void }) => (
     <div data-testid="category-nav">
       <button onClick={() => onSelectCategory("Productivity")}>Productivity</button>
     </div>
@@ -47,7 +47,7 @@ vi.mock("@haza-aios/ui/components/agent-marketplace-primitives", () => ({
 describe("Agent Marketplace Discover Page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (useOrganizationHook.useOrganization as any).mockReturnValue({
+    vi.mocked(useOrganizationHook.useOrganization).mockReturnValue({
       organization: { id: "org-1", name: "Test Org" },
       currentOrganization: { id: "org-1", name: "Test Org" },
       organizations: [{ id: "org-1", name: "Test Org" }],
@@ -59,7 +59,7 @@ describe("Agent Marketplace Discover Page", () => {
     render(<WorkspaceDiscoverPage />);
     
     // The Worksheet Creator is from our mock data
-    expect(screen.getByText("Worksheet Creator")).toBeDefined();
+    expect(await screen.findByText("Worksheet Creator")).toBeDefined();
     
     // Test search filtering
     const searchInput = screen.getByTestId("search-input");
@@ -67,12 +67,13 @@ describe("Agent Marketplace Discover Page", () => {
     
     // Worksheet Creator should be hidden, Sales Analyzer should be visible
     expect(screen.queryByText("Worksheet Creator")).toBeNull();
-    expect(screen.getByText("Sales Analyzer")).toBeDefined();
+    expect(await screen.findByText("Sales Analyzer")).toBeDefined();
   });
 
   it("should filter by industry", async () => {
     render(<WorkspaceDiscoverPage />);
     
+    await screen.findByText("Worksheet Creator");
     const industrySelect = screen.getByTestId("industry-select");
     fireEvent.change(industrySelect, { target: { value: "Education" } });
     

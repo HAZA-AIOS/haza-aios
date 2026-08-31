@@ -12,7 +12,10 @@ interface WorksheetCreatorUIProps {
   organizationId: string;
 }
 
-export const WorksheetCreatorUI: React.FC<WorksheetCreatorUIProps> = ({ instance, organizationId }) => {
+export const WorksheetCreatorUI: React.FC<WorksheetCreatorUIProps> = ({
+  instance,
+  organizationId,
+}) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [worksheet, setWorksheet] = useState<any>(null);
   const [input, setInput] = useState("");
@@ -25,7 +28,11 @@ export const WorksheetCreatorUI: React.FC<WorksheetCreatorUIProps> = ({ instance
     let interval: any;
     if (conversationId) {
       interval = setInterval(async () => {
-        const msgs = await ConversationService.getMessages(conversationId);
+        const msgs = await ConversationService.getMessages(
+          conversationId,
+          undefined,
+          organizationId,
+        );
         setMessages(msgs);
       }, 2000);
     }
@@ -43,24 +50,31 @@ export const WorksheetCreatorUI: React.FC<WorksheetCreatorUIProps> = ({ instance
 
     // Optimistically add user message if we already have a conversation
     if (conversationId) {
-      setMessages(prev => [...prev, {
-        id: "temp",
-        conversationId,
-        role: "user",
-        content: currentInput,
-        createdAt: new Date().toISOString()
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: "temp",
+          conversationId,
+          role: "user",
+          content: currentInput,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
     }
 
     try {
-      const run = await Runtime.requestExecution({
-        agentInstanceId: instance.id,
-        organizationId,
-        conversationId: conversationId || undefined,
-        input: currentInput,
-        requestedBy: "current_user",
-        executionMode: "manual"
-      }, instance, () => AgentService as any);
+      const run = await Runtime.requestExecution(
+        {
+          agentInstanceId: instance.id,
+          organizationId,
+          conversationId: conversationId || undefined,
+          input: currentInput,
+          requestedBy: "current_user",
+          executionMode: "manual",
+        },
+        instance,
+        () => AgentService as any,
+      );
 
       if (!conversationId && run.metadata?.conversationId) {
         setConversationId(run.metadata.conversationId);
@@ -68,14 +82,18 @@ export const WorksheetCreatorUI: React.FC<WorksheetCreatorUIProps> = ({ instance
 
       let currentRun = run;
       while (["queued", "running", "waiting"].includes(currentRun.status)) {
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, 1000));
         const runs = await AgentService.getRuns(organizationId, instance.id);
-        currentRun = runs.find(r => r.id === run.id) || currentRun;
+        currentRun = runs.find((r) => r.id === run.id) || currentRun;
       }
 
       // Fetch actual messages now that it's complete
       if (run.metadata?.conversationId) {
-        const msgs = await ConversationService.getMessages(run.metadata.conversationId);
+        const msgs = await ConversationService.getMessages(
+          run.metadata.conversationId,
+          undefined,
+          organizationId,
+        );
         setMessages(msgs);
       }
 
@@ -83,7 +101,8 @@ export const WorksheetCreatorUI: React.FC<WorksheetCreatorUIProps> = ({ instance
         // The mock model returns text. If it looks like JSON, it might be a worksheet.
         try {
           const generatedData = JSON.parse(currentRun.output);
-          if (generatedData.questions) { // Simple heuristic
+          if (generatedData.questions) {
+            // Simple heuristic
             setWorksheet({
               ...generatedData,
               id: `ws-${Date.now()}`,
@@ -92,7 +111,7 @@ export const WorksheetCreatorUI: React.FC<WorksheetCreatorUIProps> = ({ instance
               agentInstanceId: instance.id,
               runId: currentRun.id,
               createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+              updatedAt: new Date().toISOString(),
             });
             setDebugContext(currentRun.output);
           }
@@ -109,41 +128,50 @@ export const WorksheetCreatorUI: React.FC<WorksheetCreatorUIProps> = ({ instance
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       {/* Left Chat Panel */}
-      <div className="lg:col-span-1 flex flex-col space-y-4">
-        <Card className="flex-1 flex flex-col bg-[#0f141f] border-white/5 min-h-[500px] max-h-[600px]">
+      <div className="flex flex-col space-y-4 lg:col-span-1">
+        <Card className="flex max-h-[600px] min-h-[500px] flex-1 flex-col border-white/5 bg-[#0f141f]">
           <CardHeader className="border-b border-white/5 py-4">
             <CardTitle className="text-lg">Chat & Instruct</CardTitle>
           </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto p-4 space-y-4">
+          <CardContent className="flex-1 space-y-4 overflow-y-auto p-4">
             {messages.length === 0 ? (
-              <div className="text-center text-slate-500 italic mt-10">
-                Start by giving instructions, eg:<br/><br/>
-                "Remember that I prefer 10-question worksheets"<br/>
-                or<br/>
+              <div className="mt-10 text-center text-slate-500 italic">
+                Start by giving instructions, eg:
+                <br />
+                <br />
+                "Remember that I prefer 10-question worksheets"
+                <br />
+                or
+                <br />
                 "Create a worksheet about Fractions for Grade 5"
               </div>
             ) : (
-              messages.map(msg => (
-                <div key={msg.id} className={`p-3 rounded-lg text-sm ${msg.role === "user" ? "bg-blue-900/40 text-blue-100 ml-8" : "bg-slate-800 text-slate-200 mr-8"}`}>
-                  <div className="font-semibold mb-1 opacity-75 text-xs uppercase tracking-wider">{msg.role}</div>
+              messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`rounded-lg p-3 text-sm ${msg.role === "user" ? "ml-8 bg-blue-900/40 text-blue-100" : "mr-8 bg-slate-800 text-slate-200"}`}
+                >
+                  <div className="mb-1 text-xs font-semibold tracking-wider uppercase opacity-75">
+                    {msg.role}
+                  </div>
                   <div className="whitespace-pre-wrap">
                     {/* Hide massive JSON dumps in chat view */}
-                    {msg.content.startsWith("{") && msg.content.includes("questions") 
-                      ? "[Worksheet Generated in Preview]" 
+                    {msg.content.startsWith("{") && msg.content.includes("questions")
+                      ? "[Worksheet Generated in Preview]"
                       : msg.content}
                   </div>
                 </div>
               ))
             )}
             {isGenerating && (
-              <div className="flex items-center gap-2 text-slate-400 text-sm italic">
-                <Loader2 className="w-4 h-4 animate-spin" /> Agent is thinking...
+              <div className="flex items-center gap-2 text-sm text-slate-400 italic">
+                <Loader2 className="h-4 w-4 animate-spin" /> Agent is thinking...
               </div>
             )}
           </CardContent>
-          <div className="p-4 border-t border-white/5 bg-slate-900">
+          <div className="border-t border-white/5 bg-slate-900 p-4">
             <div className="flex gap-2">
               <Input
                 value={input}
@@ -161,15 +189,18 @@ export const WorksheetCreatorUI: React.FC<WorksheetCreatorUIProps> = ({ instance
       </div>
 
       {/* Right Preview Panel */}
-      <div className="lg:col-span-2 space-y-6">
+      <div className="space-y-6 lg:col-span-2">
         {worksheet ? (
           <WorksheetPreview worksheet={worksheet} onSave={() => {}} />
         ) : (
-          <Card className="min-h-[500px] flex items-center justify-center bg-[#0f141f] border-white/5">
-            <div className="text-center text-slate-500 max-w-sm px-6">
-              <div className="text-4xl mb-4">📝</div>
-              <h3 className="text-lg font-medium text-slate-300 mb-2">No Worksheet Generated</h3>
-              <p className="text-sm">Instruct the agent in the chat to generate a worksheet. Your preferences will be remembered across generations in this session.</p>
+          <Card className="flex min-h-[500px] items-center justify-center border-white/5 bg-[#0f141f]">
+            <div className="max-w-sm px-6 text-center text-slate-500">
+              <div className="mb-4 text-4xl">📝</div>
+              <h3 className="mb-2 text-lg font-medium text-slate-300">No Worksheet Generated</h3>
+              <p className="text-sm">
+                Instruct the agent in the chat to generate a worksheet. Your preferences will be
+                remembered across generations in this session.
+              </p>
             </div>
           </Card>
         )}

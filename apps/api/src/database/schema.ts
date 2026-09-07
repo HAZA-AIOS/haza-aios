@@ -49,6 +49,18 @@ export const agentMessageRole = mysqlEnum("agent_message_role", [
   "system",
   "tool",
 ]);
+export const agentMemoryScope = mysqlEnum("agent_memory_scope", [
+  "user",
+  "agent",
+  "conversation",
+  "workspace",
+  "organization",
+]);
+export const agentMemoryStatus = mysqlEnum("agent_memory_status", [
+  "active",
+  "archived",
+  "deleted",
+]);
 export const membershipRole = mysqlEnum("organization_membership_role", [
   "Owner",
   "Admin",
@@ -315,6 +327,70 @@ export const aiAgentMessages = mysqlTable(
     ),
     index("ai_agent_messages_run_idx").on(table.agentRunId),
     index("ai_agent_messages_role_idx").on(table.conversationId, table.role),
+  ],
+);
+
+export const aiAgentMemories = mysqlTable(
+  "ai_agent_memories",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    userId: char("user_id", { length: 36 }).references(() => users.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    scope: agentMemoryScope.notNull().default("user"),
+    type: varchar("type", { length: 80 }).notNull(),
+    content: text("content").notNull(),
+    status: agentMemoryStatus.notNull().default("active"),
+    source: varchar("source", { length: 120 }).notNull().default("manual"),
+    sourceRunId: char("source_run_id", { length: 36 }).references(() => aiAgentRuns.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    sourceConversationId: char("source_conversation_id", { length: 36 }).references(
+      () => aiAgentConversations.id,
+      { onDelete: "restrict", onUpdate: "cascade" },
+    ),
+    sourceMessageId: char("source_message_id", { length: 36 }).references(
+      () => aiAgentMessages.id,
+      { onDelete: "restrict", onUpdate: "cascade" },
+    ),
+    importance: int("importance").notNull().default(5),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull(),
+    createdBy: char("created_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    updatedBy: char("updated_by", { length: 36 }).references(() => users.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    expiresAt: datetime("expires_at", { fsp: 3 }),
+    lastUsedAt: datetime("last_used_at", { fsp: 3 }),
+    usageCount: int("usage_count").notNull().default(0),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    index("ai_agent_memories_org_status_idx").on(table.organizationId, table.status),
+    index("ai_agent_memories_workspace_scope_status_idx").on(
+      table.workspaceId,
+      table.scope,
+      table.status,
+    ),
+    index("ai_agent_memories_agent_scope_status_idx").on(table.agentId, table.scope, table.status),
+    index("ai_agent_memories_user_status_idx").on(table.userId, table.status),
+    index("ai_agent_memories_source_run_idx").on(table.sourceRunId),
+    index("ai_agent_memories_source_conversation_idx").on(table.sourceConversationId),
+    index("ai_agent_memories_source_message_idx").on(table.sourceMessageId),
   ],
 );
 export const organizations = mysqlTable(
@@ -1873,6 +1949,7 @@ export const schema = {
   academicTerms,
   aiAgentConversations,
   aiAgentDefinitions,
+  aiAgentMemories,
   aiAgentMessages,
   aiAgentRuns,
   aiAgentTemplates,

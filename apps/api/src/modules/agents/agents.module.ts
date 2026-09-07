@@ -5,12 +5,14 @@ import { assertUuid, createTenantContext } from "../platform/tenant-context.js";
 import type {
   AgentConversationRecord,
   AgentDefinitionWithTools,
+  AgentMemoryRecord,
   AgentMessageRecord,
   AgentRunRecord,
   AgentTemplateRecord,
 } from "./agent.types.js";
 import { AgentService } from "./services/agent.service.js";
 import { AgentRuntimeService } from "./services/agent-runtime.service.js";
+import { AgentMemoryService } from "./services/agent-memory.service.js";
 import {
   validateCreateAgent,
   validateUpdateAgentConfiguration,
@@ -23,6 +25,11 @@ import {
   validateCreateRun,
   validateUpdateRun,
 } from "./validation/runtime-validation.js";
+import {
+  readMemoryQuery,
+  validateCreateMemory,
+  validateUpdateMemory,
+} from "./validation/memory-validation.js";
 
 export const agentsModule: BackendModule = {
   name: "agents",
@@ -298,6 +305,114 @@ export const agentsModule: BackendModule = {
         sendJson(response, 201, { message: toMessageDto(message) });
       },
     });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/memories",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.agentId, "agentId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const memories = await new AgentMemoryService(database).listMemories(
+          readMemoryQuery(tenant.organizationId, routeParams.agentId, auth.user.id, url),
+        );
+        sendJson(response, 200, { memories: memories.map(toMemoryDto) });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/memories",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.agentId, "agentId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const memory = await new AgentMemoryService(database).createMemory(
+          validateCreateMemory(
+            tenant.organizationId,
+            routeParams.agentId,
+            request.body,
+            auth.user.id,
+          ),
+          hasOrganizationPermission(auth, tenant.organizationId, "agent.manage"),
+        );
+        sendJson(response, 201, { memory: toMemoryDto(memory) });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-memories/:memoryId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.memoryId, "memoryId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const memory = await new AgentMemoryService(database).getMemory(
+          tenant.organizationId,
+          routeParams.memoryId,
+          auth.user.id,
+          hasOrganizationPermission(auth, tenant.organizationId, "agent.manage"),
+        );
+        sendJson(response, 200, { memory: toMemoryDto(memory) });
+      },
+    });
+
+    router.register({
+      method: "PATCH",
+      path: "/api/v1/organizations/:organizationId/agent-memories/:memoryId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.memoryId, "memoryId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const memory = await new AgentMemoryService(database).updateMemory(
+          validateUpdateMemory(
+            tenant.organizationId,
+            routeParams.memoryId,
+            request.body,
+            auth.user.id,
+          ),
+          hasOrganizationPermission(auth, tenant.organizationId, "agent.manage"),
+        );
+        sendJson(response, 200, { memory: toMemoryDto(memory) });
+      },
+    });
+
+    router.register({
+      method: "DELETE",
+      path: "/api/v1/organizations/:organizationId/agent-memories/:memoryId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.memoryId, "memoryId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const memory = await new AgentMemoryService(database).forgetMemory(
+          tenant.organizationId,
+          routeParams.memoryId,
+          auth.user.id,
+          hasOrganizationPermission(auth, tenant.organizationId, "agent.manage"),
+        );
+        sendJson(response, 200, { memory: toMemoryDto(memory) });
+      },
+    });
     router.register({
       method: "PATCH",
       path: "/api/v1/organizations/:organizationId/agents/:agentId/status",
@@ -397,6 +512,43 @@ function toMessageDto(message: AgentMessageRecord) {
     metadata: message.metadata ?? undefined,
     createdAt: message.createdAt.toISOString(),
   };
+}
+
+function toMemoryDto(memory: AgentMemoryRecord) {
+  return {
+    id: memory.id,
+    organizationId: memory.organizationId,
+    workspaceId: memory.workspaceId,
+    agentInstanceId: memory.agentId,
+    userId: memory.userId ?? undefined,
+    scope: memory.scope,
+    type: memory.type,
+    content: memory.content,
+    status: memory.status,
+    source: memory.source,
+    sourceRunId: memory.sourceRunId ?? undefined,
+    sourceConversationId: memory.sourceConversationId ?? undefined,
+    sourceMessageId: memory.sourceMessageId ?? undefined,
+    conversationId: memory.sourceConversationId ?? undefined,
+    importance: memory.importance,
+    metadata: memory.metadata,
+    expiresAt: memory.expiresAt?.toISOString(),
+    lastUsedAt: memory.lastUsedAt?.toISOString(),
+    usageCount: memory.usageCount,
+    createdAt: memory.createdAt.toISOString(),
+    updatedAt: memory.updatedAt.toISOString(),
+  };
+}
+
+function hasOrganizationPermission(
+  auth: { memberships: Array<{ organizationId: string; permissions: string[] }> },
+  organizationId: string,
+  permission: string,
+): boolean {
+  return auth.memberships.some(
+    (membership) =>
+      membership.organizationId === organizationId && membership.permissions.includes(permission),
+  );
 }
 
 function unwrapPayload(payload: Record<string, unknown>) {

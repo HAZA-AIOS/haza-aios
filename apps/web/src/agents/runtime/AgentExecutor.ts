@@ -48,7 +48,7 @@ export class AgentExecutor {
         tools: instance.configuration.tools,
         context: memoryContext,
       };
-      let response = await this.modelProvider.generate(request, instance);
+      const response = await this.modelProvider.generate(request, instance);
 
       // 4. Tool Execution Loop (simplified for this Epic)
       if (response.toolCalls && response.toolCalls.length > 0) {

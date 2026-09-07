@@ -1,14 +1,14 @@
-export type AgentCategory = 
-  | "Productivity" 
-  | "Content" 
-  | "Communication" 
-  | "Analytics" 
-  | "Operations" 
-  | "Education" 
-  | "Sales" 
-  | "Marketing" 
-  | "Support" 
-  | "Document" 
+export type AgentCategory =
+  | "Productivity"
+  | "Content"
+  | "Communication"
+  | "Analytics"
+  | "Operations"
+  | "Education"
+  | "Sales"
+  | "Marketing"
+  | "Support"
+  | "Document"
   | "Workflow";
 
 export interface KnowledgeSource {
@@ -39,14 +39,8 @@ export interface ContextPackage {
   metadata?: Record<string, any>;
 }
 
-export type AgentLifecycleStatus = 
-  | "draft" 
-  | "available" 
-  | "configured" 
-  | "active" 
-  | "paused" 
-  | "disabled" 
-  | "archived";
+export type AgentLifecycleStatus =
+  "draft" | "available" | "configured" | "active" | "paused" | "disabled" | "archived";
 
 export interface AgentPermission {
   key: string;
@@ -54,7 +48,15 @@ export interface AgentPermission {
 }
 
 export interface AgentCapability {
-  key: "generate" | "summarize" | "classify" | "analyze" | "communicate" | "retrieve" | "transform" | "automate";
+  key:
+    | "generate"
+    | "summarize"
+    | "classify"
+    | "analyze"
+    | "communicate"
+    | "retrieve"
+    | "transform"
+    | "automate";
   name: string;
   description: string;
 }
@@ -201,7 +203,8 @@ export interface AgentExecutionRequest {
   metadata?: Record<string, any>;
 }
 
-export type AgentRunStatus = "queued" | "running" | "waiting" | "completed" | "failed" | "cancelled";
+export type AgentRunStatus =
+  "queued" | "running" | "waiting" | "completed" | "failed" | "cancelled";
 
 export interface AgentRun {
   id: string;
@@ -218,7 +221,7 @@ export interface AgentRun {
   metadata?: Record<string, any>;
 }
 
-export type AgentRuntimeErrorCategory = 
+export type AgentRuntimeErrorCategory =
   | "AuthenticationError"
   | "AuthorizationError"
   | "AgentNotFoundError"
@@ -280,7 +283,7 @@ export interface ConversationMessage {
   createdAt: string;
 }
 
-export type MemoryScope = "user" | "agent" | "conversation" | "organization";
+export type MemoryScope = "user" | "agent" | "conversation" | "workspace" | "organization";
 
 export interface Memory {
   id: string;
@@ -291,8 +294,12 @@ export interface Memory {
   scope: MemoryScope;
   type: string;
   content: string;
-  status: "active" | "inactive" | "expired" | "deleted";
+  status: "active" | "inactive" | "expired" | "archived" | "deleted";
   source: string;
+  sourceRunId?: string;
+  sourceConversationId?: string;
+  sourceMessageId?: string;
+  metadata?: Record<string, unknown>;
   importance?: number;
   createdAt: string;
   updatedAt: string;

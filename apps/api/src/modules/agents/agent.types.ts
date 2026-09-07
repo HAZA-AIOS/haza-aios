@@ -185,3 +185,70 @@ export type CreateMessageInput = {
   metadata: JsonRecord | null;
   agentRunId?: string;
 };
+
+export type AgentMemoryScope = "user" | "agent" | "conversation" | "workspace" | "organization";
+export type AgentMemoryStatus = "active" | "archived" | "deleted";
+
+export type AgentMemoryRecord = {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  agentId: string;
+  userId: string | null;
+  scope: AgentMemoryScope;
+  type: string;
+  content: string;
+  status: AgentMemoryStatus;
+  source: string;
+  sourceRunId: string | null;
+  sourceConversationId: string | null;
+  sourceMessageId: string | null;
+  importance: number;
+  metadata: JsonRecord;
+  createdBy: string;
+  updatedBy: string | null;
+  expiresAt: Date | null;
+  lastUsedAt: Date | null;
+  usageCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CreateAgentMemoryInput = {
+  organizationId: string;
+  agentId: string;
+  userId: string;
+  scope: AgentMemoryScope;
+  type: string;
+  content: string;
+  source: string;
+  sourceRunId?: string;
+  sourceConversationId?: string;
+  sourceMessageId?: string;
+  importance: number;
+  metadata: JsonRecord;
+  expiresAt?: Date;
+};
+
+export type UpdateAgentMemoryInput = {
+  organizationId: string;
+  memoryId: string;
+  userId: string;
+  scope?: AgentMemoryScope;
+  type?: string;
+  content?: string;
+  status?: AgentMemoryStatus;
+  importance?: number;
+  metadata?: JsonRecord;
+  expiresAt?: Date | null;
+};
+
+export type AgentMemoryQuery = PaginationInput & {
+  organizationId: string;
+  agentId: string;
+  userId: string;
+  type?: string;
+  scope?: AgentMemoryScope;
+  status?: AgentMemoryStatus;
+  conversationId?: string;
+};

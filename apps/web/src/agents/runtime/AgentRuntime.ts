@@ -55,7 +55,7 @@ export class AgentRuntime {
     };
 
     // Save run to history via AgentService
-    const savedRun = await AgentService.saveAgentRun(newRun);
+    const savedRun = (await AgentService.saveAgentRun(newRun)) ?? newRun;
 
     // 3. Queue Execution
     // We pass a callback for the ExecutionManager to update the run status in our central store

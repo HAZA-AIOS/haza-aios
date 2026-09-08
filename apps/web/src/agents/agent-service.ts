@@ -26,9 +26,12 @@ export class AgentServiceClass {
   async getAvailableTemplatesForOrg(organizationId: string): Promise<AgentTemplate[]> {
     if (isTestRuntime()) return this.getAvailableTemplates();
     const auth = readStoredAuth();
-    const response = await apiClient.request<{ templates: AgentTemplate[] }>(`/api/v1/organizations/${organizationId}/agents/templates`, {
-      authToken: auth?.session.accessToken,
-    });
+    const response = await apiClient.request<{ templates: AgentTemplate[] }>(
+      `/api/v1/organizations/${organizationId}/agents/templates`,
+      {
+        authToken: auth?.session.accessToken,
+      },
+    );
     this.templateCache = response.templates;
     response.templates.forEach((template) => AgentRegistry.register(template));
     return response.templates;
@@ -56,39 +59,52 @@ export class AgentServiceClass {
   async getInstances(organizationId: string): Promise<AgentInstance[]> {
     if (!isTestRuntime()) {
       const auth = readStoredAuth();
-      const response = await apiClient.request<{ agents: AgentInstance[] }>(`/api/v1/organizations/${organizationId}/agents`, {
-        authToken: auth?.session.accessToken,
-      });
+      const response = await apiClient.request<{ agents: AgentInstance[] }>(
+        `/api/v1/organizations/${organizationId}/agents`,
+        {
+          authToken: auth?.session.accessToken,
+        },
+      );
       return response.agents;
     }
-    return this.getInstancesDb().filter(i => i.organizationId === organizationId);
+    return this.getInstancesDb().filter((i) => i.organizationId === organizationId);
   }
 
   async getInstance(id: string, organizationId: string): Promise<AgentInstance | undefined> {
     if (!isTestRuntime()) {
       const auth = readStoredAuth();
       try {
-        const response = await apiClient.request<{ agent: AgentInstance }>(`/api/v1/organizations/${organizationId}/agents/${id}`, {
-          authToken: auth?.session.accessToken,
-        });
+        const response = await apiClient.request<{ agent: AgentInstance }>(
+          `/api/v1/organizations/${organizationId}/agents/${id}`,
+          {
+            authToken: auth?.session.accessToken,
+          },
+        );
         return response.agent;
       } catch (error) {
         if ((error as { status?: number }).status === 404) return undefined;
         throw error;
       }
     }
-    return this.getInstancesDb().find(i => i.id === id && i.organizationId === organizationId);
+    return this.getInstancesDb().find((i) => i.id === id && i.organizationId === organizationId);
   }
 
-  async activateAgent(organizationId: string, templateId: string, workspaceId?: string): Promise<AgentInstance> {
+  async activateAgent(
+    organizationId: string,
+    templateId: string,
+    workspaceId?: string,
+  ): Promise<AgentInstance> {
     if (!isTestRuntime()) {
       const auth = readStoredAuth();
-      const resolvedWorkspaceId = workspaceId ?? await this.getDefaultWorkspaceId(organizationId);
-      const response = await apiClient.request<{ agent: AgentInstance }>(`/api/v1/organizations/${organizationId}/agents`, {
-        method: "POST",
-        authToken: auth?.session.accessToken,
-        body: JSON.stringify({ templateId, workspaceId: resolvedWorkspaceId }),
-      });
+      const resolvedWorkspaceId = workspaceId ?? (await this.getDefaultWorkspaceId(organizationId));
+      const response = await apiClient.request<{ agent: AgentInstance }>(
+        `/api/v1/organizations/${organizationId}/agents`,
+        {
+          method: "POST",
+          authToken: auth?.session.accessToken,
+          body: JSON.stringify({ templateId, workspaceId: resolvedWorkspaceId }),
+        },
+      );
       return response.agent;
     }
 
@@ -96,9 +112,11 @@ export class AgentServiceClass {
     if (!template) throw new Error("Template not found");
 
     const instances = this.getInstancesDb();
-    
+
     // Check if already active
-    const existing = instances.find(i => i.organizationId === organizationId && i.agentTemplateId === templateId);
+    const existing = instances.find(
+      (i) => i.organizationId === organizationId && i.agentTemplateId === templateId,
+    );
     if (existing) {
       if (existing.status !== "active") {
         existing.status = "active";
@@ -118,20 +136,55 @@ export class AgentServiceClass {
       configuration: {
         version: "1.0",
         general: { description: template.description },
-        instructions: { systemInstructions: "", objectives: "", constraints: "", responseStyle: "" },
-        behavior: { tone: "Neutral", formality: "Standard", creativity: 50, responseLength: "Medium", language: "English", communicationStyle: "Direct" },
+        instructions: {
+          systemInstructions: "",
+          objectives: "",
+          constraints: "",
+          responseStyle: "",
+        },
+        behavior: {
+          tone: "Neutral",
+          formality: "Standard",
+          creativity: 50,
+          responseLength: "Medium",
+          language: "English",
+          communicationStyle: "Direct",
+        },
         inputs: [],
         outputs: [],
         tools: [],
         knowledge: [],
-        model: { provider: "Platform Default", modelSelection: "Auto", responseQuality: "Balanced", temperature: 0.7, tokenLimits: 2048 },
-        memory: { enabled: true, conversationContext: true, persistentMemory: false, organizationKnowledgeFoundation: false },
-        notifications: { inApp: true, email: false, onSuccess: false, onFailure: true, requireApproval: false },
-        advanced: { executionLimits: 100, timeoutSeconds: 30, retryCount: 1, loggingLevel: "Info", debugMode: false }
+        model: {
+          provider: "Platform Default",
+          modelSelection: "Auto",
+          responseQuality: "Balanced",
+          temperature: 0.7,
+          tokenLimits: 2048,
+        },
+        memory: {
+          enabled: true,
+          conversationContext: true,
+          persistentMemory: false,
+          organizationKnowledgeFoundation: false,
+        },
+        notifications: {
+          inApp: true,
+          email: false,
+          onSuccess: false,
+          onFailure: true,
+          requireApproval: false,
+        },
+        advanced: {
+          executionLimits: 100,
+          timeoutSeconds: 30,
+          retryCount: 1,
+          loggingLevel: "Info",
+          debugMode: false,
+        },
       },
       enabled: true,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     instances.push(newInstance);
@@ -139,19 +192,26 @@ export class AgentServiceClass {
     return newInstance;
   }
 
-  async updateConfiguration(id: string, organizationId: string, config: Partial<AgentConfiguration>): Promise<AgentInstance> {
+  async updateConfiguration(
+    id: string,
+    organizationId: string,
+    config: Partial<AgentConfiguration>,
+  ): Promise<AgentInstance> {
     if (!isTestRuntime()) {
       const auth = readStoredAuth();
-      const response = await apiClient.request<{ agent: AgentInstance }>(`/api/v1/organizations/${organizationId}/agents/${id}/configuration`, {
-        method: "PATCH",
-        authToken: auth?.session.accessToken,
-        body: JSON.stringify({ configuration: config }),
-      });
+      const response = await apiClient.request<{ agent: AgentInstance }>(
+        `/api/v1/organizations/${organizationId}/agents/${id}/configuration`,
+        {
+          method: "PATCH",
+          authToken: auth?.session.accessToken,
+          body: JSON.stringify({ configuration: config }),
+        },
+      );
       return response.agent;
     }
 
     const instances = this.getInstancesDb();
-    const instance = instances.find(i => i.id === id && i.organizationId === organizationId);
+    const instance = instances.find((i) => i.id === id && i.organizationId === organizationId);
     if (!instance) throw new Error("Instance not found");
 
     instance.configuration = { ...instance.configuration, ...config };
@@ -164,16 +224,19 @@ export class AgentServiceClass {
   async pauseInstance(id: string, organizationId: string): Promise<AgentInstance> {
     if (!isTestRuntime()) {
       const auth = readStoredAuth();
-      const response = await apiClient.request<{ agent: AgentInstance }>(`/api/v1/organizations/${organizationId}/agents/${id}/status`, {
-        method: "PATCH",
-        authToken: auth?.session.accessToken,
-        body: JSON.stringify({ status: "paused" }),
-      });
+      const response = await apiClient.request<{ agent: AgentInstance }>(
+        `/api/v1/organizations/${organizationId}/agents/${id}/status`,
+        {
+          method: "PATCH",
+          authToken: auth?.session.accessToken,
+          body: JSON.stringify({ status: "paused" }),
+        },
+      );
       return response.agent;
     }
 
     const instances = this.getInstancesDb();
-    const instance = instances.find(i => i.id === id && i.organizationId === organizationId);
+    const instance = instances.find((i) => i.id === id && i.organizationId === organizationId);
     if (!instance) throw new Error("Instance not found");
 
     instance.status = "paused";
@@ -194,9 +257,19 @@ export class AgentServiceClass {
   }
 
   async getRuns(organizationId: string, instanceId?: string): Promise<AgentRun[]> {
-    let runs = this.getRunsDb().filter(r => r.organizationId === organizationId);
+    if (!isTestRuntime()) {
+      const auth = readStoredAuth();
+      const path = instanceId
+        ? `/api/v1/organizations/${organizationId}/agents/${instanceId}/runs`
+        : `/api/v1/organizations/${organizationId}/agent-runs`;
+      const response = await apiClient.request<{ runs: AgentRun[] }>(path, {
+        authToken: auth?.session.accessToken,
+      });
+      return response.runs;
+    }
+    let runs = this.getRunsDb().filter((r) => r.organizationId === organizationId);
     if (instanceId) {
-      runs = runs.filter(r => r.agentInstanceId === instanceId);
+      runs = runs.filter((r) => r.agentInstanceId === instanceId);
     }
     // Sort by startedAt descending
     return runs.sort((a, b) => {
@@ -206,17 +279,56 @@ export class AgentServiceClass {
     });
   }
 
-  async saveAgentRun(run: AgentRun): Promise<void> {
+  async saveAgentRun(run: AgentRun): Promise<AgentRun> {
+    if (!isTestRuntime()) {
+      const auth = readStoredAuth();
+      const response = await apiClient.request<{ run: AgentRun }>(
+        `/api/v1/organizations/${run.organizationId}/agents/${run.agentInstanceId}/runs`,
+        {
+          method: "POST",
+          authToken: auth?.session.accessToken,
+          body: JSON.stringify({
+            input: run.input,
+            conversationId: run.metadata?.conversationId,
+            executionMode: run.metadata?.executionMode ?? "manual",
+            metadata: run.metadata ?? {},
+            idempotencyKey: run.metadata?.idempotencyKey,
+          }),
+        },
+      );
+      return response.run;
+    }
     const runs = this.getRunsDb();
     runs.push(run);
     this.saveRunsDb(runs);
+    return run;
   }
 
   async updateAgentRun(runId: string, updates: Partial<AgentRun>): Promise<AgentRun> {
+    if (!isTestRuntime()) {
+      const organizationId = updates.organizationId;
+      if (!organizationId) throw new Error(`Organization is required to update run ${runId}.`);
+      const auth = readStoredAuth();
+      const response = await apiClient.request<{ run: AgentRun }>(
+        `/api/v1/organizations/${organizationId}/agent-runs/${runId}`,
+        {
+          method: "PATCH",
+          authToken: auth?.session.accessToken,
+          body: JSON.stringify({
+            status: updates.status,
+            output: updates.output,
+            error: updates.error,
+            metadata: updates.metadata,
+            duration: updates.duration,
+          }),
+        },
+      );
+      return response.run;
+    }
     const runs = this.getRunsDb();
-    const index = runs.findIndex(r => r.id === runId);
+    const index = runs.findIndex((r) => r.id === runId);
     if (index === -1) throw new Error("Run not found");
-    
+
     runs[index] = { ...runs[index], ...updates };
     this.saveRunsDb(runs);
     return runs[index];
@@ -224,9 +336,12 @@ export class AgentServiceClass {
 
   private async getDefaultWorkspaceId(organizationId: string): Promise<string> {
     const auth = readStoredAuth();
-    const response = await apiClient.request<{ workspaces: Array<{ id: string }> }>(`/api/v1/organizations/${organizationId}/workspaces`, {
-      authToken: auth?.session.accessToken,
-    });
+    const response = await apiClient.request<{ workspaces: Array<{ id: string }> }>(
+      `/api/v1/organizations/${organizationId}/workspaces`,
+      {
+        authToken: auth?.session.accessToken,
+      },
+    );
     const workspaceId = response.workspaces[0]?.id;
     if (!workspaceId) throw new Error("Workspace not found.");
     return workspaceId;
@@ -243,16 +358,29 @@ const mockTemplates: AT[] = [
     id: "template-worksheet-creator",
     name: "Worksheet Creator",
     slug: "worksheet-creator",
-    description: "Automatically generates customized student worksheets and quizzes based on subject and difficulty.",
+    description:
+      "Automatically generates customized student worksheets and quizzes based on subject and difficulty.",
     version: "1.0.0",
     category: "Education",
     industry: "Education",
     status: "available",
     icon: "📝",
     capabilities: [
-      { key: "generate", name: "Educational content generation", description: "Generates educational materials" },
-      { key: "transform", name: "Worksheet structuring", description: "Structures content into a worksheet format" },
-      { key: "analyze", name: "Difficulty control", description: "Adjusts content based on grade and difficulty" }
+      {
+        key: "generate",
+        name: "Educational content generation",
+        description: "Generates educational materials",
+      },
+      {
+        key: "transform",
+        name: "Worksheet structuring",
+        description: "Structures content into a worksheet format",
+      },
+      {
+        key: "analyze",
+        name: "Difficulty control",
+        description: "Adjusts content based on grade and difficulty",
+      },
     ],
     requiredPermissions: ["module.education.view"],
     configurationSchema: {},
@@ -261,7 +389,7 @@ const mockTemplates: AT[] = [
     tools: [],
     metadata: {},
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
   },
   {
     id: "template-sales-analyzer",
@@ -273,7 +401,9 @@ const mockTemplates: AT[] = [
     industry: "corporate",
     status: "available",
     icon: "📈",
-    capabilities: [{ key: "analyze", name: "Data Analysis", description: "Analyzes structured data" }],
+    capabilities: [
+      { key: "analyze", name: "Data Analysis", description: "Analyzes structured data" },
+    ],
     requiredPermissions: ["module.sales.view"],
     configurationSchema: {},
     inputSchema: {},
@@ -281,15 +411,15 @@ const mockTemplates: AT[] = [
     tools: [],
     metadata: {},
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  }
+    updatedAt: new Date().toISOString(),
+  },
 ];
 
-mockTemplates.forEach(t => AgentRegistry.register(t));
+mockTemplates.forEach((t) => AgentRegistry.register(t));
 
 function registerDefaultTemplates() {
   if (AgentRegistry.getAll().length > 0) return;
-  mockTemplates.forEach(t => AgentRegistry.register(t));
+  mockTemplates.forEach((t) => AgentRegistry.register(t));
 }
 
 function isTestRuntime() {

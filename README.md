@@ -4,13 +4,70 @@ Multi-Industry AI Operating System for Organizations
 
 HAZA AIOS is a modular platform for organization operations, tenant workspaces, industry-specific modules, AI agent workflows, automation, analytics, and reporting. The repository currently contains a React web application, a TypeScript API, shared UI/package foundations, persistent platform/auth/SIS backend services, and the active database retrofit documentation.
 
-The Education Student Information System (SIS) is the most developed industry module. Platform core, SIS persistence, module registry persistence, and AI Agent registry/configuration persistence are implemented through DB-11. Later phases are planned for agent runtime, memory, knowledge, workflow, audit, metering, and production hardening persistence.
+The Education Student Information System (SIS) is the most developed industry module. Platform core, SIS persistence, module registry persistence, AI Agent registry/configuration persistence, and agent runtime history persistence are implemented through DB-13. Later phases are planned for agent knowledge, workflow, audit, metering, and production hardening persistence.
 
 ## Public Showcase Notice
 
 This repository is public for portfolio/evaluation purposes. Copyright retained. No commercial reuse, redistribution, sublicensing, or production deployment is permitted without written permission from HAZA AIOS.
 
 This is a source-available showcase repository, not an open-source project. It is intended to demonstrate engineering work, architecture, and implementation progress for review purposes.
+
+## What This App Is Built For
+
+HAZA AIOS is being built as an AI-native operating system for organizations that need one workspace for operations, industry modules, data, automation, reporting, and AI-assisted work.
+
+The current implementation focuses on education because schools, colleges, and training organizations need tightly connected workflows across students, staff, academics, attendance, timetables, examinations, results, fees, communication, parent/student self-service, and operational reporting. The same platform shell is designed to support other industries later by activating different modules without rewriting the core organization, workspace, authentication, module registry, and agent foundations.
+
+The product direction is not a simple landing page or a single-purpose school app. It is a modular SaaS-style platform where each organization has its own tenant workspace, permissions, data boundaries, active modules, and AI agent capabilities.
+
+## Application Screenshots
+
+These screenshots are captured from the current local application before the DB-14 phase.
+
+### Public Landing Page
+
+![HAZA AIOS public landing page](docs/assets/screenshots/public-landing.png)
+
+### Authenticated Dashboard
+
+![HAZA AIOS authenticated dashboard](docs/assets/screenshots/dashboard.png)
+
+### Education Workspace
+
+![HAZA AIOS education workspace](docs/assets/screenshots/education-workspace.png)
+
+### Module Registry
+
+![HAZA AIOS module registry](docs/assets/screenshots/module-registry.png)
+
+### SIS Analytics & Reporting
+
+![HAZA AIOS SIS analytics dashboard](docs/assets/screenshots/sis-analytics.png)
+
+### AI Agent Marketplace
+
+![HAZA AIOS AI agent marketplace](docs/assets/screenshots/agent-marketplace.png)
+
+## Implementation Evidence
+
+The repository is managed through scoped branches, validation, pull requests, and normal merges into `develop`. The current public state includes database retrofit work through DB-13.
+
+### DB-13 Code Evidence
+
+![HAZA AIOS DB-13 agent memory implementation evidence](docs/assets/screenshots/code-db13-evidence.png)
+
+### GitHub PR Workflow Evidence
+
+![HAZA AIOS DB-13 GitHub pull request workflow](docs/assets/screenshots/github-pr-db13.png)
+
+### Current Delivery Workflow
+
+1. Update local `develop` from GitHub.
+2. Create a focused `feature/*` or `docs/*` branch.
+3. Implement the scoped app, database, or documentation change.
+4. Run typecheck, lint, tests, builds, migration checks, and targeted integration tests.
+5. Review the diff locally, commit, push, and open a pull request into `develop`.
+6. Review and merge through a normal GitHub PR merge, then fast-forward local `develop`.
 
 ## Vision
 
@@ -48,16 +105,16 @@ The backend is a custom TypeScript Node HTTP application using a small internal 
 
 ## Technology Stack
 
-| Area | Current stack |
-| --- | --- |
-| Frontend | React `^19.2.8`, TypeScript `~5.8.3`, Vite `^8.2.0` |
-| Styling/UI | Tailwind CSS `^4.3.3`, `@haza-aios/ui`, Radix UI, shadcn-style component structure |
-| Motion/icons | Framer Motion/Motion, Font Awesome, Lucide via shared UI package |
-| Backend | Node.js HTTP server, TypeScript, `tsx` for development |
-| Database | MySQL, Drizzle ORM `^0.45.2`, Drizzle Kit `^0.31.10`, `mysql2` |
-| Testing | Vitest `^4.1.10`, Testing Library, jsdom |
-| Tooling | npm workspaces, ESLint, Prettier |
-| GitHub workflow | Feature/docs branches merged into `develop` through pull requests |
+| Area            | Current stack                                                                      |
+| --------------- | ---------------------------------------------------------------------------------- |
+| Frontend        | React `^19.2.8`, TypeScript `~5.8.3`, Vite `^8.2.0`                                |
+| Styling/UI      | Tailwind CSS `^4.3.3`, `@haza-aios/ui`, Radix UI, shadcn-style component structure |
+| Motion/icons    | Framer Motion/Motion, Font Awesome, Lucide via shared UI package                   |
+| Backend         | Node.js HTTP server, TypeScript, `tsx` for development                             |
+| Database        | MySQL, Drizzle ORM `^0.45.2`, Drizzle Kit `^0.31.10`, `mysql2`                     |
+| Testing         | Vitest `^4.1.10`, Testing Library, jsdom                                           |
+| Tooling         | npm workspaces, ESLint, Prettier                                                   |
+| GitHub workflow | Feature/docs branches merged into `develop` through pull requests                  |
 
 ## Repository Structure
 
@@ -72,7 +129,7 @@ haza-aios/
 |   `-- types/               # Shared types package placeholder
 |-- docs/
 |   |-- architecture/        # Platform, tenancy, auth, modules, agent architecture
-|   |-- database-migration/  # DB-1 through DB-11 implementation documentation
+|   |-- database-migration/  # DB-1 through DB-13 implementation documentation
 |   |-- development/         # Frontend and design-system documentation
 |   `-- product/             # Product documentation area
 |-- scripts/                 # Repository scripts
@@ -94,27 +151,27 @@ Implemented persistent platform capabilities include:
 - Server-side authentication, tenant context resolution, permission checks, and tenant-scoped repository access.
 - Workspace shell, organization switching, protected routes, member management, active modules, settings, and platform-admin UI foundations.
 
-Module registry persistence is implemented through DB-10. DB-11 adds persistent AI Agent registry and configuration foundations, while later database phases are planned for runtime, conversations, memory, knowledge, and workflow persistence.
+Module registry persistence is implemented through DB-10. DB-11 adds persistent AI Agent registry and configuration foundations. DB-12 adds persistent agent runtime runs, conversations, and messages. DB-13 adds persistent long-term agent memory. Later database phases are planned for knowledge and workflow persistence.
 
 ## Education SIS
 
-Education is currently the most complete industry module. Its data-bearing workflows have been migrated through DB-9, with platform module registry persistence through DB-10 and AI Agent registry/configuration persistence through DB-11.
+Education is currently the most complete industry module. Its data-bearing workflows have been migrated through DB-9, with platform module registry persistence through DB-10, AI Agent registry/configuration persistence through DB-11, agent runtime history persistence through DB-12, and long-term agent memory persistence through DB-13.
 
-| Module | Original Epic | Persistence Status | Backend/API Status |
-| --- | --- | --- | --- |
-| Student Management | 10A | Database-backed | API-backed |
-| Staff & Teacher Management | 10B | Database-backed | API-backed |
-| Academic Structure | 10C | Database-backed | API-backed |
-| Enrollment | 10A/10C | Database-backed | API-backed |
-| Attendance | 10D | Database-backed | API-backed |
-| Timetable | 10E | Database-backed | API-backed |
-| Examinations | 10F | Database-backed | API-backed |
-| Assessments | 10F | Database-backed | API-backed |
-| Results | 10F | Database-backed | API-backed |
-| Finance | 10G | Database-backed | API-backed |
-| Communication | 10H | Database-backed | API-backed |
-| Parent/Student Portal | 10I | Policy/request data database-backed; dashboards are authorized projections | API-backed |
-| Analytics & Reporting | 10J | Derived from persisted SIS tables | API-backed |
+| Module                     | Original Epic | Persistence Status                                                         | Backend/API Status |
+| -------------------------- | ------------- | -------------------------------------------------------------------------- | ------------------ |
+| Student Management         | 10A           | Database-backed                                                            | API-backed         |
+| Staff & Teacher Management | 10B           | Database-backed                                                            | API-backed         |
+| Academic Structure         | 10C           | Database-backed                                                            | API-backed         |
+| Enrollment                 | 10A/10C       | Database-backed                                                            | API-backed         |
+| Attendance                 | 10D           | Database-backed                                                            | API-backed         |
+| Timetable                  | 10E           | Database-backed                                                            | API-backed         |
+| Examinations               | 10F           | Database-backed                                                            | API-backed         |
+| Assessments                | 10F           | Database-backed                                                            | API-backed         |
+| Results                    | 10F           | Database-backed                                                            | API-backed         |
+| Finance                    | 10G           | Database-backed                                                            | API-backed         |
+| Communication              | 10H           | Database-backed                                                            | API-backed         |
+| Parent/Student Portal      | 10I           | Policy/request data database-backed; dashboards are authorized projections | API-backed         |
+| Analytics & Reporting      | 10J           | Derived from persisted SIS tables                                          | API-backed         |
 
 ### SIS Data Flow
 
@@ -152,27 +209,27 @@ React -> API -> Authentication -> Tenant Context -> RBAC -> Domain Services -> R
 
 ### Database Roadmap
 
-| Phase | Scope | Status |
-| --- | --- | --- |
-| DB-0 | Architecture & Migration Baseline | COMPLETE |
-| DB-1 | Backend Application Foundation | COMPLETE |
-| DB-2 | MySQL, ORM & Migration Foundation | COMPLETE |
-| DB-3 | Organization / Workspace / Tenant Core | COMPLETE |
-| DB-4 | Authentication, Users, Roles & Permissions | COMPLETE |
-| DB-5 | SIS Core Persistence | COMPLETE |
-| DB-6 | Attendance & Timetable Persistence | COMPLETE |
-| DB-7 | Examination, Assessment & Results Persistence | COMPLETE |
-| DB-8 | Finance, Communication & Portal Persistence | COMPLETE |
-| DB-9 | SIS Analytics & Reporting Persistence | COMPLETE |
-| DB-10 | Platform Core & Module Registry Persistence | COMPLETE |
-| DB-11 | AI Agent Registry & Configuration Persistence | COMPLETE |
-| DB-12 | Agent Runtime Persistence | PLANNED |
-| DB-13 | Agent Memory Persistence | PLANNED |
-| DB-14 | Agent Knowledge Persistence | PLANNED |
-| DB-15 | Workflow Persistence | PLANNED |
-| DB-16 | Audit/Operational Persistence | PLANNED |
-| DB-17 | Usage, Metering & SaaS Persistence | PLANNED |
-| DB-18 | Production Hardening | PLANNED |
+| Phase | Scope                                          | Status   |
+| ----- | ---------------------------------------------- | -------- |
+| DB-0  | Architecture & Migration Baseline              | COMPLETE |
+| DB-1  | Backend Application Foundation                 | COMPLETE |
+| DB-2  | MySQL, ORM & Migration Foundation              | COMPLETE |
+| DB-3  | Organization / Workspace / Tenant Core         | COMPLETE |
+| DB-4  | Authentication, Users, Roles & Permissions     | COMPLETE |
+| DB-5  | SIS Core Persistence                           | COMPLETE |
+| DB-6  | Attendance & Timetable Persistence             | COMPLETE |
+| DB-7  | Examination, Assessment & Results Persistence  | COMPLETE |
+| DB-8  | Finance, Communication & Portal Persistence    | COMPLETE |
+| DB-9  | SIS Analytics & Reporting Persistence          | COMPLETE |
+| DB-10 | Platform Core & Module Registry Persistence    | COMPLETE |
+| DB-11 | AI Agent Registry & Configuration Persistence  | COMPLETE |
+| DB-12 | Agent Runtime, Runs & Conversation Persistence | COMPLETE |
+| DB-13 | Agent Memory Persistence                       | COMPLETE |
+| DB-14 | Agent Knowledge Persistence                    | PLANNED  |
+| DB-15 | Workflow Persistence                           | PLANNED  |
+| DB-16 | Audit/Operational Persistence                  | PLANNED  |
+| DB-17 | Usage, Metering & SaaS Persistence             | PLANNED  |
+| DB-18 | Production Hardening                           | PLANNED  |
 
 ## AI Agent Platform
 
@@ -184,7 +241,7 @@ The repository includes an industry-neutral AI Agent Platform foundation in the 
 - Agent runtime, execution manager, result processor, context engine, tool registry, memory, knowledge, conversation, and workflow service prototypes.
 - Workspace routes for discovery, active agents, configuration, execution, and run history.
 
-Current status includes persistent agent template, definition, activation, configuration, model-reference, tool-assignment, and tenant-ownership foundations through DB-11. Later phases are planned for agent runtime, conversations, memory, knowledge, and workflows. Agents are intended to operate through permission-gated tools provided by host modules rather than directly mutating domain tables.
+Current status includes persistent agent template, definition, activation, configuration, model-reference, tool-assignment, tenant-ownership, run-history, conversation, and message foundations through DB-13. Later phases are planned for agent knowledge and workflows. Agents are intended to operate through permission-gated tools provided by host modules rather than directly mutating domain tables.
 
 ### Agent Roadmap
 
@@ -244,14 +301,14 @@ Frontend storage may still be used for legitimate UI state, preferences, test fi
 
 ## Current Project Status
 
-| Area | Status | Notes |
-| --- | --- | --- |
-| Platform Foundation | COMPLETE | Core shell, workspaces, organizations, admin foundations, module concepts |
-| Education SIS | COMPLETE through Epic 10J | Most developed industry module |
-| SIS Database Retrofit | COMPLETE through DB-9 | SIS business data and analytics are API/database-backed |
-| AI Agent Platform | PROTOTYPE / IN PROGRESS | Frontend platform, runtime, builder, and workflow foundations exist |
-| Agent Database Retrofit | COMPLETE through DB-11 | Registry/configuration persistence complete; runtime/memory/knowledge/workflow phases planned |
-| Production Deployment | PLANNED | Hardening and deployment work remains |
+| Area                    | Status                    | Notes                                                                                                                 |
+| ----------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Platform Foundation     | COMPLETE                  | Core shell, workspaces, organizations, admin foundations, module concepts                                             |
+| Education SIS           | COMPLETE through Epic 10J | Most developed industry module                                                                                        |
+| SIS Database Retrofit   | COMPLETE through DB-9     | SIS business data and analytics are API/database-backed                                                               |
+| AI Agent Platform       | PROTOTYPE / IN PROGRESS   | Frontend platform, runtime, builder, and workflow foundations exist                                                   |
+| Agent Database Retrofit | COMPLETE through DB-13    | Registry/configuration, runtime history, and long-term memory persistence complete; knowledge/workflow phases planned |
+| Production Deployment   | PLANNED                   | Hardening and deployment work remains                                                                                 |
 
 ## Major Completed Development Areas
 
@@ -259,32 +316,32 @@ Frontend storage may still be used for legitimate UI state, preferences, test fi
 - Organization/workspace architecture, tenant switching, members, settings, module activation, and platform admin foundations.
 - Education SIS Epic 10A through 10J.
 - AI Agent Platform foundation through registry, marketplace, builder, runtime, memory, knowledge, conversation, and workflow prototype layers.
-- Database retrofit DB-0 through DB-11.
+- Database retrofit DB-0 through DB-13.
 
 ### SIS Epics
 
-| Epic | Module | Current Status |
-| --- | --- | --- |
-| 10A | Student Management | Implemented; database/API-backed |
-| 10B | Staff & Teacher Management | Implemented; database/API-backed |
-| 10C | Academic Structure | Implemented; database/API-backed |
-| 10D | Attendance | Implemented; database/API-backed |
-| 10E | Timetable | Implemented; database/API-backed |
-| 10F | Examination / Assessment / Results | Implemented; database/API-backed |
-| 10G | Finance | Implemented; database/API-backed |
-| 10H | Communication | Implemented; database/API-backed |
-| 10I | Parent & Student Portal | Implemented; API-backed with persisted policy/request data |
-| 10J | Analytics & Reporting | Implemented; API/database-derived |
+| Epic | Module                             | Current Status                                             |
+| ---- | ---------------------------------- | ---------------------------------------------------------- |
+| 10A  | Student Management                 | Implemented; database/API-backed                           |
+| 10B  | Staff & Teacher Management         | Implemented; database/API-backed                           |
+| 10C  | Academic Structure                 | Implemented; database/API-backed                           |
+| 10D  | Attendance                         | Implemented; database/API-backed                           |
+| 10E  | Timetable                          | Implemented; database/API-backed                           |
+| 10F  | Examination / Assessment / Results | Implemented; database/API-backed                           |
+| 10G  | Finance                            | Implemented; database/API-backed                           |
+| 10H  | Communication                      | Implemented; database/API-backed                           |
+| 10I  | Parent & Student Portal            | Implemented; API-backed with persisted policy/request data |
+| 10J  | Analytics & Reporting              | Implemented; API/database-derived                          |
 
 ## Current Development Focus
 
 Current active database boundary:
 
 ```text
-DB-11 - AI Agent Registry & Configuration Persistence
+DB-13 - Agent Memory Persistence
 ```
 
-Later phases are expected to migrate remaining AI Agent/platform persistence: runtime, conversations, memory, knowledge, workflow, audit/operations, usage/metering, and production hardening.
+Later phases are expected to migrate remaining AI Agent/platform persistence: knowledge, workflow, audit/operations, usage/metering, and production hardening.
 
 ## Development Setup
 
@@ -350,25 +407,25 @@ For database integration tests, configure the test database values from `.env.ex
 
 ## Available Commands
 
-| Command | Purpose |
-| --- | --- |
-| `npm run dev:web` | Start the web app through the web workspace |
-| `npm run dev:api` | Start the API in watch mode |
-| `npm run build:web` | Build the web app |
-| `npm run build:api` | Build the API |
-| `npm run lint:web` | Run web ESLint |
-| `npm run lint:api` | Run API ESLint |
-| `npm run typecheck:web` | Typecheck the web app |
-| `npm run typecheck:api` | Typecheck the API |
-| `npm run test:api` | Run API tests |
-| `npm run test -w apps/web` | Run web tests |
-| `npm run db:create` | Create/configure the local database from API tooling |
-| `npm run db:check` | Validate Drizzle schema/migration state |
-| `npm run db:generate` | Generate Drizzle migration artifacts |
-| `npm run db:migrate` | Apply database migrations |
-| `npm run db:migrate:status` | Report migration status |
-| `npm run format:check` | Check formatting |
-| `npm run check:web` | Run web typecheck, lint, format check, and build |
+| Command                     | Purpose                                              |
+| --------------------------- | ---------------------------------------------------- |
+| `npm run dev:web`           | Start the web app through the web workspace          |
+| `npm run dev:api`           | Start the API in watch mode                          |
+| `npm run build:web`         | Build the web app                                    |
+| `npm run build:api`         | Build the API                                        |
+| `npm run lint:web`          | Run web ESLint                                       |
+| `npm run lint:api`          | Run API ESLint                                       |
+| `npm run typecheck:web`     | Typecheck the web app                                |
+| `npm run typecheck:api`     | Typecheck the API                                    |
+| `npm run test:api`          | Run API tests                                        |
+| `npm run test -w apps/web`  | Run web tests                                        |
+| `npm run db:create`         | Create/configure the local database from API tooling |
+| `npm run db:check`          | Validate Drizzle schema/migration state              |
+| `npm run db:generate`       | Generate Drizzle migration artifacts                 |
+| `npm run db:migrate`        | Apply database migrations                            |
+| `npm run db:migrate:status` | Report migration status                              |
+| `npm run format:check`      | Check formatting                                     |
+| `npm run check:web`         | Run web typecheck, lint, format check, and build     |
 
 ## Testing
 
@@ -430,18 +487,14 @@ For data-bearing features, UI alone is not complete. The project standard is:
 
 - Platform foundation and organization workspace.
 - Education SIS Epic 10A through 10J.
-- Database retrofit DB-0 through DB-11.
+- Database retrofit DB-0 through DB-13.
 
 ### Next
 
-- DB-11 - AI Agent Registry & Configuration Persistence.
+- DB-14 - Knowledge Base, Documents & Retrieval Persistence.
 
 ### Planned
 
-- DB-11 - AI Agent Registry Persistence.
-- DB-12 - Agent Runtime Persistence.
-- DB-13 - Agent Memory Persistence.
-- DB-14 - Agent Knowledge Persistence.
 - DB-15 - Workflow Persistence.
 - DB-16 - Audit/Operational Persistence.
 - DB-17 - Usage, Metering & SaaS Persistence.
@@ -460,7 +513,11 @@ For data-bearing features, UI alone is not complete. The project standard is:
 - [DB-6 Attendance & Timetable Persistence](docs/database-migration/19-db6-attendance-timetable-persistence.md)
 - [DB-7 Examination, Assessment & Results Persistence](docs/database-migration/20-db7-examination-assessment-results-persistence.md)
 - [DB-8 Finance, Communication & Portal Persistence](docs/database-migration/21-db8-finance-communication-portal-persistence.md)
-- [DB-9 SIS Analytics & Reporting Persistence](docs/database-migration/22-db9-sis-analytics-reporting-persistence.md)`r`n- [DB-10 Platform Core & Module Registry Persistence](docs/database-migration/23-db10-platform-core-module-registry-persistence.md)`r`n- [DB-11 AI Agent Registry & Configuration Persistence](docs/database-migration/24-db11-ai-agent-registry-configuration-persistence.md)
+- [DB-9 SIS Analytics & Reporting Persistence](docs/database-migration/22-db9-sis-analytics-reporting-persistence.md)
+- [DB-10 Platform Core & Module Registry Persistence](docs/database-migration/23-db10-platform-core-module-registry-persistence.md)
+- [DB-11 AI Agent Registry & Configuration Persistence](docs/database-migration/24-db11-ai-agent-registry-configuration-persistence.md)
+- [DB-12 Agent Runtime, Runs & Conversation Persistence](docs/database-migration/25-db12-agent-runtime-runs-conversation-persistence.md)
+- [DB-13 Agent Memory Persistence](docs/database-migration/26-db13-agent-memory-persistence.md)
 - [Organization Workspace Architecture](docs/architecture/organization-workspace.md)
 - [Organization & Multi-Tenancy Architecture](docs/architecture/organizations.md)
 - [Authentication Architecture](docs/architecture/authentication.md)
@@ -474,9 +531,8 @@ For data-bearing features, UI alone is not complete. The project standard is:
 
 ## Project Stage
 
-HAZA AIOS is under active development. Platform foundations and the Education SIS are substantially implemented, SIS persistence is complete through DB-9, platform module registry persistence is complete through DB-10, and AI Agent registry/configuration persistence is complete through DB-11. Later agent runtime persistence, production deployment hardening, and broader multi-industry modules remain planned/in progress.
+HAZA AIOS is under active development. Platform foundations and the Education SIS are substantially implemented, SIS persistence is complete through DB-9, platform module registry persistence is complete through DB-10, AI Agent registry/configuration persistence is complete through DB-11, runtime run/conversation persistence is complete through DB-12, and long-term agent memory persistence is complete through DB-13. DB-14 knowledge persistence, workflow persistence, production deployment hardening, and broader multi-industry modules remain planned/in progress.
 
 ## License
 
 This repository is source-available for portfolio/evaluation purposes only. It is not open source. See [LICENSE](LICENSE).
-

@@ -15,12 +15,18 @@ export class MemoryRetrievalServiceClass {
    */
   async retrieveRelevantMemory(options: MemoryRetrievalOptions): Promise<Memory[]> {
     const { organizationId, userId, agentInstanceId, conversationId, limit = 10 } = options;
-    
+
     // 1. Validate Organization (enforced by MemoryService getting by org)
-    const allOrgMemories = await MemoryService.getMemoriesByOrganization(organizationId);
-    
+    const allOrgMemories = await MemoryService.getMemoriesForAgent({
+      organizationId,
+      userId,
+      agentInstanceId,
+      conversationId,
+      limit: 100,
+    });
+
     // 2. Filter memories based on authorized scope and privacy
-    const relevantMemories = allOrgMemories.filter(memory => {
+    const relevantMemories = allOrgMemories.filter((memory) => {
       // Must be active and not expired
       if (memory.status !== "active") return false;
       if (memory.expiresAt && new Date(memory.expiresAt) < new Date()) return false;
@@ -30,19 +36,19 @@ export class MemoryRetrievalServiceClass {
           // For Epic 18: Assuming all agents can see org memory if authorized.
           // In reality, this would check agent permissions against org memory tags.
           return true;
-          
+
         case "user":
           // Must belong to the exact user
           return memory.userId === userId;
-          
+
         case "agent":
           // Must belong to the exact agent instance
           return memory.agentInstanceId === agentInstanceId;
-          
+
         case "conversation":
           // Must belong to the exact conversation
           return conversationId && memory.conversationId === conversationId;
-          
+
         default:
           return false;
       }

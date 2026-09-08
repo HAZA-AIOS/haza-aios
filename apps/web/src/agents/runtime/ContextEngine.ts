@@ -37,14 +37,14 @@ export class ContextEngineClass {
     }
     contextPackage.task = {
       inputStr: taskContextStr,
-      mode: run.metadata?.executionMode || "manual"
+      mode: run.metadata?.executionMode || "manual",
     };
 
     // 4. Knowledge Retrieval (The core of Epic 17)
     // We only fetch knowledge the agent is explicitly authorized to access
     const authorizedKnowledgeIds = instance.configuration.knowledge || [];
     contextPackage.knowledge = [];
-    
+
     if (authorizedKnowledgeIds.length > 0) {
       // In this Epic, we pull the entirety of the authorized knowledge records directly.
       // In a more complex architecture, we would run semantic search over them.
@@ -55,7 +55,7 @@ export class ContextEngineClass {
             id: kSource.id,
             title: kSource.name,
             content: kSource.content,
-            type: kSource.type
+            type: kSource.type,
           });
         }
       }
@@ -68,10 +68,14 @@ export class ContextEngineClass {
       if (convo) {
         contextPackage.conversation = { id: convo.id, title: convo.title };
         // Fetch last 10 messages for context
-        const recentMessages = await ConversationService.getMessages(conversationId, 10);
-        (contextPackage as any).recentMessages = recentMessages.map(m => ({
+        const recentMessages = await ConversationService.getMessages(
+          conversationId,
+          10,
+          run.organizationId,
+        );
+        (contextPackage as any).recentMessages = recentMessages.map((m) => ({
           role: m.role,
-          content: m.content
+          content: m.content,
         }));
       }
     }
@@ -83,14 +87,14 @@ export class ContextEngineClass {
         userId: run.requestedBy || "unknown_user",
         agentInstanceId: instance.id,
         conversationId,
-        limit: 15
+        limit: 15,
       });
-      
+
       if (memories.length > 0) {
-        (contextPackage as any).memory = memories.map(m => ({
+        (contextPackage as any).memory = memories.map((m) => ({
           scope: m.scope,
           type: m.type,
-          content: m.content
+          content: m.content,
         }));
       }
     }

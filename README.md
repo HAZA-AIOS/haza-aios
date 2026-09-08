@@ -12,6 +12,63 @@ This repository is public for portfolio/evaluation purposes. Copyright retained.
 
 This is a source-available showcase repository, not an open-source project. It is intended to demonstrate engineering work, architecture, and implementation progress for review purposes.
 
+## What This App Is Built For
+
+HAZA AIOS is being built as an AI-native operating system for organizations that need one workspace for operations, industry modules, data, automation, reporting, and AI-assisted work.
+
+The current implementation focuses on education because schools, colleges, and training organizations need tightly connected workflows across students, staff, academics, attendance, timetables, examinations, results, fees, communication, parent/student self-service, and operational reporting. The same platform shell is designed to support other industries later by activating different modules without rewriting the core organization, workspace, authentication, module registry, and agent foundations.
+
+The product direction is not a simple landing page or a single-purpose school app. It is a modular SaaS-style platform where each organization has its own tenant workspace, permissions, data boundaries, active modules, and AI agent capabilities.
+
+## Application Screenshots
+
+These screenshots are captured from the current local application before the DB-14 phase.
+
+### Public Landing Page
+
+![HAZA AIOS public landing page](docs/assets/screenshots/public-landing.png)
+
+### Authenticated Dashboard
+
+![HAZA AIOS authenticated dashboard](docs/assets/screenshots/dashboard.png)
+
+### Education Workspace
+
+![HAZA AIOS education workspace](docs/assets/screenshots/education-workspace.png)
+
+### Module Registry
+
+![HAZA AIOS module registry](docs/assets/screenshots/module-registry.png)
+
+### SIS Analytics & Reporting
+
+![HAZA AIOS SIS analytics dashboard](docs/assets/screenshots/sis-analytics.png)
+
+### AI Agent Marketplace
+
+![HAZA AIOS AI agent marketplace](docs/assets/screenshots/agent-marketplace.png)
+
+## Implementation Evidence
+
+The repository is managed through scoped branches, validation, pull requests, and normal merges into `develop`. The current public state includes database retrofit work through DB-13.
+
+### DB-13 Code Evidence
+
+![HAZA AIOS DB-13 agent memory implementation evidence](docs/assets/screenshots/code-db13-evidence.png)
+
+### GitHub PR Workflow Evidence
+
+![HAZA AIOS DB-13 GitHub pull request workflow](docs/assets/screenshots/github-pr-db13.png)
+
+### Current Delivery Workflow
+
+1. Update local `develop` from GitHub.
+2. Create a focused `feature/*` or `docs/*` branch.
+3. Implement the scoped app, database, or documentation change.
+4. Run typecheck, lint, tests, builds, migration checks, and targeted integration tests.
+5. Review the diff locally, commit, push, and open a pull request into `develop`.
+6. Review and merge through a normal GitHub PR merge, then fast-forward local `develop`.
+
 ## Vision
 
 HAZA AIOS is designed around three cooperating layers:
@@ -474,7 +531,7 @@ For data-bearing features, UI alone is not complete. The project standard is:
 
 ## Project Stage
 
-HAZA AIOS is under active development. Platform foundations and the Education SIS are substantially implemented, SIS persistence is complete through DB-9, platform module registry persistence is complete through DB-10, and AI Agent registry/configuration persistence is complete through DB-11. Later agent runtime persistence, production deployment hardening, and broader multi-industry modules remain planned/in progress.
+HAZA AIOS is under active development. Platform foundations and the Education SIS are substantially implemented, SIS persistence is complete through DB-9, platform module registry persistence is complete through DB-10, AI Agent registry/configuration persistence is complete through DB-11, runtime run/conversation persistence is complete through DB-12, and long-term agent memory persistence is complete through DB-13. DB-14 knowledge persistence, workflow persistence, production deployment hardening, and broader multi-industry modules remain planned/in progress.
 
 ## License
 

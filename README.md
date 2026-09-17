@@ -6,11 +6,11 @@ HAZA AIOS is a modular platform for organization operations, tenant workspaces, 
 
 The Education Student Information System (SIS) is the most developed industry module. Platform core, SIS persistence, module registry persistence, AI Agent registry/configuration persistence, and agent runtime history persistence are implemented through DB-13. Later phases are planned for agent knowledge, workflow, audit, metering, and production hardening persistence.
 
-## Public Showcase Notice
+## Portfolio & Evaluation Notice
 
-This repository is public for portfolio/evaluation purposes. Copyright retained. No commercial reuse, redistribution, sublicensing, or production deployment is permitted without written permission from HAZA AIOS.
+This repository is maintained for portfolio and evaluation purposes and may be shared privately with authorized reviewers. Copyright retained. No commercial reuse, redistribution, sublicensing, or production deployment is permitted without written permission from HAZA AIOS.
 
-This is a source-available showcase repository, not an open-source project. It is intended to demonstrate engineering work, architecture, and implementation progress for review purposes.
+This is proprietary project source, not an open-source project. It is intended to demonstrate engineering work, architecture, and implementation progress for authorized review purposes.
 
 ## What This App Is Built For
 
@@ -32,9 +32,9 @@ These screenshots are captured from the current local application before the DB-
 
 ![HAZA AIOS authenticated dashboard](docs/assets/screenshots/dashboard.png)
 
-### Education Workspace
+### Education Academic Structure
 
-![HAZA AIOS education workspace](docs/assets/screenshots/education-workspace.png)
+![HAZA AIOS education academic structure](docs/assets/screenshots/education-workspace.png)
 
 ### Module Registry
 
@@ -50,7 +50,7 @@ These screenshots are captured from the current local application before the DB-
 
 ## Implementation Evidence
 
-The repository is managed through scoped branches, validation, pull requests, and normal merges into `develop`. The current public state includes database retrofit work through DB-13.
+The repository is managed through scoped branches, validation, pull requests, and normal merges into `develop`. The current repository state includes database retrofit work through DB-13.
 
 ### DB-13 Code Evidence
 

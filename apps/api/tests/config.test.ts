@@ -48,6 +48,18 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ NODE_ENV: "production", API_HOST: "0.0.0.0" })).toThrow("WEB_ORIGIN is required");
   });
 
+  it("uses the hosting platform port when API_PORT is unset", () => {
+    expect(loadConfig({ PORT: "43210" }).port).toBe(43210);
+  });
+
+  it("preserves explicit API_PORT precedence", () => {
+    expect(loadConfig({ API_PORT: "8000", PORT: "43210" }).port).toBe(8000);
+  });
+
+  it.each(["invalid", "0", "65536", "1.5"])("rejects invalid platform port %s", (port) => {
+    expect(() => loadConfig({ PORT: port })).toThrow("PORT must be an integer between 1 and 65535");
+  });
+
   it("requires production database settings", () => {
     expect(() => loadConfig({
       NODE_ENV: "production",

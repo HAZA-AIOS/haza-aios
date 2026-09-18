@@ -31,7 +31,7 @@ const allowedLogLevels = new Set<LogLevel>(["error", "warn", "info", "debug"]);
 export function loadConfig(env: EnvInput = process.env): ApiConfig {
   const nodeEnv = readEnum(env.NODE_ENV, "NODE_ENV", allowedNodeEnvs, "development");
   const host = readString(env.API_HOST, "API_HOST", nodeEnv === "production" ? undefined : "127.0.0.1");
-  const port = readPort(env.API_PORT, "API_PORT", 8000);
+  const port = readPort(env.API_PORT ?? env.PORT, env.API_PORT === undefined ? "PORT" : "API_PORT", 8000);
   const webOrigin = readOrigin(env.WEB_ORIGIN, "WEB_ORIGIN", nodeEnv === "production" ? undefined : "http://localhost:3000");
   const logLevel = readEnum(env.LOG_LEVEL, "LOG_LEVEL", allowedLogLevels, nodeEnv === "production" ? "info" : "debug");
   const bodyLimitBytes = readPositiveInteger(env.API_BODY_LIMIT_BYTES, "API_BODY_LIMIT_BYTES", 1_048_576);

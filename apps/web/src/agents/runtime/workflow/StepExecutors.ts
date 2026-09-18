@@ -7,10 +7,12 @@ import type { WorkflowStep, WorkflowExecutionContext, StepResult } from "./workf
 import { ToolExecutor } from "../tools/ToolExecutor";
 
 export class StepExecutors {
-
-  static async executeAgentStep(step: WorkflowStep, context: WorkflowExecutionContext): Promise<StepResult> {
+  static async executeAgentStep(
+    step: WorkflowStep,
+    context: WorkflowExecutionContext,
+  ): Promise<StepResult> {
     const config = step.configuration;
-    
+
     // Resolve input from context
     let input = config.input || context.task?.input || {};
     if (typeof input === "string" && input.startsWith("{{") && input.endsWith("}}")) {
@@ -21,7 +23,7 @@ export class StepExecutors {
     try {
       const agentInstanceId = config.agentInstanceId || context.agentInstanceId;
       if (!agentInstanceId) throw new Error("No agentInstanceId provided for Agent Step");
-      
+
       const instance = await AgentService.getInstance(agentInstanceId, context.organizationId);
       if (!instance) throw new Error(`Agent ${agentInstanceId} not found`);
 
@@ -31,25 +33,29 @@ export class StepExecutors {
         input = `${input}\n\nPlease respond ONLY with valid JSON.`;
       }
 
-      const run = await Runtime.requestExecution({
-        agentInstanceId,
-        organizationId: context.organizationId,
-        input: input,
-        requestedBy: context.userId,
-        executionMode: "workflow",
-        metadata: {
-          taskId: context.taskId,
-          workflowId: context.workflow.id,
-          stepId: step.id
-        }
-      }, instance, () => AgentService as any);
+      const run = await Runtime.requestExecution(
+        {
+          agentInstanceId,
+          organizationId: context.organizationId,
+          input: input,
+          requestedBy: context.userId,
+          executionMode: "workflow",
+          metadata: {
+            taskId: context.taskId,
+            workflowId: context.workflow.id,
+            stepId: step.id,
+          },
+        },
+        instance,
+        () => AgentService as any,
+      );
 
       // Poll until complete
       let currentRun = run;
       while (["queued", "running", "waiting"].includes(currentRun.status)) {
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, 1000));
         const runs = await AgentService.getRuns(context.organizationId, agentInstanceId);
-        currentRun = runs.find(r => r.id === run.id) || currentRun;
+        currentRun = runs.find((r) => r.id === run.id) || currentRun;
       }
 
       if (currentRun.status === "failed") {
@@ -80,12 +86,15 @@ export class StepExecutors {
         status: "failed",
         error: error.message,
         startedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString()
+        completedAt: new Date().toISOString(),
       };
     }
   }
 
-  static async executeToolStep(step: WorkflowStep, context: WorkflowExecutionContext): Promise<StepResult> {
+  static async executeToolStep(
+    step: WorkflowStep,
+    context: WorkflowExecutionContext,
+  ): Promise<StepResult> {
     const config = step.configuration;
     const startedAt = new Date().toISOString();
 
@@ -104,10 +113,9 @@ export class StepExecutors {
       }
 
       const executor = new ToolExecutor();
-      const instance =
-        context.agentInstanceId
-          ? await AgentService.getInstance(context.agentInstanceId, context.organizationId)
-          : undefined;
+      const instance = context.agentInstanceId
+        ? await AgentService.getInstance(context.agentInstanceId, context.organizationId)
+        : undefined;
 
       const executionInstance: AgentInstance =
         instance ||
@@ -121,7 +129,12 @@ export class StepExecutors {
           configuration: {
             version: "1.0",
             general: { description: "Workflow-scoped tool execution context" },
-            instructions: { systemInstructions: "", objectives: "", constraints: "", responseStyle: "" },
+            instructions: {
+              systemInstructions: "",
+              objectives: "",
+              constraints: "",
+              responseStyle: "",
+            },
             behavior: {
               tone: "Neutral",
               formality: "Standard",
@@ -181,7 +194,7 @@ export class StepExecutors {
         data: result.data,
         error: result.error,
         startedAt,
-        completedAt: new Date().toISOString()
+        completedAt: new Date().toISOString(),
       };
     } catch (error: any) {
       return {
@@ -190,30 +203,34 @@ export class StepExecutors {
         status: "failed",
         error: error.message,
         startedAt,
-        completedAt: new Date().toISOString()
+        completedAt: new Date().toISOString(),
       };
     }
   }
 
-  static async executeKnowledgeStep(step: WorkflowStep, context: WorkflowExecutionContext): Promise<StepResult> {
+  static async executeKnowledgeStep(
+    step: WorkflowStep,
+    context: WorkflowExecutionContext,
+  ): Promise<StepResult> {
     const config = step.configuration;
     const startedAt = new Date().toISOString();
-    
+
     try {
       const query = config.query || "";
       const results = await KnowledgeRetrievalService.retrieve({
         organizationId: context.organizationId,
+        agentId: config.agentInstanceId || context.agentInstanceId,
         query,
-        authorizedKnowledgeIds: config.knowledgeIds || []
+        authorizedKnowledgeIds: config.knowledgeIds || [],
       });
 
       return {
         stepId: step.id,
         success: true,
         status: "completed",
-        data: results.map(r => r.content).join("\n\n"),
+        data: results.map((r) => r.content).join("\n\n"),
         startedAt,
-        completedAt: new Date().toISOString()
+        completedAt: new Date().toISOString(),
       };
     } catch (error: any) {
       return {
@@ -222,29 +239,45 @@ export class StepExecutors {
         status: "failed",
         error: error.message,
         startedAt,
-        completedAt: new Date().toISOString()
+        completedAt: new Date().toISOString(),
       };
     }
   }
 
-  static async executeConditionStep(step: WorkflowStep, context: WorkflowExecutionContext): Promise<StepResult> {
+  static async executeConditionStep(
+    step: WorkflowStep,
+    context: WorkflowExecutionContext,
+  ): Promise<StepResult> {
     const config = step.configuration;
     const startedAt = new Date().toISOString();
-    
+
     try {
       const { variable, operator, value } = config;
       // Resolve variable
       const actualValue = context.variables[variable] || context.previousResults[variable];
       let success = false;
 
-      switch(operator) {
-        case "==": success = actualValue == value; break;
-        case "!=": success = actualValue != value; break;
-        case ">": success = actualValue > value; break;
-        case "<": success = actualValue < value; break;
-        case "contains": success = String(actualValue).includes(String(value)); break;
-        case "exists": success = actualValue !== undefined && actualValue !== null; break;
-        default: success = false;
+      switch (operator) {
+        case "==":
+          success = actualValue == value;
+          break;
+        case "!=":
+          success = actualValue != value;
+          break;
+        case ">":
+          success = actualValue > value;
+          break;
+        case "<":
+          success = actualValue < value;
+          break;
+        case "contains":
+          success = String(actualValue).includes(String(value));
+          break;
+        case "exists":
+          success = actualValue !== undefined && actualValue !== null;
+          break;
+        default:
+          success = false;
       }
 
       return {
@@ -253,7 +286,7 @@ export class StepExecutors {
         status: "completed",
         data: { matched: success },
         startedAt,
-        completedAt: new Date().toISOString()
+        completedAt: new Date().toISOString(),
       };
     } catch (error: any) {
       return {
@@ -262,7 +295,7 @@ export class StepExecutors {
         status: "failed",
         error: error.message,
         startedAt,
-        completedAt: new Date().toISOString()
+        completedAt: new Date().toISOString(),
       };
     }
   }

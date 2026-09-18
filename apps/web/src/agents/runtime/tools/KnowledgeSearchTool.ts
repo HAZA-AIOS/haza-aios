@@ -6,33 +6,34 @@ ToolRegistry.register({
   definition: {
     id: "knowledge_search",
     name: "Knowledge Search Tool",
-    description: "Search authorized organizational knowledge base for relevant documents and guidelines.",
+    description:
+      "Search authorized organizational knowledge base for relevant documents and guidelines.",
     category: "Knowledge",
-    inputSchema: { 
-      type: "object", 
-      properties: { 
+    inputSchema: {
+      type: "object",
+      properties: {
         query: { type: "string" },
-        limit: { type: "number" }
+        limit: { type: "number" },
       },
-      required: ["query"]
+      required: ["query"],
     },
-    outputSchema: { 
-      type: "object", 
-      properties: { 
-        results: { 
+    outputSchema: {
+      type: "object",
+      properties: {
+        results: {
           type: "array",
           items: {
             type: "object",
             properties: {
               title: { type: "string" },
-              content: { type: "string" }
-            }
-          }
-        }
-      } 
+              content: { type: "string" },
+            },
+          },
+        },
+      },
     },
     permissions: ["knowledge:search"],
-    status: "active"
+    status: "active",
   },
   execute: async (input: { query?: string; limit?: number }, context: ToolExecutionContext) => {
     if (!input.query) throw new Error("query is required");
@@ -43,16 +44,17 @@ ToolRegistry.register({
     }
 
     const authorizedKnowledgeIds = context.instance.configuration.knowledge || [];
-    
+
     const results = await KnowledgeRetrievalService.retrieve({
       organizationId: context.organizationId,
+      agentId: context.instance.id,
       query: input.query,
       authorizedKnowledgeIds,
-      limit: input.limit || 5
+      limit: input.limit || 5,
     });
 
     return {
-      results: results.map(r => ({ title: r.title, content: r.content }))
+      results: results.map((r) => ({ title: r.title, content: r.content })),
     };
-  }
+  },
 });

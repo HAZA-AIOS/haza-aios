@@ -1945,7 +1945,52 @@ export const portalUpdateRequests = mysqlTable(
   ],
 );
 
+export const knowledgeSources = mysqlTable(
+  "knowledge_sources",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id),
+    name: varchar("name", { length: 200 }).notNull(),
+    description: text("description").notNull(),
+    type: mysqlEnum("type", ["text", "document", "structured"]).notNull(),
+    visibility: mysqlEnum("visibility", ["internal", "private"]).notNull(),
+    status: mysqlEnum("status", ["active", "archived"]).notNull().default("active"),
+    content: text("content").notNull(),
+    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    ingestionStatus: mysqlEnum("ingestion_status", ["ready"]).notNull().default("ready"),
+    createdBy: char("created_by", { length: 36 })
+      .notNull()
+      .references(() => users.id),
+    createdAt: datetime("created_at").notNull(),
+    updatedAt: datetime("updated_at").notNull(),
+  },
+  (table) => [index("knowledge_sources_tenant_idx").on(table.organizationId, table.status)],
+);
+
+export const knowledgeChunks = mysqlTable(
+  "knowledge_chunks",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    sourceId: char("source_id", { length: 36 })
+      .notNull()
+      .references(() => knowledgeSources.id, { onDelete: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id),
+    ordinal: int("ordinal").notNull(),
+    content: text("content").notNull(),
+  },
+  (table) => [
+    uniqueIndex("knowledge_chunks_source_ordinal_idx").on(table.sourceId, table.ordinal),
+    index("knowledge_chunks_tenant_idx").on(table.organizationId),
+  ],
+);
+
 export const schema = {
+  knowledgeSources,
+  knowledgeChunks,
   academicTerms,
   aiAgentConversations,
   aiAgentDefinitions,

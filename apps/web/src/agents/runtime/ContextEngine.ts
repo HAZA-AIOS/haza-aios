@@ -1,6 +1,5 @@
 import type { AgentRun, AgentInstance, ContextPackage } from "../agent.types";
 import { KnowledgeRetrievalService } from "./knowledge/KnowledgeRetrievalService";
-import { KnowledgeService } from "./knowledge/KnowledgeService";
 import { ConversationService } from "./conversation/ConversationService";
 import { MemoryRetrievalService } from "./memory/MemoryRetrievalService";
 
@@ -46,19 +45,18 @@ export class ContextEngineClass {
     contextPackage.knowledge = [];
 
     if (authorizedKnowledgeIds.length > 0) {
-      // In this Epic, we pull the entirety of the authorized knowledge records directly.
-      // In a more complex architecture, we would run semantic search over them.
-      for (const kId of authorizedKnowledgeIds) {
-        const kSource = await KnowledgeService.getKnowledgeSourceById(kId, run.organizationId);
-        if (kSource) {
-          contextPackage.knowledge.push({
-            id: kSource.id,
-            title: kSource.name,
-            content: kSource.content,
-            type: kSource.type,
-          });
-        }
-      }
+      const results = await KnowledgeRetrievalService.retrieve({
+        organizationId: run.organizationId,
+        agentId: instance.id,
+        query: taskContextStr.slice(0, 1000),
+        authorizedKnowledgeIds,
+      });
+      contextPackage.knowledge = results.map((result) => ({
+        id: result.sourceId,
+        chunkId: result.chunkId,
+        title: result.title,
+        content: result.content,
+      }));
     }
 
     // 5. Conversation Context
@@ -98,13 +96,6 @@ export class ContextEngineClass {
         }));
       }
     }
-
-    // Optionally if we wanted to auto-query the retrieved text based on the task:
-    // const results = await KnowledgeRetrievalService.retrieve({
-    //   organizationId: run.organizationId,
-    //   query: taskContextStr,
-    //   authorizedKnowledgeIds
-    // });
 
     // Metadata logging
     contextPackage.metadata = {

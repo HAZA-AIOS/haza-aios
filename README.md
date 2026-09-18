@@ -22,6 +22,10 @@ The product direction is not a simple landing page or a single-purpose school ap
 
 ## Application Screenshots
 
+DB-14 knowledge persistence baseline is implemented on the development branch: see
+[scope, API, verification, and remaining work](docs/database-migration/27-db14-agent-knowledge-persistence.md).
+The DB-14 migration has been applied to the backed-up local database. This baseline persists text sources and chunks with tenant-scoped keyword retrieval; embeddings and vector search remain future work.
+
 These screenshots are captured from the current local application before the DB-14 phase.
 
 ### Public Landing Page
@@ -209,27 +213,27 @@ React -> API -> Authentication -> Tenant Context -> RBAC -> Domain Services -> R
 
 ### Database Roadmap
 
-| Phase | Scope                                          | Status   |
-| ----- | ---------------------------------------------- | -------- |
-| DB-0  | Architecture & Migration Baseline              | COMPLETE |
-| DB-1  | Backend Application Foundation                 | COMPLETE |
-| DB-2  | MySQL, ORM & Migration Foundation              | COMPLETE |
-| DB-3  | Organization / Workspace / Tenant Core         | COMPLETE |
-| DB-4  | Authentication, Users, Roles & Permissions     | COMPLETE |
-| DB-5  | SIS Core Persistence                           | COMPLETE |
-| DB-6  | Attendance & Timetable Persistence             | COMPLETE |
-| DB-7  | Examination, Assessment & Results Persistence  | COMPLETE |
-| DB-8  | Finance, Communication & Portal Persistence    | COMPLETE |
-| DB-9  | SIS Analytics & Reporting Persistence          | COMPLETE |
-| DB-10 | Platform Core & Module Registry Persistence    | COMPLETE |
-| DB-11 | AI Agent Registry & Configuration Persistence  | COMPLETE |
-| DB-12 | Agent Runtime, Runs & Conversation Persistence | COMPLETE |
-| DB-13 | Agent Memory Persistence                       | COMPLETE |
-| DB-14 | Agent Knowledge Persistence                    | PLANNED  |
-| DB-15 | Workflow Persistence                           | PLANNED  |
-| DB-16 | Audit/Operational Persistence                  | PLANNED  |
-| DB-17 | Usage, Metering & SaaS Persistence             | PLANNED  |
-| DB-18 | Production Hardening                           | PLANNED  |
+| Phase | Scope                                          | Status               |
+| ----- | ---------------------------------------------- | -------------------- |
+| DB-0  | Architecture & Migration Baseline              | COMPLETE             |
+| DB-1  | Backend Application Foundation                 | COMPLETE             |
+| DB-2  | MySQL, ORM & Migration Foundation              | COMPLETE             |
+| DB-3  | Organization / Workspace / Tenant Core         | COMPLETE             |
+| DB-4  | Authentication, Users, Roles & Permissions     | COMPLETE             |
+| DB-5  | SIS Core Persistence                           | COMPLETE             |
+| DB-6  | Attendance & Timetable Persistence             | COMPLETE             |
+| DB-7  | Examination, Assessment & Results Persistence  | COMPLETE             |
+| DB-8  | Finance, Communication & Portal Persistence    | COMPLETE             |
+| DB-9  | SIS Analytics & Reporting Persistence          | COMPLETE             |
+| DB-10 | Platform Core & Module Registry Persistence    | COMPLETE             |
+| DB-11 | AI Agent Registry & Configuration Persistence  | COMPLETE             |
+| DB-12 | Agent Runtime, Runs & Conversation Persistence | COMPLETE             |
+| DB-13 | Agent Memory Persistence                       | COMPLETE             |
+| DB-14 | Agent Knowledge Persistence                    | BASELINE IMPLEMENTED |
+| DB-15 | Workflow Persistence                           | PLANNED              |
+| DB-16 | Audit/Operational Persistence                  | PLANNED              |
+| DB-17 | Usage, Metering & SaaS Persistence             | PLANNED              |
+| DB-18 | Production Hardening                           | PLANNED              |
 
 ## AI Agent Platform
 
@@ -491,7 +495,7 @@ For data-bearing features, UI alone is not complete. The project standard is:
 
 ### Next
 
-- DB-14 - Knowledge Base, Documents & Retrieval Persistence.
+- DB-14 follow-up - binary document ingestion, embeddings, and vector retrieval beyond the implemented text-persistence baseline.
 
 ### Planned
 
@@ -531,7 +535,7 @@ For data-bearing features, UI alone is not complete. The project standard is:
 
 ## Project Stage
 
-HAZA AIOS is under active development. Platform foundations and the Education SIS are substantially implemented, SIS persistence is complete through DB-9, platform module registry persistence is complete through DB-10, AI Agent registry/configuration persistence is complete through DB-11, runtime run/conversation persistence is complete through DB-12, and long-term agent memory persistence is complete through DB-13. DB-14 knowledge persistence, workflow persistence, production deployment hardening, and broader multi-industry modules remain planned/in progress.
+HAZA AIOS is under active development. Platform foundations and the Education SIS are substantially implemented, SIS persistence is complete through DB-9, platform module registry persistence is complete through DB-10, AI Agent registry/configuration persistence is complete through DB-11, runtime run/conversation persistence is complete through DB-12, and long-term agent memory persistence is complete through DB-13. DB-14 now provides a verified text knowledge persistence baseline with tenant-scoped keyword retrieval. Advanced document ingestion, embeddings, workflow persistence, production deployment hardening, and broader multi-industry modules remain planned/in progress.
 
 ## License
 

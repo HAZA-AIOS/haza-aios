@@ -9,6 +9,7 @@ import { readJsonBody } from "./middleware/body.js";
 import { createRequestContext } from "./middleware/request-context.js";
 import { applySecurityHeaders } from "./middleware/security.js";
 import { agentsModule } from "./modules/agents/agents.module.js";
+import { knowledgeModule } from "./modules/agents/knowledge.module.js";
 import { authModule } from "./modules/auth/auth.module.js";
 import { educationModule } from "./modules/education/education.module.js";
 import { foundationModule } from "./modules/foundation/foundation.module.js";
@@ -17,7 +18,11 @@ import { registerModules } from "./modules/module-registry.js";
 import { platformModule } from "./modules/platform/platform.module.js";
 import { ApiRouter } from "./routes/router.js";
 
-export function createApp(config: ApiConfig, logger: Logger = createLogger(config), database: DatabaseClient = createDatabaseClient(config.database, logger)) {
+export function createApp(
+  config: ApiConfig,
+  logger: Logger = createLogger(config),
+  database: DatabaseClient = createDatabaseClient(config.database, logger),
+) {
   const router = new ApiRouter();
 
   registerModules(router, [
@@ -26,6 +31,7 @@ export function createApp(config: ApiConfig, logger: Logger = createLogger(confi
     authModule,
     platformModule,
     agentsModule,
+    knowledgeModule,
     educationModule,
   ]);
 
@@ -41,7 +47,10 @@ export function createApp(config: ApiConfig, logger: Logger = createLogger(confi
     }
 
     try {
-      const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${config.host}:${config.port}`}`);
+      const url = new URL(
+        request.url ?? "/",
+        `http://${request.headers.host ?? `${config.host}:${config.port}`}`,
+      );
       const apiRequest = request as IncomingMessage & { body?: unknown };
       apiRequest.body = await readJsonBody(request, config.bodyLimitBytes);
       const route = router.match(request.method, url.pathname);
@@ -68,10 +77,17 @@ export function createApp(config: ApiConfig, logger: Logger = createLogger(confi
   });
 }
 
-function handleError(error: unknown, response: ServerResponse, logger: Logger, requestId: string, nodeEnv: ApiConfig["nodeEnv"]) {
-  const apiError = error instanceof ApiError
-    ? error
-    : new ApiError(500, "INTERNAL_SERVER_ERROR", "Internal server error");
+function handleError(
+  error: unknown,
+  response: ServerResponse,
+  logger: Logger,
+  requestId: string,
+  nodeEnv: ApiConfig["nodeEnv"],
+) {
+  const apiError =
+    error instanceof ApiError
+      ? error
+      : new ApiError(500, "INTERNAL_SERVER_ERROR", "Internal server error");
 
   logger.error(apiError.message, {
     code: apiError.code,

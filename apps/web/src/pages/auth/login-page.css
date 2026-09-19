@@ -131,6 +131,7 @@
   left: auto;
   top: 50%;
   transform: translateY(-50%);
+  translate: none;
   width: 32px;
   height: 32px;
   display: flex;

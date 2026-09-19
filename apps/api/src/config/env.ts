@@ -6,6 +6,7 @@ export type ApiConfig = {
   host: string;
   port: number;
   webOrigin: string;
+  registrationAllowedEmails: string[] | null;
   logLevel: LogLevel;
   bodyLimitBytes: number;
   database: DatabaseConfig;
@@ -30,11 +31,36 @@ const allowedLogLevels = new Set<LogLevel>(["error", "warn", "info", "debug"]);
 
 export function loadConfig(env: EnvInput = process.env): ApiConfig {
   const nodeEnv = readEnum(env.NODE_ENV, "NODE_ENV", allowedNodeEnvs, "development");
-  const host = readString(env.API_HOST, "API_HOST", nodeEnv === "production" ? undefined : "127.0.0.1");
-  const port = readPort(env.API_PORT ?? env.PORT, env.API_PORT === undefined ? "PORT" : "API_PORT", 8000);
-  const webOrigin = readOrigin(env.WEB_ORIGIN, "WEB_ORIGIN", nodeEnv === "production" ? undefined : "http://localhost:3000");
-  const logLevel = readEnum(env.LOG_LEVEL, "LOG_LEVEL", allowedLogLevels, nodeEnv === "production" ? "info" : "debug");
-  const bodyLimitBytes = readPositiveInteger(env.API_BODY_LIMIT_BYTES, "API_BODY_LIMIT_BYTES", 1_048_576);
+  const host = readString(
+    env.API_HOST,
+    "API_HOST",
+    nodeEnv === "production" ? undefined : "127.0.0.1",
+  );
+  const port = readPort(
+    env.API_PORT ?? env.PORT,
+    env.API_PORT === undefined ? "PORT" : "API_PORT",
+    8000,
+  );
+  const webOrigin = readOrigin(
+    env.WEB_ORIGIN,
+    "WEB_ORIGIN",
+    nodeEnv === "production" ? undefined : "http://localhost:3000",
+  );
+  const registrationAllowedEmails = readEmailList(
+    env.REGISTRATION_ALLOWED_EMAILS,
+    "REGISTRATION_ALLOWED_EMAILS",
+  );
+  const logLevel = readEnum(
+    env.LOG_LEVEL,
+    "LOG_LEVEL",
+    allowedLogLevels,
+    nodeEnv === "production" ? "info" : "debug",
+  );
+  const bodyLimitBytes = readPositiveInteger(
+    env.API_BODY_LIMIT_BYTES,
+    "API_BODY_LIMIT_BYTES",
+    1_048_576,
+  );
   const database = readDatabaseConfig(env, nodeEnv);
 
   return {
@@ -42,6 +68,7 @@ export function loadConfig(env: EnvInput = process.env): ApiConfig {
     host,
     port,
     webOrigin,
+    registrationAllowedEmails,
     logLevel,
     bodyLimitBytes,
     database,
@@ -54,16 +81,24 @@ export function loadConfig(env: EnvInput = process.env): ApiConfig {
 function readDatabaseConfig(env: EnvInput, nodeEnv: NodeEnv): DatabaseConfig {
   const defaultDatabaseName = nodeEnv === "test" ? "haza_aios_test" : "haza_aios";
   const name = readString(
-    nodeEnv === "test" ? env.TEST_DATABASE_NAME ?? env.DATABASE_NAME : env.DATABASE_NAME,
+    nodeEnv === "test" ? (env.TEST_DATABASE_NAME ?? env.DATABASE_NAME) : env.DATABASE_NAME,
     nodeEnv === "test" && env.TEST_DATABASE_NAME ? "TEST_DATABASE_NAME" : "DATABASE_NAME",
     nodeEnv === "production" ? undefined : defaultDatabaseName,
   );
 
   return {
-    host: readString(env.DATABASE_HOST, "DATABASE_HOST", nodeEnv === "production" ? undefined : "127.0.0.1"),
+    host: readString(
+      env.DATABASE_HOST,
+      "DATABASE_HOST",
+      nodeEnv === "production" ? undefined : "127.0.0.1",
+    ),
     port: readPort(env.DATABASE_PORT, "DATABASE_PORT", 3306),
     name,
-    user: readString(env.DATABASE_USER, "DATABASE_USER", nodeEnv === "production" ? undefined : "root"),
+    user: readString(
+      env.DATABASE_USER,
+      "DATABASE_USER",
+      nodeEnv === "production" ? undefined : "root",
+    ),
     password: readDatabasePassword(env.DATABASE_PASSWORD, nodeEnv),
     connectionLimit: readPositiveInteger(env.DATABASE_POOL_LIMIT, "DATABASE_POOL_LIMIT", 10),
   };
@@ -117,7 +152,33 @@ function readOrigin(value: string | undefined, name: string, fallback?: string):
   }
 }
 
-function readEnum<T extends string>(value: string | undefined, name: string, allowed: Set<T>, fallback: T): T {
+function readEmailList(value: string | undefined, name: string): string[] | null {
+  if (value === undefined) {
+    return null;
+  }
+
+  const emails = Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+
+  if (emails.length === 0 || emails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    throw new Error(`${name} must be a comma-separated list of valid email addresses`);
+  }
+
+  return emails;
+}
+
+function readEnum<T extends string>(
+  value: string | undefined,
+  name: string,
+  allowed: Set<T>,
+  fallback: T,
+): T {
   const resolved = (value?.trim() || fallback) as T;
 
   if (!allowed.has(resolved)) {

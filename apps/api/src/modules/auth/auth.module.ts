@@ -6,6 +6,7 @@ import {
   buildSessionCookie,
   sessionCookieName,
 } from "./services/token.service.js";
+import { assertRegistrationAllowed } from "./registration-policy.js";
 import {
   validateCreateUser,
   validateLogin,
@@ -20,6 +21,7 @@ export const authModule: BackendModule = {
       path: "/api/v1/auth/register-identity",
       async handler(request, response, { config, database }) {
         const input = validateCreateUser(request.body);
+        assertRegistrationAllowed(input.email, config.registrationAllowedEmails);
         const result = await new AuthService(database).registerIdentity(input);
         response.setHeader(
           "set-cookie",
@@ -38,6 +40,7 @@ export const authModule: BackendModule = {
       path: "/api/v1/auth/register",
       async handler(request, response, { config, database }) {
         const input = validateRegister(request.body);
+        assertRegistrationAllowed(input.email, config.registrationAllowedEmails);
         const result = await new AuthService(database).register(input);
         response.setHeader(
           "set-cookie",

@@ -10,6 +10,7 @@ describe("loadConfig", () => {
       host: "127.0.0.1",
       port: 8000,
       webOrigin: "http://localhost:3000",
+      registrationAllowedEmails: null,
       logLevel: "debug",
       bodyLimitBytes: 1_048_576,
       apiBasePath: "/api/v1",
@@ -40,12 +41,16 @@ describe("loadConfig", () => {
   });
 
   it("rejects invalid ports", () => {
-    expect(() => loadConfig({ API_PORT: "not-a-port" })).toThrow("API_PORT must be an integer between 1 and 65535");
+    expect(() => loadConfig({ API_PORT: "not-a-port" })).toThrow(
+      "API_PORT must be an integer between 1 and 65535",
+    );
   });
 
   it("requires production host and origin", () => {
     expect(() => loadConfig({ NODE_ENV: "production" })).toThrow("API_HOST is required");
-    expect(() => loadConfig({ NODE_ENV: "production", API_HOST: "0.0.0.0" })).toThrow("WEB_ORIGIN is required");
+    expect(() => loadConfig({ NODE_ENV: "production", API_HOST: "0.0.0.0" })).toThrow(
+      "WEB_ORIGIN is required",
+    );
   });
 
   it("uses the hosting platform port when API_PORT is unset", () => {
@@ -56,15 +61,34 @@ describe("loadConfig", () => {
     expect(loadConfig({ API_PORT: "8000", PORT: "43210" }).port).toBe(8000);
   });
 
+  it("normalizes and de-duplicates registration allowlist emails", () => {
+    const config = loadConfig({
+      REGISTRATION_ALLOWED_EMAILS: " Owner@Example.com,member@example.com,owner@example.com ",
+    });
+
+    expect(config.registrationAllowedEmails).toEqual(["owner@example.com", "member@example.com"]);
+  });
+
+  it.each(["", "not-an-email", "first@example.com,invalid"])(
+    "rejects invalid registration allowlist %j",
+    (emails) => {
+      expect(() => loadConfig({ REGISTRATION_ALLOWED_EMAILS: emails })).toThrow(
+        "REGISTRATION_ALLOWED_EMAILS must be a comma-separated list of valid email addresses",
+      );
+    },
+  );
+
   it.each(["invalid", "0", "65536", "1.5"])("rejects invalid platform port %s", (port) => {
     expect(() => loadConfig({ PORT: port })).toThrow("PORT must be an integer between 1 and 65535");
   });
 
   it("requires production database settings", () => {
-    expect(() => loadConfig({
-      NODE_ENV: "production",
-      API_HOST: "0.0.0.0",
-      WEB_ORIGIN: "https://app.example.com",
-    })).toThrow("DATABASE_NAME is required");
+    expect(() =>
+      loadConfig({
+        NODE_ENV: "production",
+        API_HOST: "0.0.0.0",
+        WEB_ORIGIN: "https://app.example.com",
+      }),
+    ).toThrow("DATABASE_NAME is required");
   });
 });

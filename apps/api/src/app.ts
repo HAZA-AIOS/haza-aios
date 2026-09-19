@@ -77,6 +77,8 @@ function handleError(error: unknown, response: ServerResponse, logger: Logger, r
     code: apiError.code,
     statusCode: apiError.statusCode,
     requestId,
+    internalErrorCode: readInternalErrorCode(error),
+    internalErrorType: error instanceof Error ? error.name : typeof error,
   });
 
   sendJson(response, apiError.statusCode, {
@@ -87,4 +89,24 @@ function handleError(error: unknown, response: ServerResponse, logger: Logger, r
       ...(nodeEnv !== "production" && apiError.details ? { details: apiError.details } : {}),
     },
   });
+}
+
+function readInternalErrorCode(error: unknown): string | undefined {
+  let current = error;
+
+  for (let depth = 0; depth < 5 && current && typeof current === "object"; depth += 1) {
+    const candidate = current as { code?: unknown; errno?: unknown; cause?: unknown };
+
+    if (typeof candidate.code === "string") {
+      return candidate.code;
+    }
+
+    if (typeof candidate.errno === "number") {
+      return String(candidate.errno);
+    }
+
+    current = candidate.cause;
+  }
+
+  return undefined;
 }

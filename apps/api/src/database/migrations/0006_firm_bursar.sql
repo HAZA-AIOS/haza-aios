@@ -6,8 +6,8 @@ CREATE TABLE `finance_fee_categories` (
 	`status` varchar(40) NOT NULL DEFAULT 'active',
 	`display_order` int NOT NULL DEFAULT 0,
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `finance_fee_categories_id` PRIMARY KEY(`id`),
 	CONSTRAINT `finance_fee_categories_workspace_code_unique` UNIQUE(`workspace_id`,`code`)
 );
@@ -22,8 +22,8 @@ CREATE TABLE `finance_fee_structures` (
 	`amount_cents` int NOT NULL,
 	`status` varchar(40) NOT NULL DEFAULT 'active',
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `finance_fee_structures_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -36,8 +36,8 @@ CREATE TABLE `finance_student_fee_assignments` (
 	`status` varchar(40) NOT NULL DEFAULT 'active',
 	`amount_cents` int NOT NULL,
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `finance_student_fee_assignments_id` PRIMARY KEY(`id`),
 	CONSTRAINT `finance_assignments_student_structure_unique` UNIQUE(`workspace_id`,`student_id`,`enrollment_id`,`fee_structure_id`)
 );
@@ -51,8 +51,8 @@ CREATE TABLE `finance_discounts` (
 	`discount_type` varchar(40) NOT NULL,
 	`status` varchar(40) NOT NULL DEFAULT 'active',
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `finance_discounts_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -70,8 +70,8 @@ CREATE TABLE `finance_invoices` (
 	`paid_amount_cents` int NOT NULL DEFAULT 0,
 	`balance_cents` int NOT NULL DEFAULT 0,
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `finance_invoices_id` PRIMARY KEY(`id`),
 	CONSTRAINT `finance_invoices_workspace_number_unique` UNIQUE(`workspace_id`,`invoice_number`)
 );
@@ -87,8 +87,8 @@ CREATE TABLE `finance_payments` (
 	`reference_number` varchar(120),
 	`status` varchar(40) NOT NULL DEFAULT 'recorded',
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `finance_payments_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -102,8 +102,8 @@ CREATE TABLE `finance_receipts` (
 	`amount_cents` int NOT NULL,
 	`receipt_date` varchar(20) NOT NULL,
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `finance_receipts_id` PRIMARY KEY(`id`),
 	CONSTRAINT `finance_receipts_workspace_number_unique` UNIQUE(`workspace_id`,`receipt_number`)
 );
@@ -115,8 +115,8 @@ CREATE TABLE `communication_templates` (
 	`category` varchar(80) NOT NULL,
 	`status` varchar(40) NOT NULL DEFAULT 'active',
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `communication_templates_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -127,8 +127,8 @@ CREATE TABLE `announcements` (
 	`status` varchar(40) NOT NULL DEFAULT 'draft',
 	`priority` varchar(40) NOT NULL DEFAULT 'normal',
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `announcements_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -140,8 +140,8 @@ CREATE TABLE `communication_messages` (
 	`priority` varchar(40) NOT NULL DEFAULT 'normal',
 	`idempotency_key` varchar(160),
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `communication_messages_id` PRIMARY KEY(`id`),
 	CONSTRAINT `communication_messages_idempotency_unique` UNIQUE(`workspace_id`,`idempotency_key`)
 );
@@ -155,8 +155,8 @@ CREATE TABLE `sis_notifications` (
 	`notification_type` varchar(120) NOT NULL,
 	`is_read` boolean NOT NULL DEFAULT false,
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `sis_notifications_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -171,8 +171,8 @@ CREATE TABLE `communication_deliveries` (
 	`channel` varchar(40) NOT NULL,
 	`status` varchar(40) NOT NULL,
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `communication_deliveries_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -182,8 +182,8 @@ CREATE TABLE `notification_preferences` (
 	`recipient_kind` varchar(40) NOT NULL,
 	`recipient_id` varchar(120) NOT NULL,
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `notification_preferences_id` PRIMARY KEY(`id`),
 	CONSTRAINT `notification_preferences_recipient_unique` UNIQUE(`workspace_id`,`recipient_kind`,`recipient_id`)
 );
@@ -192,8 +192,8 @@ CREATE TABLE `portal_policies` (
 	`id` char(36) NOT NULL,
 	`workspace_id` char(36) NOT NULL,
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `portal_policies_id` PRIMARY KEY(`id`),
 	CONSTRAINT `portal_policies_workspace_unique` UNIQUE(`workspace_id`)
 );
@@ -207,8 +207,8 @@ CREATE TABLE `portal_update_requests` (
 	`request_type` varchar(80) NOT NULL,
 	`status` varchar(40) NOT NULL DEFAULT 'submitted',
 	`payload` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `portal_update_requests_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint

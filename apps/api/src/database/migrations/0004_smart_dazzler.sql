@@ -6,9 +6,9 @@ CREATE TABLE `attendance_records` (
 	`student_id` char(36) NOT NULL,
 	`attendance_status` enum('present','absent','late','excused') NOT NULL DEFAULT 'present',
 	`note` varchar(1000),
-	`marked_at` timestamp(3) NOT NULL DEFAULT (now()),
+	`marked_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 	`marked_by` varchar(120) NOT NULL,
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `attendance_records_id` PRIMARY KEY(`id`),
 	CONSTRAINT `attendance_records_session_enrollment_unique` UNIQUE(`session_id`,`enrollment_id`)
 );
@@ -25,8 +25,8 @@ CREATE TABLE `attendance_sessions` (
 	`attendance_session_type` enum('daily','period','subject') NOT NULL DEFAULT 'daily',
 	`attendance_session_status` enum('draft','completed') NOT NULL DEFAULT 'draft',
 	`marked_by` varchar(120),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `attendance_sessions_id` PRIMARY KEY(`id`),
 	CONSTRAINT `attendance_sessions_scope_unique` UNIQUE(`workspace_id`,`academic_year_id`,`attendance_date`,`grade_id`,`section_id`,`attendance_session_type`,`subject_id`)
 );
@@ -38,8 +38,8 @@ CREATE TABLE `school_schedules` (
 	`working_days` json NOT NULL,
 	`schedule_start_time` varchar(10) NOT NULL,
 	`schedule_end_time` varchar(10) NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `school_schedules_id` PRIMARY KEY(`id`),
 	CONSTRAINT `school_schedules_workspace_year_unique` UNIQUE(`workspace_id`,`academic_year_id`)
 );
@@ -52,8 +52,8 @@ CREATE TABLE `time_periods` (
 	`end_time` varchar(10) NOT NULL,
 	`period_type` enum('teaching','break','activity') NOT NULL DEFAULT 'teaching',
 	`display_order` int NOT NULL DEFAULT 0,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `time_periods_id` PRIMARY KEY(`id`),
 	CONSTRAINT `time_periods_workspace_name_unique` UNIQUE(`workspace_id`,`name`)
 );
@@ -70,8 +70,8 @@ CREATE TABLE `timetable_entries` (
 	`period_id` char(36) NOT NULL,
 	`room_id` varchar(120),
 	`day_of_week` int NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `timetable_entries_id` PRIMARY KEY(`id`),
 	CONSTRAINT `timetable_entries_class_slot_unique` UNIQUE(`workspace_id`,`academic_year_id`,`grade_id`,`section_id`,`day_of_week`,`period_id`),
 	CONSTRAINT `timetable_entries_teacher_slot_unique` UNIQUE(`workspace_id`,`academic_year_id`,`teacher_id`,`day_of_week`,`period_id`),

@@ -7,8 +7,8 @@ CREATE TABLE `ai_agent_conversations` (
 	`title` varchar(220) NOT NULL,
 	`agent_conversation_status` enum('active','archived','deleted') NOT NULL DEFAULT 'active',
 	`last_message_at` datetime(3),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `ai_agent_conversations_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -22,7 +22,7 @@ CREATE TABLE `ai_agent_messages` (
 	`sequence` int NOT NULL,
 	`content` text NOT NULL,
 	`metadata` json,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 	CONSTRAINT `ai_agent_messages_id` PRIMARY KEY(`id`),
 	CONSTRAINT `ai_agent_messages_conversation_sequence_unique` UNIQUE(`conversation_id`,`sequence`)
 );
@@ -47,8 +47,8 @@ CREATE TABLE `ai_agent_runs` (
 	`started_at` timestamp(3) NOT NULL,
 	`completed_at` datetime(3),
 	`duration_ms` int,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `ai_agent_runs_id` PRIMARY KEY(`id`),
 	CONSTRAINT `ai_agent_runs_idempotency_unique` UNIQUE(`workspace_id`,`agent_id`,`idempotency_key`)
 );

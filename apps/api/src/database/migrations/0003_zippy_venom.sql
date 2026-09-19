@@ -6,8 +6,8 @@ CREATE TABLE `academic_terms` (
 	`start_date` varchar(20) NOT NULL,
 	`end_date` varchar(20) NOT NULL,
 	`academic_term_status` enum('planned','active','completed') NOT NULL DEFAULT 'planned',
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `academic_terms_id` PRIMARY KEY(`id`),
 	CONSTRAINT `academic_terms_year_name_unique` UNIQUE(`academic_year_id`,`name`)
 );
@@ -19,8 +19,8 @@ CREATE TABLE `academic_years` (
 	`start_date` varchar(20) NOT NULL,
 	`end_date` varchar(20) NOT NULL,
 	`academic_year_status` enum('planned','active','completed','archived') NOT NULL DEFAULT 'planned',
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `academic_years_id` PRIMARY KEY(`id`),
 	CONSTRAINT `academic_years_workspace_name_unique` UNIQUE(`workspace_id`,`name`)
 );
@@ -30,7 +30,7 @@ CREATE TABLE `class_subjects` (
 	`workspace_id` char(36) NOT NULL,
 	`grade_id` char(36) NOT NULL,
 	`subject_id` char(36) NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 	CONSTRAINT `class_subjects_id` PRIMARY KEY(`id`),
 	CONSTRAINT `class_subjects_grade_subject_unique` UNIQUE(`grade_id`,`subject_id`)
 );
@@ -44,8 +44,8 @@ CREATE TABLE `enrollments` (
 	`section_id` char(36) NOT NULL,
 	`enrollment_date` varchar(40) NOT NULL,
 	`enrollment_status` enum('active','completed','dropped','transferred') NOT NULL DEFAULT 'active',
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `enrollments_id` PRIMARY KEY(`id`),
 	CONSTRAINT `enrollments_student_year_active_guard` UNIQUE(`student_id`,`academic_year`,`enrollment_status`)
 );
@@ -57,8 +57,8 @@ CREATE TABLE `grade_levels` (
 	`level` int NOT NULL,
 	`display_order` int NOT NULL,
 	`academic_entity_status` enum('active','inactive') NOT NULL DEFAULT 'active',
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `grade_levels_id` PRIMARY KEY(`id`),
 	CONSTRAINT `grade_levels_workspace_name_unique` UNIQUE(`workspace_id`,`name`)
 );
@@ -74,8 +74,8 @@ CREATE TABLE `guardians` (
 	`phone` varchar(80) NOT NULL,
 	`address` varchar(1000),
 	`occupation` varchar(255),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `guardians_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -86,8 +86,8 @@ CREATE TABLE `sections` (
 	`name` varchar(120) NOT NULL,
 	`capacity` int,
 	`academic_entity_status` enum('active','inactive') NOT NULL DEFAULT 'active',
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `sections_id` PRIMARY KEY(`id`),
 	CONSTRAINT `sections_grade_name_unique` UNIQUE(`grade_id`,`name`)
 );
@@ -97,8 +97,8 @@ CREATE TABLE `staff_departments` (
 	`workspace_id` char(36) NOT NULL,
 	`name` varchar(160) NOT NULL,
 	`description` varchar(1000),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `staff_departments_id` PRIMARY KEY(`id`),
 	CONSTRAINT `staff_departments_workspace_name_unique` UNIQUE(`workspace_id`,`name`)
 );
@@ -125,8 +125,8 @@ CREATE TABLE `staff_members` (
 	`department_id` char(36),
 	`qualifications` text,
 	`metadata` json,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `staff_members_id` PRIMARY KEY(`id`),
 	CONSTRAINT `staff_members_workspace_employee_unique` UNIQUE(`workspace_id`,`employee_number`)
 );
@@ -139,8 +139,8 @@ CREATE TABLE `student_guardians` (
 	`is_primary_contact` boolean NOT NULL DEFAULT false,
 	`portal_access_enabled` boolean NOT NULL DEFAULT false,
 	`authorized_for_portal` boolean NOT NULL DEFAULT false,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `student_guardians_id` PRIMARY KEY(`id`),
 	CONSTRAINT `student_guardians_student_guardian_unique` UNIQUE(`student_id`,`guardian_id`)
 );
@@ -166,8 +166,8 @@ CREATE TABLE `students` (
 	`student_status` enum('applicant','active','inactive','withdrawn','graduated','transferred','archived') NOT NULL DEFAULT 'applicant',
 	`portal_access_enabled` boolean NOT NULL DEFAULT false,
 	`metadata` json,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `students_id` PRIMARY KEY(`id`),
 	CONSTRAINT `students_workspace_admission_unique` UNIQUE(`workspace_id`,`admission_number`)
 );
@@ -180,8 +180,8 @@ CREATE TABLE `subjects` (
 	`description` varchar(1000),
 	`academic_entity_status` enum('active','inactive') NOT NULL DEFAULT 'active',
 	`display_order` int NOT NULL DEFAULT 0,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `subjects_id` PRIMARY KEY(`id`),
 	CONSTRAINT `subjects_workspace_code_unique` UNIQUE(`workspace_id`,`code`)
 );
@@ -195,8 +195,8 @@ CREATE TABLE `teaching_assignments` (
 	`section_id` char(36),
 	`subject_id` char(36) NOT NULL,
 	`is_active` boolean NOT NULL DEFAULT true,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `teaching_assignments_id` PRIMARY KEY(`id`),
 	CONSTRAINT `teaching_assignments_unique` UNIQUE(`workspace_id`,`staff_id`,`academic_year`,`grade_id`,`section_id`,`subject_id`)
 );

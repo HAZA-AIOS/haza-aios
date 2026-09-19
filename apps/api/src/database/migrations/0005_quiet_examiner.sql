@@ -11,8 +11,8 @@ CREATE TABLE `examinations` (
 	`description` varchar(1000),
 	`published_at` varchar(40),
 	`published_by` varchar(120),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `examinations_id` PRIMARY KEY(`id`),
 	CONSTRAINT `examinations_workspace_name_year_unique` UNIQUE(`workspace_id`,`name`,`academic_year_id`)
 );
@@ -29,8 +29,8 @@ CREATE TABLE `examination_subjects` (
 	`weightage` int,
 	`exam_date` varchar(20),
 	`exam_subject_status` enum('draft','scheduled','completed','cancelled') NOT NULL DEFAULT 'draft',
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `examination_subjects_id` PRIMARY KEY(`id`),
 	CONSTRAINT `exam_subjects_scope_unique` UNIQUE(`workspace_id`,`examination_id`,`grade_id`,`section_id`,`subject_id`)
 );
@@ -52,8 +52,8 @@ CREATE TABLE `assessments` (
 	`assessment_date` varchar(20) NOT NULL,
 	`assessment_status` enum('draft','assigned','in_progress','completed','published','archived') NOT NULL DEFAULT 'draft',
 	`description` varchar(1000),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `assessments_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -65,8 +65,8 @@ CREATE TABLE `grading_rules` (
 	`max_percentage_basis_points` int NOT NULL,
 	`grade_point_basis_points` int,
 	`description` varchar(500),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `grading_rules_id` PRIMARY KEY(`id`),
 	CONSTRAINT `grading_rules_workspace_grade_unique` UNIQUE(`workspace_id`,`grade`)
 );
@@ -90,8 +90,8 @@ CREATE TABLE `mark_records` (
 	`grade_point_basis_points` int,
 	`remarks` varchar(1000),
 	`entered_by` varchar(120) NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `mark_records_id` PRIMARY KEY(`id`),
 	CONSTRAINT `mark_records_source_student_subject_unique` UNIQUE(`workspace_id`,`mark_source_type`,`source_id`,`student_id`,`subject_id`)
 );
@@ -108,8 +108,8 @@ CREATE TABLE `result_publications` (
 	`results` json NOT NULL,
 	`published_at` varchar(40),
 	`published_by` varchar(120),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `result_publications_id` PRIMARY KEY(`id`),
 	CONSTRAINT `result_publications_scope_unique` UNIQUE(`workspace_id`,`examination_id`,`grade_id`,`section_id`)
 );

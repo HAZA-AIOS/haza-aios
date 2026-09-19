@@ -6,8 +6,8 @@ CREATE TABLE `auth_sessions` (
 	`remember_me` boolean NOT NULL DEFAULT false,
 	`expires_at` datetime(3) NOT NULL,
 	`revoked_at` datetime(3),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `auth_sessions_id` PRIMARY KEY(`id`),
 	CONSTRAINT `auth_sessions_token_hash_unique` UNIQUE(`token_hash`)
 );
@@ -16,7 +16,7 @@ CREATE TABLE `membership_roles` (
 	`id` char(36) NOT NULL,
 	`membership_id` char(36) NOT NULL,
 	`role_id` char(36) NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 	CONSTRAINT `membership_roles_id` PRIMARY KEY(`id`),
 	CONSTRAINT `membership_roles_membership_role_unique` UNIQUE(`membership_id`,`role_id`)
 );
@@ -25,8 +25,8 @@ CREATE TABLE `permissions` (
 	`id` char(36) NOT NULL,
 	`permission_key` varchar(120) NOT NULL,
 	`description` varchar(500) NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `permissions_id` PRIMARY KEY(`id`),
 	CONSTRAINT `permissions_key_unique` UNIQUE(`permission_key`)
 );
@@ -35,7 +35,7 @@ CREATE TABLE `role_permissions` (
 	`id` char(36) NOT NULL,
 	`role_id` char(36) NOT NULL,
 	`permission_id` char(36) NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 	CONSTRAINT `role_permissions_id` PRIMARY KEY(`id`),
 	CONSTRAINT `role_permissions_role_permission_unique` UNIQUE(`role_id`,`permission_id`)
 );
@@ -48,8 +48,8 @@ CREATE TABLE `roles` (
 	`system_key` varchar(120),
 	`description` varchar(500) NOT NULL,
 	`is_system` boolean NOT NULL DEFAULT false,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `roles_id` PRIMARY KEY(`id`),
 	CONSTRAINT `roles_org_name_unique` UNIQUE(`organization_id`,`name`),
 	CONSTRAINT `roles_system_key_unique` UNIQUE(`system_key`)
@@ -64,7 +64,7 @@ CREATE TABLE `security_events` (
 	`ip_address` varchar(80),
 	`user_agent` text,
 	`metadata` json,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 	CONSTRAINT `security_events_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -79,8 +79,8 @@ CREATE TABLE `users` (
 	`email_verified` boolean NOT NULL DEFAULT false,
 	`user_status` enum('active','inactive','suspended','pending','archived') NOT NULL DEFAULT 'active',
 	`last_login_at` datetime(3),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `users_id` PRIMARY KEY(`id`),
 	CONSTRAINT `users_normalized_email_unique` UNIQUE(`normalized_email`)
 );
@@ -90,8 +90,8 @@ CREATE TABLE `workspace_memberships` (
 	`workspace_id` char(36) NOT NULL,
 	`organization_membership_id` char(36) NOT NULL,
 	`organization_membership_status` enum('active','pending','suspended') NOT NULL DEFAULT 'active',
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `workspace_memberships_id` PRIMARY KEY(`id`),
 	CONSTRAINT `workspace_memberships_workspace_membership_unique` UNIQUE(`workspace_id`,`organization_membership_id`)
 );

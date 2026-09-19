@@ -4,9 +4,9 @@ CREATE TABLE `organization_memberships` (
 	`user_id` varchar(120) NOT NULL,
 	`organization_membership_role` enum('Owner','Admin','Member') NOT NULL DEFAULT 'Owner',
 	`organization_membership_status` enum('active','pending','suspended') NOT NULL DEFAULT 'active',
-	`joined_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`joined_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `organization_memberships_id` PRIMARY KEY(`id`),
 	CONSTRAINT `organization_memberships_org_user_unique` UNIQUE(`organization_id`,`user_id`)
 );
@@ -18,10 +18,10 @@ CREATE TABLE `organization_modules` (
 	`organization_module_status` enum('activated','deactivated') NOT NULL DEFAULT 'activated',
 	`enabled` boolean NOT NULL DEFAULT true,
 	`settings` json,
-	`activated_at` timestamp(3) NOT NULL DEFAULT (now()),
+	`activated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 	`activated_by` varchar(120),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `organization_modules_id` PRIMARY KEY(`id`),
 	CONSTRAINT `organization_modules_org_key_unique` UNIQUE(`organization_id`,`module_key`)
 );
@@ -33,8 +33,8 @@ CREATE TABLE `organization_settings` (
 	`locale` varchar(20) NOT NULL DEFAULT 'en',
 	`currency` char(3) NOT NULL DEFAULT 'USD',
 	`preferences` json NOT NULL DEFAULT ('{}'),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `organization_settings_id` PRIMARY KEY(`id`),
 	CONSTRAINT `organization_settings_org_unique` UNIQUE(`organization_id`)
 );
@@ -56,8 +56,8 @@ CREATE TABLE `organizations` (
 	`organization_status` enum('active','suspended','archived') NOT NULL DEFAULT 'active',
 	`owner_id` varchar(120) NOT NULL,
 	`archived_at` timestamp(3),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `organizations_id` PRIMARY KEY(`id`),
 	CONSTRAINT `organizations_slug_unique` UNIQUE(`slug`)
 );
@@ -70,8 +70,8 @@ CREATE TABLE `workspaces` (
 	`workspace_type` enum('primary','general','industry') NOT NULL DEFAULT 'primary',
 	`workspace_status` enum('active','archived') NOT NULL DEFAULT 'active',
 	`archived_at` timestamp(3),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `workspaces_id` PRIMARY KEY(`id`),
 	CONSTRAINT `workspaces_org_code_unique` UNIQUE(`organization_id`,`code`)
 );

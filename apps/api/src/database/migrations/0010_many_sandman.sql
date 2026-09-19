@@ -19,8 +19,8 @@ CREATE TABLE `ai_agent_memories` (
 	`expires_at` datetime(3),
 	`last_used_at` datetime(3),
 	`usage_count` int NOT NULL DEFAULT 0,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `ai_agent_memories_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint

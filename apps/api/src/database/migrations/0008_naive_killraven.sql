@@ -14,8 +14,8 @@ CREATE TABLE `ai_agent_definitions` (
 	`model_selection` varchar(160) NOT NULL,
 	`created_by` char(36) NOT NULL,
 	`archived_at` timestamp(3),
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `ai_agent_definitions_id` PRIMARY KEY(`id`),
 	CONSTRAINT `ai_agent_definitions_workspace_key_unique` UNIQUE(`workspace_id`,`agent_key`),
 	CONSTRAINT `ai_agent_definitions_workspace_template_unique` UNIQUE(`workspace_id`,`template_id`)
@@ -37,8 +37,8 @@ CREATE TABLE `ai_agent_templates` (
 	`input_schema` json NOT NULL,
 	`output_schema` json NOT NULL,
 	`metadata` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `ai_agent_templates_id` PRIMARY KEY(`id`),
 	CONSTRAINT `ai_agent_templates_slug_unique` UNIQUE(`slug`)
 );
@@ -49,8 +49,8 @@ CREATE TABLE `ai_agent_tool_assignments` (
 	`tool_key` varchar(160) NOT NULL,
 	`status` varchar(40) NOT NULL DEFAULT 'active',
 	`configuration` json,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `ai_agent_tool_assignments_id` PRIMARY KEY(`id`),
 	CONSTRAINT `ai_agent_tool_assignments_agent_tool_unique` UNIQUE(`agent_id`,`tool_key`)
 );

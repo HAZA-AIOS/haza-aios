@@ -1,15 +1,4 @@
-import { AdvantageSection } from "./components/AdvantageSection";
-import { CapabilitiesSection } from "./components/CapabilitiesSection";
-import { DemoRequestSection } from "./components/DemoRequestSection";
-import { FinalCTA } from "./components/FinalCTA";
-import { Footer } from "./components/Footer";
-import { GlobalFutureSection } from "./components/GlobalFutureSection";
-import { Header } from "./components/Header";
-import { HeroSection } from "./components/HeroSection";
-import { IndustryShowcase } from "./components/IndustryShowcase";
-import { IntelligenceSection } from "./components/IntelligenceSection";
-import { TrustSection } from "./components/TrustSection";
-import { PricingSection } from "./components/PricingSection";
+import { PublicLandingPage } from "./components/public/PublicLandingPage";
 import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage";
 import { LoginPage } from "./pages/auth/LoginPage";
 import { RegisterPage } from "./pages/auth/RegisterPage";
@@ -87,26 +76,7 @@ function WorkspaceRedirect() {
 
 
 function LandingPage() {
-  return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <Header />
-
-      <main>
-        <HeroSection />
-        <div id="solutions"><IntelligenceSection /></div>
-        <AdvantageSection />
-        <div id="industries"><IndustryShowcase /></div>
-        <div id="products"><CapabilitiesSection /></div>
-        <div id="company"><TrustSection /></div>
-        <PricingSection />
-        <GlobalFutureSection />
-        <div id="resources"><DemoRequestSection /></div>
-        <FinalCTA />
-      </main>
-
-      <Footer />
-    </div>
-  );
+  return <PublicLandingPage />;
 }
 
 function App() {

@@ -45,6 +45,11 @@ function RegisterPage() {
         description="Organization registration comes later; Epic 3 creates the independent user identity layer."
       >
         <form className="space-y-5" onSubmit={handleSubmit}>
+          <AuthAlert>
+            Registration is temporarily limited to approved email addresses. Existing users can
+            continue to sign in.
+          </AuthAlert>
+
           {auth.error ? <AuthAlert variant="error">{auth.error.message}</AuthAlert> : null}
 
           <div className="grid gap-4 sm:grid-cols-2">

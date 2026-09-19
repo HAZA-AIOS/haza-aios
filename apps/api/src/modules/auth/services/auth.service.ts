@@ -126,13 +126,18 @@ export class AuthService {
     const user = await repository.getUserByEmail(input.email);
 
     if (!user || !(await verifyPassword(input.password, user.passwordHash))) {
-      await repository.recordSecurityEvent({
-        eventType: "login.failed",
-        severity: "warning",
-        ipAddress: readIpAddress(request),
-        userAgent: readUserAgent(request),
-        metadata: { email: normalizeEmail(input.email) },
-      });
+      try {
+        await repository.recordSecurityEvent({
+          userId: user?.id,
+          eventType: "login.failed",
+          severity: "warning",
+          ipAddress: readIpAddress(request),
+          userAgent: readUserAgent(request),
+          metadata: { email: normalizeEmail(input.email) },
+        });
+      } catch {
+        // Audit persistence must not change an authentication rejection into a server error.
+      }
       throw new ApiError(401, "INVALID_CREDENTIALS", "Invalid email or password.");
     }
 

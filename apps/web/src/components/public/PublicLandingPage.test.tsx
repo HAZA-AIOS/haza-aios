@@ -3,6 +3,18 @@ import { describe, expect, it } from "vitest";
 import { PublicLandingPage } from "./PublicLandingPage";
 
 describe("public platform experience", () => {
+  it("shows all three pricing cards without claiming billing is enabled", () => {
+    render(<PublicLandingPage />);
+    for (const name of ["Starter", "Professional", "Enterprise"]) {
+      expect(screen.getByRole("article", { name: `${name} plan` })).toBeVisible();
+      expect(screen.getByRole("link", { name: `Evaluate ${name}` })).toHaveAttribute(
+        "href",
+        "/register",
+      );
+    }
+    for (const price of ["$15", "$40", "$90"]) expect(screen.getByText(price)).toBeVisible();
+    expect(screen.getByText(/Billing is not enabled/)).toBeVisible();
+  });
   it("provides real destinations for every public section link", () => {
     const { container } = render(<PublicLandingPage />);
     for (const link of container.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')) {

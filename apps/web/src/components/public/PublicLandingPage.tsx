@@ -25,6 +25,7 @@ import {
   stack,
 } from "./platform-content";
 import "./public-landing.css";
+import { PublicPricingCards } from "./PublicPricingCards";
 
 type Items = readonly (readonly [string, string])[];
 
@@ -490,17 +491,17 @@ export function PublicLandingPage() {
         <Section
           id="pricing"
           eyebrow="Pricing & evaluation"
-          title="Start with scope, not a token allowance."
-          intro="Public subscription pricing and production AI usage allowances are not finalized. Evaluation should establish the modules, users, data and support an organization needs."
+          title="Choose the right starting point."
+          intro="Explore Starter, Professional and Enterprise. Prices are indicative, not a live subscription offer. Billing is not enabled; creating an evaluation account does not start a paid plan."
         >
-          <div className="public-actions">
-            <a className="public-button" href="#education">
-              Review education capabilities
-            </a>
-            <a className="public-button" href="#status">
-              Review current status
-            </a>
-          </div>
+          <PublicPricingCards />
+          <p className="section-caption">
+            Final scope, AI usage allowances and support terms require confirmation. Review{" "}
+            <a href="#status" className="public-text-link">
+              current platform status
+            </a>{" "}
+            before evaluating.
+          </p>
         </Section>
         <Section
           id="demo"

@@ -1,0 +1,270 @@
+.haza-login {
+  min-height: 100svh;
+  background: #121316;
+  color: #fafafa;
+  position: relative;
+  isolation: isolate;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.haza-login * {
+  box-sizing: border-box;
+  letter-spacing: 0;
+}
+.login-landscape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -2;
+}
+.haza-login::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, #10111455, #10111411 60%, #10111444);
+}
+.login-topbar {
+  max-width: 1320px;
+  margin: auto;
+  padding: 28px 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+}
+.login-back {
+  color: #f4e7e1;
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+.login-composition {
+  max-width: 1200px;
+  margin: auto;
+  min-height: calc(100svh - 160px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+  align-items: center;
+  gap: 70px;
+  padding: 36px 40px 60px;
+}
+.login-welcome h1 {
+  font-size: 78px;
+  font-weight: 750;
+  line-height: 1.05;
+  margin: 20px 0 24px;
+}
+.login-welcome h1 span {
+  color: #ffb590;
+}
+.login-welcome > p:last-child {
+  font-size: 19px;
+  line-height: 1.6;
+  max-width: 360px;
+  color: #eee4df;
+}
+.login-eyebrow {
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  color: #ffbc9b;
+  margin: 0 0 12px;
+}
+.login-panel {
+  border: 1px solid #ffffff26;
+  border-top: 2px solid #f16b42;
+  border-radius: 8px;
+  background: #17181dcc;
+  backdrop-filter: blur(16px);
+  padding: 42px 36px;
+  box-shadow: 0 24px 70px #0005;
+}
+.login-panel h2 {
+  font-size: 25px;
+  line-height: 1.3;
+  font-weight: 650;
+  margin: 0 0 10px;
+}
+.login-intro {
+  color: #c9c5c6;
+  font-size: 14px;
+  margin: 0 0 30px;
+}
+.login-form {
+  display: grid;
+  gap: 24px;
+}
+.login-form input:not([type="checkbox"]) {
+  height: 48px;
+  border: 1px solid #ffffff30;
+  background: #ffffff0c;
+  color: #fff;
+  border-radius: 24px;
+  padding-inline: 18px;
+  box-shadow: none;
+}
+.login-form input[autocomplete="current-password"] {
+  padding-right: 48px;
+}
+.login-form input::placeholder {
+  color: #b3b1b7;
+}
+.login-form input:focus-visible {
+  outline: 2px solid #ffaf87;
+  outline-offset: 3px;
+}
+.login-form button[aria-label="Show password"],
+.login-form button[aria-label="Hide password"] {
+  color: #e7d8d1;
+  position: absolute;
+  right: 10px;
+  left: auto;
+  top: 50%;
+  transform: translateY(-50%);
+  translate: none !important;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.login-form .relative {
+  position: relative;
+}
+.login-form label {
+  color: #f5eeeb;
+}
+.login-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.login-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.login-remember input {
+  accent-color: #df4e32;
+}
+.login-link {
+  color: #ffbb98;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.login-link:hover,
+.login-back:hover {
+  color: #fff;
+}
+.haza-login .login-submit {
+  width: 100%;
+  height: 48px;
+  border-radius: 24px;
+  background: linear-gradient(100deg, #d6382e, #bd3429);
+  color: #fff;
+  border: 1px solid #f57352;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: none;
+}
+.haza-login .login-submit:hover {
+  background: #bd3429;
+}
+.haza-login .login-submit:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.login-signup {
+  text-align: center;
+  color: #c8c4c5;
+  font-size: 13px;
+  line-height: 1.8;
+  margin: 8px 0 0;
+}
+.login-footer {
+  padding: 16px 24px 24px;
+  text-align: center;
+  color: #d0c4bf;
+  font-size: 12px;
+}
+.haza-login a:focus-visible,
+.haza-login button:focus-visible {
+  outline: 2px solid #ffb590;
+  outline-offset: 4px;
+}
+@media (max-width: 950px) {
+  .login-composition {
+    gap: 36px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+    padding-inline: 28px;
+  }
+  .login-welcome h1 {
+    font-size: 56px;
+  }
+  .login-topbar {
+    padding-inline: 28px;
+  }
+  .login-panel {
+    padding: 32px 26px;
+  }
+}
+@media (max-width: 700px) {
+  .login-topbar {
+    padding: 20px 22px;
+  }
+  .login-brand {
+    font-size: 16px;
+  }
+  .login-composition {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 24px 22px 32px;
+    gap: 26px;
+    min-height: auto;
+  }
+  .login-welcome h1 {
+    font-size: 42px;
+    margin: 12px 0;
+  }
+  .login-welcome h1 br {
+    display: none;
+  }
+  .login-welcome h1 span::before {
+    content: " ";
+  }
+  .login-welcome > p:last-child {
+    font-size: 16px;
+    margin: 0;
+  }
+  .login-panel {
+    width: 100%;
+    padding: 28px 22px;
+  }
+  .login-panel h2 {
+    font-size: 23px;
+  }
+  .login-welcome .login-eyebrow {
+    display: none;
+  }
+  .login-options {
+    font-size: 12px;
+  }
+  .login-landscape {
+    object-position: 65% center;
+  }
+}

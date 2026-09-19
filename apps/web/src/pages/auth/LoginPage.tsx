@@ -1,21 +1,14 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 
-import {
-  AuthAlert,
-  AuthCard,
-  Button,
-  Checkbox,
-  FormField,
-  Input,
-  PasswordField,
-} from "@haza-aios/ui";
+import { AuthAlert, Button, Checkbox, FormField, Input, PasswordField } from "@haza-aios/ui";
 
 import { useAuth } from "@/auth/use-auth";
 import { navigate } from "@/routes/navigation";
 import { Link } from "@/routes/router";
 
-import { AuthShell } from "./AuthShell";
+import { LogoMark } from "@haza-aios/ui/components/logo-mark";
+import "./login-page.css";
 
 function LoginPage() {
   const auth = useAuth();
@@ -30,62 +23,88 @@ function LoginPage() {
   }
 
   return (
-    <AuthShell>
-      <AuthCard
-        eyebrow="Welcome back"
-        title="Sign in to HAZA AIOS"
-        description="Use your workspace identity to continue into protected application routes."
-      >
-        <form className="space-y-5" onSubmit={handleSubmit}>
-          {auth.error ? <AuthAlert variant="error">{auth.error.message}</AuthAlert> : null}
+    <div className="haza-login">
+      <img
+        className="login-landscape"
+        src="/branding/haza-login-landscape.jpg"
+        alt=""
+        fetchPriority="high"
+      />
+      <header className="login-topbar">
+        <Link to="/" className="login-brand">
+          <LogoMark />
+          <span>HAZA AIOS</span>
+        </Link>
+        <Link to="/" className="login-back">
+          Back to site
+        </Link>
+      </header>
+      <main className="login-composition">
+        <div className="login-welcome">
+          <p className="login-eyebrow">Your organization. Connected.</p>
+          <h1>
+            Welcome
+            <br />
+            <span>back.</span>
+          </h1>
+          <p>Your people, your work, your next chapter.</p>
+        </div>
+        <section className="login-panel" aria-labelledby="login-title">
+          <p className="login-eyebrow">HAZA AIOS</p>
+          <h2 id="login-title">Sign in to your workspace</h2>
+          <p className="login-intro">Continue with your existing account.</p>
+          <form className="login-form" onSubmit={handleSubmit}>
+            {auth.error ? <AuthAlert variant="error">{auth.error.message}</AuthAlert> : null}
 
-          <FormField id="login-email" label="Email">
-            <Input
-              autoComplete="email"
-              inputMode="email"
-              placeholder="you@organization.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-          </FormField>
-
-          <FormField id="login-password" label="Password">
-            <PasswordField
-              autoComplete="current-password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-          </FormField>
-
-          <div className="flex items-center justify-between gap-4 text-sm">
-            <label className="flex items-center gap-2 text-slate-300">
-              <Checkbox
-                checked={rememberMe}
-                onChange={(event) => setRememberMe(event.target.checked)}
+            <FormField id="login-email" label="Email">
+              <Input
+                autoComplete="email"
+                inputMode="email"
+                placeholder="you@organization.com"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
               />
-              Remember me
-            </label>
-            <Link to="/forgot-password" className="font-semibold text-red-200 hover:text-red-100">
-              Forgot password?
-            </Link>
-          </div>
+            </FormField>
 
-          <Button type="submit" className="w-full" disabled={auth.status === "loading"}>
-            {auth.status === "loading" ? "Signing in..." : "Sign in"}
-          </Button>
+            <FormField id="login-password" label="Password">
+              <PasswordField
+                autoComplete="current-password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+            </FormField>
 
-          <p className="text-center text-sm text-slate-400">
-            New to HAZA AIOS?{" "}
-            <Link to="/register" className="font-semibold text-red-200 hover:text-red-100">
-              Create an account
-            </Link>
-          </p>
-        </form>
-      </AuthCard>
-    </AuthShell>
+            <div className="login-options">
+              <label className="login-remember">
+                <Checkbox
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
+                />
+                Remember me
+              </label>
+              <Link to="/forgot-password" className="login-link">
+                Forgot password?
+              </Link>
+            </div>
+
+            <Button type="submit" className="login-submit" disabled={auth.status === "loading"}>
+              {auth.status === "loading" ? "Signing in..." : "Sign in"}
+            </Button>
+
+            <p className="login-signup">
+              New to HAZA AIOS?{" "}
+              <Link to="/register" className="login-link">
+                Create an account
+              </Link>
+            </p>
+          </form>
+        </section>
+      </main>
+      <footer className="login-footer">HAZA AIOS. People, operations and intelligence.</footer>
+    </div>
   );
 }
 

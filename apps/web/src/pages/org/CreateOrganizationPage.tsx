@@ -22,7 +22,8 @@ import { AuthShell } from "../auth/AuthShell";
 
 function CreateOrganizationPage() {
   const auth = useAuth();
-  const { createOrg, isLoading } = useOrganization();
+  const { createOrg, isLoading, organizations } = useOrganization();
+  const isAdditionalOrganization = organizations.length > 0;
   const [form, setForm] = useState({
     name: "",
     legalName: "",
@@ -117,9 +118,13 @@ function CreateOrganizationPage() {
     return (
       <AuthShell variant="organization">
         <AuthCard
-          eyebrow="Registration Successful"
-          title="Organization Registered!"
-          description="Your multi-tenant workspace foundation has been established successfully."
+          eyebrow={isAdditionalOrganization ? "Organization added" : "Registration Successful"}
+          title={isAdditionalOrganization ? "Organization Created!" : "Organization Registered!"}
+          description={
+            isAdditionalOrganization
+              ? "The new organization is associated with your existing account and is now active."
+              : "Your multi-tenant workspace foundation has been established successfully."
+          }
         >
           <div className="space-y-6 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
@@ -154,8 +159,11 @@ function CreateOrganizationPage() {
               database tables matching this tenant container ID.
             </div>
 
-            <Button className="w-full" onClick={() => navigate("/app")}>
-              Enter Workspace Dashboard
+            <Button
+              className="w-full"
+              onClick={() => navigate(isAdditionalOrganization ? "/workspace" : "/app")}
+            >
+              {isAdditionalOrganization ? "Open New Organization" : "Enter Workspace Dashboard"}
             </Button>
           </div>
         </AuthCard>
@@ -166,9 +174,15 @@ function CreateOrganizationPage() {
   return (
     <AuthShell variant="organization">
       <AuthCard
-        eyebrow="Step 2 of 2"
-        title="Register your Organization"
-        description="Establish your organization tenant. You will automatically become the owner of this workspace."
+        eyebrow={isAdditionalOrganization ? "Add organization" : "Step 2 of 2"}
+        title={
+          isAdditionalOrganization ? "Create another Organization" : "Register your Organization"
+        }
+        description={
+          isAdditionalOrganization
+            ? "Create a separate organization under your existing account. You will become its owner and can switch between organizations from the dashboard."
+            : "Establish your organization tenant. You will automatically become the owner of this workspace."
+        }
       >
         <form className="space-y-5" onSubmit={handleSubmit}>
           {apiError && <AuthAlert variant="error">{apiError}</AuthAlert>}
@@ -258,7 +272,11 @@ function CreateOrganizationPage() {
           )}
 
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Creating workspace..." : "Register Organization"}
+            {isLoading
+              ? "Creating workspace..."
+              : isAdditionalOrganization
+                ? "Create Organization"
+                : "Register Organization"}
           </Button>
         </form>
       </AuthCard>

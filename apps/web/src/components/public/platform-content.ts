@@ -1,4 +1,5 @@
 export const navigation = [
+  ["Products", "products"],
   ["Platform", "platform"],
   ["Education", "education"],
   ["Architecture", "architecture"],

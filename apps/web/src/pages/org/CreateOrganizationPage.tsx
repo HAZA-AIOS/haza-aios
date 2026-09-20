@@ -105,7 +105,9 @@ function CreateOrganizationPage() {
         }
         setApiError(readApiErrorMessage(err.details) ?? err.message);
       } else {
-        setApiError(err instanceof Error ? err.message : "Failed to create organization. Please try again.");
+        setApiError(
+          err instanceof Error ? err.message : "Failed to create organization. Please try again.",
+        );
       }
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -113,7 +115,7 @@ function CreateOrganizationPage() {
 
   if (isSuccess) {
     return (
-      <AuthShell>
+      <AuthShell variant="organization">
         <AuthCard
           eyebrow="Registration Successful"
           title="Organization Registered!"
@@ -162,7 +164,7 @@ function CreateOrganizationPage() {
   }
 
   return (
-    <AuthShell>
+    <AuthShell variant="organization">
       <AuthCard
         eyebrow="Step 2 of 2"
         title="Register your Organization"
@@ -314,4 +316,3 @@ function readDetailText(details: unknown): string | null {
 
   return messages.length > 0 ? messages.join("; ") : null;
 }
-

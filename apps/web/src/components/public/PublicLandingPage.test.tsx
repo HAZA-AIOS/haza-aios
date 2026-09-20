@@ -3,6 +3,25 @@ import { describe, expect, it } from "vitest";
 import { PublicLandingPage } from "./PublicLandingPage";
 
 describe("public platform experience", () => {
+  it("presents three distinct HAZA products and the live SMS destination", () => {
+    render(<PublicLandingPage />);
+    for (const product of ["HAZA-AIOS", "HAZA-ME", "HAZA-SMS"]) {
+      expect(screen.getByRole("article", { name: product })).toBeVisible();
+    }
+    expect(
+      screen.getByText("One vision. Three intelligent products.", { exact: false }),
+    ).toBeVisible();
+    expect(screen.getByText(/HAZA-SMS is a standalone live application/)).toBeVisible();
+    expect(screen.getByRole("link", { name: /Visit HAZA-SMS/ })).toHaveAttribute(
+      "href",
+      "https://www.thementorschools.com",
+    );
+    expect(screen.getByRole("link", { name: /Visit HAZA-SMS/ })).toHaveAttribute(
+      "rel",
+      "noreferrer noopener",
+    );
+  });
+
   it("shows all three pricing cards without claiming billing is enabled", () => {
     render(<PublicLandingPage />);
     for (const name of ["Starter", "Professional", "Enterprise"]) {
@@ -25,6 +44,9 @@ describe("public platform experience", () => {
     const ids = [...container.querySelectorAll("[id]")].map((element) => element.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    for (const heading of screen.getAllByRole("heading", { level: 2 })) {
+      expect(heading.querySelector("svg")).not.toBeNull();
+    }
   });
 
   it("uses the original brand asset and preserves auth destinations", () => {

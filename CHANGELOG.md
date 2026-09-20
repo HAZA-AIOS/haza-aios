@@ -10,6 +10,7 @@
 
 ### Fixed
 
+- Prevented existing organization members from being redirected to organization creation during the brief post-login membership-loading transition.
 - Allowed explicitly configured frontend aliases in API CORS so both the root and `www` production domains can authenticate safely.
 
 - **Epic 13: Agent Configuration & Builder**

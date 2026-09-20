@@ -10,6 +10,7 @@ export const OrgProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null);
   const [currentMembership, setCurrentMembership] = useState<OrganizationMembership | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Helper to load user's organizations
@@ -38,6 +39,7 @@ export const OrgProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load organizations");
     } finally {
+      setLoadedUserId(userId);
       setIsLoading(false);
     }
   };
@@ -57,6 +59,7 @@ export const OrgProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setOrganizations([]);
           setCurrentOrganization(null);
           setCurrentMembership(null);
+          setLoadedUserId(null);
           setIsLoading(false);
         }
       }
@@ -136,13 +139,16 @@ export const OrgProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const isOrganizationContextLoading =
+    isLoading || (status === "authenticated" && user !== null && loadedUserId !== user.id);
+
   return (
     <OrgContext.Provider
       value={{
         currentOrganization,
         currentMembership,
         organizations,
-        isLoading,
+        isLoading: isOrganizationContextLoading,
         error,
         createOrg,
         switchOrg,

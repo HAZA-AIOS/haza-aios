@@ -6,6 +6,10 @@
 - Added centered, icon-led section headings across the public landing page and a secure external link to the HAZA-SMS website.
 - Aligned account and organization registration layouts with the public landing page's charcoal and coral visual language.
 
+### Fixed
+
+- Allowed explicitly configured frontend aliases in API CORS so both the root and `www` production domains can authenticate safely.
+
 - **Epic 13: Agent Configuration & Builder**
   - Implemented `AgentConfiguration` schema on `AgentInstance`.
   - Created low-code `AgentBuilderPage` at `/workspace/agents/:id/configure`.

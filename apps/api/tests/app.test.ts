@@ -25,6 +25,7 @@ beforeEach(async () => {
     API_HOST: "127.0.0.1",
     API_PORT: "8000",
     WEB_ORIGIN: "http://localhost:3000",
+    WEB_ORIGINS: "http://127.0.0.1:3000",
     LOG_LEVEL: "error",
     API_BODY_LIMIT_BYTES: "256",
   });
@@ -136,6 +137,28 @@ describe("api foundation", () => {
     });
 
     expect(response.headers.get("access-control-allow-origin")).toBe(config.webOrigin);
+  });
+
+  it("applies configured CORS for an additional web origin", async () => {
+    const additionalOrigin = "http://127.0.0.1:3000";
+    const response = await fetch(`${baseUrl}/api/v1/health`, {
+      headers: {
+        origin: additionalOrigin,
+      },
+    });
+
+    expect(response.headers.get("access-control-allow-origin")).toBe(additionalOrigin);
+    expect(response.headers.get("access-control-allow-credentials")).toBe("true");
+  });
+
+  it("does not allow an unconfigured web origin", async () => {
+    const response = await fetch(`${baseUrl}/api/v1/health`, {
+      headers: {
+        origin: "https://untrusted.example.com",
+      },
+    });
+
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
   });
 
   it("enforces request body limits", async () => {

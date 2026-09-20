@@ -4,7 +4,7 @@ import type { ApiConfig } from "../config/env.js";
 export function applyCors(request: IncomingMessage, response: ServerResponse, config: ApiConfig) {
   const origin = request.headers.origin;
 
-  if (origin === config.webOrigin) {
+  if (origin && config.webOrigins.includes(origin)) {
     response.setHeader("access-control-allow-origin", origin);
     response.setHeader("access-control-allow-credentials", "true");
     response.setHeader("vary", "Origin");

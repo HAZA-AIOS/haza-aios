@@ -1,0 +1,125 @@
+.haza-auth-shell {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: #101113;
+  color: #f4f5fb;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.haza-auth-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background: url("/ai_hero_bg.jpg") center / cover no-repeat;
+  filter: grayscale(1) brightness(0.52);
+}
+.haza-auth-shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, #101113d9 0%, #101113b8 48%, #101113a8 100%),
+    linear-gradient(135deg, transparent 45%, #d2423126 100%);
+  pointer-events: none;
+}
+.haza-auth-shell .auth-layout-container {
+  max-width: 1240px;
+  padding: 28px 32px;
+}
+.haza-auth-shell .auth-layout-header {
+  padding-bottom: 16px;
+  border-bottom: 1px solid #ffffff18;
+}
+.haza-auth-shell .auth-layout-grid {
+  gap: 64px;
+  padding-block: 44px;
+}
+.haza-auth-shell .auth-layout-hero > p:first-child {
+  color: #ffb28c;
+  letter-spacing: 0;
+}
+.haza-auth-shell .auth-layout-hero h1 {
+  max-width: 650px;
+  font-size: 52px;
+  line-height: 1.08;
+}
+.haza-auth-shell .auth-layout-hero > p {
+  color: #d2d2d6;
+}
+.haza-auth-shell .auth-layout-hero > div span {
+  border-radius: 6px;
+  border-color: #ffffff20;
+  background: #18191ccc;
+}
+.haza-auth-shell .auth-card {
+  max-width: 520px;
+  border-radius: 8px;
+  border-color: #ffffff26;
+  border-top: 2px solid #ef825b;
+  background: #17181de8;
+  box-shadow: 0 24px 70px #0006;
+}
+.haza-auth-shell .auth-card > div:first-child p:first-child {
+  color: #ffb28c;
+  letter-spacing: 0;
+}
+.haza-auth-shell input,
+.haza-auth-shell select,
+.haza-auth-shell textarea {
+  border-color: #ffffff30;
+  background: #ffffff0c;
+}
+.haza-auth-shell input:focus-visible,
+.haza-auth-shell select:focus-visible,
+.haza-auth-shell textarea:focus-visible {
+  outline: 2px solid #ffaf87;
+  outline-offset: 2px;
+}
+.haza-auth-shell button[type="submit"] {
+  border: 1px solid #f57352;
+  background: #c83a2e;
+}
+.haza-auth-shell button[type="submit"]:hover {
+  background: #df4936;
+}
+.haza-auth-organization .auth-layout-container {
+  max-width: 1380px;
+}
+.haza-auth-organization .auth-layout-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(520px, 640px);
+}
+.haza-auth-organization .auth-card {
+  max-width: 640px;
+}
+@media (max-width: 1023px) {
+  .haza-auth-shell .auth-layout-grid,
+  .haza-auth-organization .auth-layout-grid {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+  .haza-auth-shell .auth-layout-hero h1 {
+    font-size: 42px;
+  }
+  .haza-auth-shell .auth-card {
+    max-width: 720px;
+  }
+}
+@media (max-width: 600px) {
+  .haza-auth-shell .auth-layout-container {
+    padding: 20px 18px;
+  }
+  .haza-auth-shell .auth-layout-grid {
+    padding-block: 28px;
+  }
+  .haza-auth-shell .auth-layout-hero h1 {
+    font-size: 34px;
+  }
+  .haza-auth-shell .auth-layout-hero > div {
+    grid-template-columns: 1fr;
+  }
+  .haza-auth-shell .auth-card {
+    padding: 22px;
+  }
+}

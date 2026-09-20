@@ -4,14 +4,22 @@ import { AuthLayout } from "@haza-aios/ui/components/auth-layout";
 import { LogoMark } from "@haza-aios/ui/components/logo-mark";
 
 import { Link } from "@/routes/router";
+import "./auth-shell.css";
 
 /**
  * AuthShell — app-level wrapper that wires the router-agnostic AuthLayout
  * primitive (from packages/ui) with the app's Link component for navigation.
  */
-function AuthShell({ children }: { children: ReactNode }) {
+function AuthShell({
+  children,
+  variant = "account",
+}: {
+  children: ReactNode;
+  variant?: "account" | "organization";
+}) {
   return (
     <AuthLayout
+      className={`haza-auth-shell haza-auth-${variant}`}
       logoSlot={
         <Link to="/" className="flex items-center gap-3 text-sm font-semibold text-white">
           <LogoMark className="size-9" />

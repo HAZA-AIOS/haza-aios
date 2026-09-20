@@ -23,15 +23,15 @@ type AuthLayoutProps = {
 function AuthLayout({ logoSlot, navSlot, children, className }: AuthLayoutProps) {
   return (
     <main className={cn("min-h-screen bg-slate-950 text-white", className)}>
-      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-6">
-        <header className="flex items-center justify-between">
+      <div className="auth-layout-container mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-6">
+        <header className="auth-layout-header flex items-center justify-between">
           {logoSlot}
           {navSlot ?? null}
         </header>
 
-        <div className="grid flex-1 items-center gap-10 py-10 lg:grid-cols-[1fr_440px]">
+        <div className="auth-layout-grid grid flex-1 items-center gap-10 py-10 lg:grid-cols-[1fr_440px]">
           {/* Hero copy column */}
-          <section className="max-w-2xl space-y-6">
+          <section className="auth-layout-hero max-w-2xl space-y-6">
             <p className="text-xs font-semibold tracking-[0.32em] text-red-300 uppercase">
               Identity foundation
             </p>

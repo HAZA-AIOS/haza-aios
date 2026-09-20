@@ -6,6 +6,7 @@ export type ApiConfig = {
   host: string;
   port: number;
   webOrigin: string;
+  webOrigins: string[];
   registrationAllowedEmails: string[] | null;
   logLevel: LogLevel;
   bodyLimitBytes: number;
@@ -46,6 +47,7 @@ export function loadConfig(env: EnvInput = process.env): ApiConfig {
     "WEB_ORIGIN",
     nodeEnv === "production" ? undefined : "http://localhost:3000",
   );
+  const webOrigins = readOriginList(env.WEB_ORIGINS, "WEB_ORIGINS", webOrigin);
   const registrationAllowedEmails = readEmailList(
     env.REGISTRATION_ALLOWED_EMAILS,
     "REGISTRATION_ALLOWED_EMAILS",
@@ -68,6 +70,7 @@ export function loadConfig(env: EnvInput = process.env): ApiConfig {
     host,
     port,
     webOrigin,
+    webOrigins,
     registrationAllowedEmails,
     logLevel,
     bodyLimitBytes,
@@ -150,6 +153,25 @@ function readOrigin(value: string | undefined, name: string, fallback?: string):
   } catch {
     throw new Error(`${name} must be a valid URL origin`);
   }
+}
+
+function readOriginList(value: string | undefined, name: string, primaryOrigin: string): string[] {
+  if (value === undefined) {
+    return [primaryOrigin];
+  }
+
+  const origins = Array.from(
+    new Set([
+      primaryOrigin,
+      ...value
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+        .map((origin) => readOrigin(origin, name)),
+    ]),
+  );
+
+  return origins;
 }
 
 function readEmailList(value: string | undefined, name: string): string[] | null {

@@ -10,6 +10,7 @@ describe("loadConfig", () => {
       host: "127.0.0.1",
       port: 8000,
       webOrigin: "http://localhost:3000",
+      webOrigins: ["http://localhost:3000"],
       registrationAllowedEmails: null,
       logLevel: "debug",
       bodyLimitBytes: 1_048_576,
@@ -59,6 +60,24 @@ describe("loadConfig", () => {
 
   it("preserves explicit API_PORT precedence", () => {
     expect(loadConfig({ API_PORT: "8000", PORT: "43210" }).port).toBe(8000);
+  });
+
+  it("normalizes and de-duplicates additional web origins", () => {
+    const config = loadConfig({
+      WEB_ORIGIN: "https://haza-aios.com",
+      WEB_ORIGINS: "https://www.haza-aios.com, https://haza-aios.com",
+    });
+
+    expect(config.webOrigins).toEqual([
+      "https://haza-aios.com",
+      "https://www.haza-aios.com",
+    ]);
+  });
+
+  it("rejects invalid additional web origins", () => {
+    expect(() => loadConfig({ WEB_ORIGINS: "not-a-url" })).toThrow(
+      "WEB_ORIGINS must be a valid URL origin",
+    );
   });
 
   it("normalizes and de-duplicates registration allowlist emails", () => {

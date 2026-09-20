@@ -70,6 +70,7 @@ Supported DB-1 environment variables:
 | `API_HOST` | API listen host | `127.0.0.1` outside production |
 | `API_PORT` | API listen port | `8000` |
 | `WEB_ORIGIN` | Allowed frontend origin for CORS | `http://localhost:3000` outside production |
+| `WEB_ORIGINS` | Optional comma-separated additional frontend origins for CORS | Empty |
 | `LOG_LEVEL` | `error`, `warn`, `info`, or `debug` | `debug` outside production |
 | `API_BODY_LIMIT_BYTES` | Maximum JSON body size | `1048576` |
 

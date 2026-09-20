@@ -3,9 +3,9 @@ import { useAuth } from "@/auth/use-auth";
 import { useOrganization } from "@/org/use-organization";
 import { navigate, usePathname } from "@/routes/navigation";
 import { LogoMark } from "@haza-aios/ui";
-import type { Organization } from "@/org/org.types";
 import { useIsSuperAdmin } from "@/admin/use-platform-admin";
 import { ModuleRuntime } from "@/modules/module-runtime";
+import { OrganizationSwitcher } from "./OrganizationSwitcher";
 
 interface NavItem {
   label: string;
@@ -417,24 +417,13 @@ function AppShell({ children }: AppShellProps) {
             {/* Organization switch dropdown */}
             {organizations.length > 0 && currentOrganization && (
               <div className="flex items-center gap-3">
-                <div className="relative">
-                  <select
-                    value={currentOrganization.id}
-                    onChange={(e) => switchOrg(e.target.value)}
-                    className="appearance-none rounded-xl border border-white/10 bg-slate-900 px-3 py-1.5 pr-8 text-xs font-medium text-white focus:outline-none focus:border-red-500/30 transition-colors"
-                  >
-                    {organizations.map((o: Organization) => (
-                      <option key={o.id} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400">
-                    <svg className="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
+                <OrganizationSwitcher
+                  currentOrganization={currentOrganization}
+                  organizations={organizations}
+                  onSwitch={switchOrg}
+                  onCreate={() => navigate("/organization/create")}
+                  showCreate={!isAdminMode}
+                />
 
                 {/* Organization details display */}
                 {!isAdminMode && (

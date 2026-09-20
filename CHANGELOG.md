@@ -2,6 +2,10 @@
 
 ### Added
 
+- Added a public HAZA product-family showcase that clearly separates HAZA-AIOS, HAZA-ME, and the standalone live HAZA-SMS application.
+- Added centered, icon-led section headings across the public landing page and a secure external link to the HAZA-SMS website.
+- Aligned account and organization registration layouts with the public landing page's charcoal and coral visual language.
+
 - **Epic 13: Agent Configuration & Builder**
   - Implemented `AgentConfiguration` schema on `AgentInstance`.
   - Created low-code `AgentBuilderPage` at `/workspace/agents/:id/configure`.
@@ -10,7 +14,6 @@
   - Implemented `updateConfiguration` in `AgentService`.
   - Added reusable `agent-builder-primitives` to `@haza-aios/ui`.
 
-
 - **Epic 12: AI Agent Registry & Marketplace**
   - Created the Agent Marketplace UI foundation at `/workspace/agents`.
   - Implemented discoverable global `AgentTemplate` registry.
@@ -18,7 +21,6 @@
   - Added dedicated `/workspace/agents/active` page for managing instantiated agents.
   - Added `AgentDetailsPage` handling both Template inspection and Instance configuration paths.
   - Created reusable UI primitives (`AgentSearch`, `AgentFilters`, `AgentCategoryNav`).
-
 
 - **Epic 11: AI Agent Platform Foundation**
   - Established generic agent domain models (`AgentTemplate`, `AgentInstance`, `AgentRun`, `Tool`, `Capability`).

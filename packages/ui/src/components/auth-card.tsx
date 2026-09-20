@@ -12,7 +12,7 @@ function AuthCard({ eyebrow, title, description, className, children, ...props }
   return (
     <section
       className={cn(
-        "w-full max-w-md rounded-2xl border border-white/10 bg-slate-950/80 p-6 text-white shadow-2xl shadow-black/30 backdrop-blur-xl",
+        "auth-card w-full max-w-md rounded-2xl border border-white/10 bg-slate-950/80 p-6 text-white shadow-2xl shadow-black/30 backdrop-blur-xl",
         className,
       )}
       {...props}

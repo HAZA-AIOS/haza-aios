@@ -1,13 +1,29 @@
 import { useState, type ReactNode } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faBoxesStacked,
+  faBuilding,
+  faChartLine,
+  faCircleNodes,
+  faCode,
+  faCompass,
+  faDatabase,
   faArrowRight,
   faBars,
+  faBookOpen,
   faXmark,
   faLayerGroup,
   faGraduationCap,
+  faHandshake,
+  faPuzzlePiece,
+  faRobot,
+  faRoute,
+  faRocket,
   faShieldHalved,
+  faTags,
+  faUsers,
 } from "@fortawesome/free-solid-svg-icons";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { LogoMark } from "@haza-aios/ui/components/logo-mark";
 import {
   adoption,
@@ -26,8 +42,31 @@ import {
 } from "./platform-content";
 import "./public-landing.css";
 import { PublicPricingCards } from "./PublicPricingCards";
+import { HazaProducts } from "./HazaProducts";
 
 type Items = readonly (readonly [string, string])[];
+
+const sectionIcons: Record<string, IconDefinition> = {
+  products: faBoxesStacked,
+  platform: faCircleNodes,
+  architecture: faLayerGroup,
+  "how-it-works": faRoute,
+  agents: faRobot,
+  education: faGraduationCap,
+  "school-flow": faBookOpen,
+  "school-benefits": faUsers,
+  business: faBuilding,
+  comparison: faHandshake,
+  technical: faCode,
+  security: faShieldHalved,
+  "data-flow": faDatabase,
+  modules: faPuzzlePiece,
+  "why-haza": faCompass,
+  adoption: faRocket,
+  status: faChartLine,
+  pricing: faTags,
+  demo: faRocket,
+};
 
 function Section({
   id,
@@ -47,7 +86,10 @@ function Section({
       <div className="public-container">
         <header className="section-intro">
           <p className="eyebrow">{eyebrow}</p>
-          <h2 id={`${id}-title`}>{title}</h2>
+          <h2 id={`${id}-title`}>
+            <FontAwesomeIcon icon={sectionIcons[id] ?? faLayerGroup} aria-hidden="true" />
+            <span>{title}</span>
+          </h2>
           {intro && <p>{intro}</p>}
         </header>
         {children}
@@ -316,6 +358,18 @@ export function PublicLandingPage() {
       <PublicHeader />
       <main id="public-main">
         <PublicHero />
+        <Section
+          id="products"
+          eyebrow="HAZA product family"
+          title="HAZA Products"
+          intro="One vision. Three intelligent products. From AI infrastructure and personal intelligence to production-ready school management, HAZA is building intelligent systems for people and organizations."
+        >
+          <HazaProducts />
+          <p className="product-distinction">
+            HAZA-SMS is a standalone live application. It is separate from the Education and School
+            Management capabilities developed inside HAZA-AIOS.
+          </p>
+        </Section>
         <Section
           id="platform"
           eyebrow="What is HAZA AIOS?"

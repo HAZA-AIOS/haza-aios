@@ -48,6 +48,8 @@ export type PermissionKey =
   | "event.read"
   | "notification.read"
   | "notification.manage"
+  | "usage.read"
+  | "billing.read"
   | "member.read"
   | "member.manage";
 

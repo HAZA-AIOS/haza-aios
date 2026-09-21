@@ -19,7 +19,7 @@ describe("WorkflowExecutionManager", () => {
       configuration: {},
       createdBy: "user-1",
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     mockSteps = [
@@ -30,8 +30,8 @@ describe("WorkflowExecutionManager", () => {
         type: "knowledge",
         order: 0,
         configuration: {
-          query: "Grade 5 Science"
-        }
+          query: "Grade 5 Science",
+        },
       },
       {
         id: "step-2",
@@ -42,8 +42,8 @@ describe("WorkflowExecutionManager", () => {
         configuration: {
           agentInstanceId: "worksheet-agent-1",
           input: "{{Retrieve Curriculum}}",
-          requireJson: true
-        }
+          requireJson: true,
+        },
       },
       {
         id: "step-3",
@@ -54,9 +54,9 @@ describe("WorkflowExecutionManager", () => {
         configuration: {
           variable: "Generate Worksheet",
           operator: "exists",
-          value: true
-        }
-      }
+          value: true,
+        },
+      },
     ];
 
     vi.restoreAllMocks();
@@ -66,7 +66,7 @@ describe("WorkflowExecutionManager", () => {
       status: "completed",
       data: "Grade 5 Science curriculum",
       startedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString()
+      completedAt: new Date().toISOString(),
     });
     vi.spyOn(StepExecutors, "executeAgentStep").mockResolvedValue({
       stepId: "step-2",
@@ -74,7 +74,7 @@ describe("WorkflowExecutionManager", () => {
       status: "completed",
       data: { questions: [] },
       startedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString()
+      completedAt: new Date().toISOString(),
     });
     vi.spyOn(StepExecutors, "executeConditionStep").mockResolvedValue({
       stepId: "step-3",
@@ -82,7 +82,7 @@ describe("WorkflowExecutionManager", () => {
       status: "completed",
       data: { matched: true },
       startedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString()
+      completedAt: new Date().toISOString(),
     });
   });
 
@@ -94,12 +94,12 @@ describe("WorkflowExecutionManager", () => {
       status: "pending",
       input: {},
       stepResults: {},
-      startedAt: new Date().toISOString()
+      startedAt: new Date().toISOString(),
     };
 
     // We can't await directly because startTask starts a background promise and returns immediately.
     // In our implementation, startTask doesn't return the promise, but for test we can wait a bit.
-    
+
     // Using a mock to intercept saveTask to know when it finishes
     let taskCompleted = false;
     let finalTask: Task | null = null;
@@ -110,12 +110,13 @@ describe("WorkflowExecutionManager", () => {
       }
       return t;
     });
+    vi.spyOn(WorkflowService, "getTask").mockImplementation(async () => task);
 
     await WorkflowExecutionManager.startTask(task, mockWorkflow, mockSteps, "user-1");
 
     // Wait for completion
     while (!taskCompleted) {
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100));
     }
 
     expect(finalTask).toBeDefined();

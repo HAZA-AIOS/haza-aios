@@ -41,6 +41,9 @@ export type PermissionKey =
   | "module.manage"
   | "agent.read"
   | "agent.manage"
+  | "workflow.read"
+  | "workflow.manage"
+  | "workflow.run"
   | "member.read"
   | "member.manage";
 

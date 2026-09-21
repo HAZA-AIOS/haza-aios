@@ -42,11 +42,19 @@ export function validateRegister(input: unknown): RegisterInput {
 
   return {
     ...user,
-    organizationName: requireText(value.organizationName ?? value.organization, "organizationName", 2, 180),
+    organizationName: requireText(
+      value.organizationName ?? value.organization,
+      "organizationName",
+      2,
+      180,
+    ),
     organizationType: requireText(value.organizationType ?? "Company", "organizationType", 2, 80),
     industry: requireText(value.industry ?? "General", "industry", 2, 80),
     country: requireText(value.country ?? "United States", "country", 2, 120),
-    organizationEmail: typeof value.organizationEmail === "string" ? requireEmail(value.organizationEmail) : user.email,
+    organizationEmail:
+      typeof value.organizationEmail === "string"
+        ? requireEmail(value.organizationEmail)
+        : user.email,
   };
 }
 

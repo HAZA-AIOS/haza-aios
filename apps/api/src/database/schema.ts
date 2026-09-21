@@ -61,6 +61,32 @@ export const agentMemoryStatus = mysqlEnum("agent_memory_status", [
   "archived",
   "deleted",
 ]);
+export const workflowStatus = mysqlEnum("workflow_status", ["draft", "active", "archived"]);
+export const workflowRunStatus = mysqlEnum("workflow_run_status", [
+  "pending",
+  "running",
+  "waiting",
+  "completed",
+  "failed",
+  "cancelled",
+]);
+export const workflowStepRunStatus = mysqlEnum("workflow_step_run_status", [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "skipped",
+]);
+export const workflowTaskStatus = mysqlEnum("workflow_task_status", [
+  "pending",
+  "assigned",
+  "in_progress",
+  "blocked",
+  "waiting",
+  "completed",
+  "cancelled",
+  "failed",
+]);
 export const membershipRole = mysqlEnum("organization_membership_role", [
   "Owner",
   "Admin",
@@ -391,6 +417,233 @@ export const aiAgentMemories = mysqlTable(
     index("ai_agent_memories_source_run_idx").on(table.sourceRunId),
     index("ai_agent_memories_source_conversation_idx").on(table.sourceConversationId),
     index("ai_agent_memories_source_message_idx").on(table.sourceMessageId),
+  ],
+);
+
+export const workflowDefinitions = mysqlTable(
+  "workflow_definitions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    agentId: char("agent_id", { length: 36 }).references(() => aiAgentDefinitions.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    name: varchar("name", { length: 180 }).notNull(),
+    description: varchar("description", { length: 1000 }).notNull(),
+    status: workflowStatus.notNull().default("draft"),
+    version: varchar("version", { length: 40 }).notNull().default("1.0.0"),
+    revision: int("revision").notNull().default(1),
+    configuration: json("configuration").$type<Record<string, unknown>>().notNull(),
+    createdBy: char("created_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    index("workflow_definitions_org_status_idx").on(table.organizationId, table.status),
+    index("workflow_definitions_workspace_status_idx").on(table.workspaceId, table.status),
+    index("workflow_definitions_agent_idx").on(table.agentId),
+  ],
+);
+
+export const workflowSteps = mysqlTable(
+  "workflow_steps",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    workflowId: char("workflow_id", { length: 36 })
+      .notNull()
+      .references(() => workflowDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    name: varchar("name", { length: 180 }).notNull(),
+    type: mysqlEnum("type", [
+      "agent",
+      "tool",
+      "knowledge",
+      "condition",
+      "save",
+      "notification",
+    ]).notNull(),
+    stepOrder: int("step_order").notNull(),
+    revision: int("revision").notNull(),
+    configuration: json("configuration").$type<Record<string, unknown>>().notNull(),
+    timeoutSeconds: int("timeout_seconds"),
+    maxAttempts: int("max_attempts").notNull().default(1),
+    retryDelayMs: int("retry_delay_ms").notNull().default(1000),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_steps_workflow_revision_order_unique").on(
+      table.workflowId,
+      table.revision,
+      table.stepOrder,
+    ),
+    index("workflow_steps_org_workflow_revision_idx").on(
+      table.organizationId,
+      table.workflowId,
+      table.revision,
+    ),
+  ],
+);
+
+export const workflowRuns = mysqlTable(
+  "workflow_runs",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    workflowId: char("workflow_id", { length: 36 })
+      .notNull()
+      .references(() => workflowDefinitions.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    workflowRevision: int("workflow_revision").notNull(),
+    agentRunId: char("agent_run_id", { length: 36 }).references(() => aiAgentRuns.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    requestedBy: char("requested_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    status: workflowRunStatus.notNull().default("pending"),
+    idempotencyKey: varchar("idempotency_key", { length: 160 }),
+    input: json("input").$type<Record<string, unknown>>().notNull(),
+    output: json("output").$type<Record<string, unknown>>(),
+    executionContext: json("execution_context").$type<Record<string, unknown>>().notNull(),
+    definitionSnapshot: json("definition_snapshot").$type<Record<string, unknown>>().notNull(),
+    stepsSnapshot: json("steps_snapshot").$type<Array<Record<string, unknown>>>().notNull(),
+    executionAuthority: varchar("execution_authority", { length: 40 })
+      .notNull()
+      .default("client_reported"),
+    currentStepId: char("current_step_id", { length: 36 }).references(() => workflowSteps.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    safeErrorMessage: varchar("safe_error_message", { length: 1000 }),
+    startedAt: datetime("started_at", { fsp: 3 }),
+    completedAt: datetime("completed_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_runs_idempotency_unique").on(
+      table.workspaceId,
+      table.workflowId,
+      table.idempotencyKey,
+    ),
+    index("workflow_runs_org_status_idx").on(table.organizationId, table.status),
+    index("workflow_runs_workspace_workflow_status_idx").on(
+      table.workspaceId,
+      table.workflowId,
+      table.status,
+    ),
+    index("workflow_runs_requested_by_idx").on(table.requestedBy),
+    index("workflow_runs_agent_run_idx").on(table.agentRunId),
+  ],
+);
+
+export const workflowStepRuns = mysqlTable(
+  "workflow_step_runs",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    workflowRunId: char("workflow_run_id", { length: 36 })
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workflowStepId: char("workflow_step_id", { length: 36 })
+      .notNull()
+      .references(() => workflowSteps.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    status: workflowStepRunStatus.notNull().default("pending"),
+    attempt: int("attempt").notNull().default(1),
+    input: json("input").$type<Record<string, unknown>>().notNull(),
+    output: json("output").$type<Record<string, unknown>>(),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull(),
+    safeErrorMessage: varchar("safe_error_message", { length: 1000 }),
+    reportedBy: char("reported_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    startedAt: datetime("started_at", { fsp: 3 }),
+    completedAt: datetime("completed_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("workflow_step_runs_run_step_attempt_unique").on(
+      table.workflowRunId,
+      table.workflowStepId,
+      table.attempt,
+    ),
+    index("workflow_step_runs_org_status_idx").on(table.organizationId, table.status),
+  ],
+);
+
+export const workflowTasks = mysqlTable(
+  "workflow_tasks",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    workflowRunId: char("workflow_run_id", { length: 36 })
+      .notNull()
+      .references(() => workflowRuns.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workflowStepId: char("workflow_step_id", { length: 36 })
+      .notNull()
+      .references(() => workflowSteps.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    title: varchar("title", { length: 220 }).notNull(),
+    description: varchar("description", { length: 1000 }).notNull(),
+    type: varchar("type", { length: 80 }).notNull().default("manual"),
+    priority: varchar("priority", { length: 40 }).notNull().default("normal"),
+    status: workflowTaskStatus.notNull().default("pending"),
+    assignedUserId: char("assigned_user_id", { length: 36 }).references(() => users.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    assignedRole: varchar("assigned_role", { length: 120 }),
+    assignedAgentId: char("assigned_agent_id", { length: 36 }).references(
+      () => aiAgentDefinitions.id,
+      {
+        onDelete: "restrict",
+        onUpdate: "cascade",
+      },
+    ),
+    input: json("input").$type<Record<string, unknown>>().notNull(),
+    output: json("output").$type<Record<string, unknown>>(),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull(),
+    dueAt: datetime("due_at", { fsp: 3 }),
+    startedAt: datetime("started_at", { fsp: 3 }),
+    completedAt: datetime("completed_at", { fsp: 3 }),
+    createdBy: char("created_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    index("workflow_tasks_org_status_idx").on(table.organizationId, table.status),
+    index("workflow_tasks_workspace_assignee_idx").on(
+      table.workspaceId,
+      table.assignedUserId,
+      table.status,
+    ),
+    index("workflow_tasks_run_step_idx").on(table.workflowRunId, table.workflowStepId),
+    index("workflow_tasks_agent_idx").on(table.assignedAgentId),
   ],
 );
 export const organizations = mysqlTable(
@@ -1989,6 +2242,11 @@ export const knowledgeChunks = mysqlTable(
 );
 
 export const schema = {
+  workflowDefinitions,
+  workflowSteps,
+  workflowRuns,
+  workflowStepRuns,
+  workflowTasks,
   knowledgeSources,
   knowledgeChunks,
   academicTerms,

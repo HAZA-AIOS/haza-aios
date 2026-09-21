@@ -3,11 +3,13 @@ export type WorkflowStatus = "draft" | "active" | "archived";
 export interface Workflow {
   id: string;
   organizationId: string;
+  workspaceId?: string;
   agentInstanceId?: string; // Optional: If the workflow belongs directly to an agent
   name: string;
   description: string;
   status: WorkflowStatus;
   version: string;
+  revision?: number;
   configuration: Record<string, any>;
   createdBy: string;
   createdAt: string;

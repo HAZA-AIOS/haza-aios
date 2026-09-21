@@ -1,8 +1,16 @@
 import { sendJson } from "../../common/http/json.js";
 import type { BackendModule } from "../module-registry.js";
 import { AuthService, readBearerToken, readCookie } from "./services/auth.service.js";
-import { buildExpiredSessionCookie, buildSessionCookie, sessionCookieName } from "./services/token.service.js";
-import { validateCreateUser, validateLogin, validateRegister } from "./validation/auth-validation.js";
+import {
+  buildExpiredSessionCookie,
+  buildSessionCookie,
+  sessionCookieName,
+} from "./services/token.service.js";
+import {
+  validateCreateUser,
+  validateLogin,
+  validateRegister,
+} from "./validation/auth-validation.js";
 
 export const authModule: BackendModule = {
   name: "auth",
@@ -13,7 +21,14 @@ export const authModule: BackendModule = {
       async handler(request, response, { config, database }) {
         const input = validateCreateUser(request.body);
         const result = await new AuthService(database).registerIdentity(input);
-        response.setHeader("set-cookie", buildSessionCookie(result.session.accessToken, new Date(result.session.expiresAt), config.nodeEnv === "production"));
+        response.setHeader(
+          "set-cookie",
+          buildSessionCookie(
+            result.session.accessToken,
+            new Date(result.session.expiresAt),
+            config.nodeEnv === "production",
+          ),
+        );
         sendJson(response, 201, result);
       },
     });
@@ -24,7 +39,14 @@ export const authModule: BackendModule = {
       async handler(request, response, { config, database }) {
         const input = validateRegister(request.body);
         const result = await new AuthService(database).register(input);
-        response.setHeader("set-cookie", buildSessionCookie(result.session.accessToken, new Date(result.session.expiresAt), config.nodeEnv === "production"));
+        response.setHeader(
+          "set-cookie",
+          buildSessionCookie(
+            result.session.accessToken,
+            new Date(result.session.expiresAt),
+            config.nodeEnv === "production",
+          ),
+        );
         sendJson(response, 201, result);
       },
     });
@@ -35,7 +57,14 @@ export const authModule: BackendModule = {
       async handler(request, response, { config, database }) {
         const input = validateLogin(request.body);
         const result = await new AuthService(database).login(input, request);
-        response.setHeader("set-cookie", buildSessionCookie(result.session.accessToken, new Date(result.session.expiresAt), config.nodeEnv === "production"));
+        response.setHeader(
+          "set-cookie",
+          buildSessionCookie(
+            result.session.accessToken,
+            new Date(result.session.expiresAt),
+            config.nodeEnv === "production",
+          ),
+        );
         sendJson(response, 200, result);
       },
     });

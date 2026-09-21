@@ -12,7 +12,14 @@ import {
   workspaceMemberships,
 } from "../../../database/schema.js";
 import type { RepositoryContext } from "../../../database/repositories/repository-context.js";
-import type { CreateUserInput, PermissionKey, RoleScope, SafeUser, SessionRecord, UserRecord } from "../auth.types.js";
+import type {
+  CreateUserInput,
+  PermissionKey,
+  RoleScope,
+  SafeUser,
+  SessionRecord,
+  UserRecord,
+} from "../auth.types.js";
 import { normalizeEmail } from "../validation/auth-validation.js";
 
 type PermissionSeed = {
@@ -29,7 +36,13 @@ export const corePermissions: PermissionSeed[] = [
   { key: "module.read", description: "Read organization module activation." },
   { key: "module.manage", description: "Manage organization module activation." },
   { key: "agent.read", description: "Read organization AI agent registry and configuration." },
-  { key: "agent.manage", description: "Manage organization AI agent definitions and configuration." },
+  {
+    key: "agent.manage",
+    description: "Manage organization AI agent definitions and configuration.",
+  },
+  { key: "workflow.read", description: "Read organization workflows, runs, and tasks." },
+  { key: "workflow.manage", description: "Manage and execute organization workflows and tasks." },
+  { key: "workflow.run", description: "Execute organization workflows and report run progress." },
   { key: "member.read", description: "Read organization members." },
   { key: "member.manage", description: "Manage organization members and roles." },
 ];
@@ -67,15 +80,27 @@ export class AuthRepository {
   }
 
   async getUserByEmail(email: string): Promise<UserRecord | null> {
-    const rows = await this.context.db.select().from(users).where(eq(users.normalizedEmail, normalizeEmail(email))).limit(1);
+    const rows = await this.context.db
+      .select()
+      .from(users)
+      .where(eq(users.normalizedEmail, normalizeEmail(email)))
+      .limit(1);
     return rows[0] ?? null;
   }
 
   async touchLastLogin(userId: string): Promise<void> {
-    await this.context.db.update(users).set({ lastLoginAt: new Date(), updatedAt: new Date() }).where(eq(users.id, userId));
+    await this.context.db
+      .update(users)
+      .set({ lastLoginAt: new Date(), updatedAt: new Date() })
+      .where(eq(users.id, userId));
   }
 
-  async createSession(input: { userId: string; tokenHash: string; expiresAt: Date; rememberMe: boolean }): Promise<SessionRecord> {
+  async createSession(input: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: Date;
+    rememberMe: boolean;
+  }): Promise<SessionRecord> {
     const id = randomUUID();
     const now = new Date();
 
@@ -96,30 +121,42 @@ export class AuthRepository {
   }
 
   async getActiveSessionByHash(tokenHash: string): Promise<SessionRecord | null> {
-    const rows = await this.context.db.select().from(authSessions).where(and(
-      eq(authSessions.tokenHash, tokenHash),
-      eq(authSessions.status, "active"),
-      gt(authSessions.expiresAt, new Date()),
-      isNull(authSessions.revokedAt),
-    )).limit(1);
+    const rows = await this.context.db
+      .select()
+      .from(authSessions)
+      .where(
+        and(
+          eq(authSessions.tokenHash, tokenHash),
+          eq(authSessions.status, "active"),
+          gt(authSessions.expiresAt, new Date()),
+          isNull(authSessions.revokedAt),
+        ),
+      )
+      .limit(1);
 
     return rows[0] ?? null;
   }
 
   async revokeSession(sessionId: string): Promise<void> {
-    await this.context.db.update(authSessions).set({
-      status: "revoked",
-      revokedAt: new Date(),
-      updatedAt: new Date(),
-    }).where(eq(authSessions.id, sessionId));
+    await this.context.db
+      .update(authSessions)
+      .set({
+        status: "revoked",
+        revokedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(authSessions.id, sessionId));
   }
 
   async revokeSessionByHash(tokenHash: string): Promise<void> {
-    await this.context.db.update(authSessions).set({
-      status: "revoked",
-      revokedAt: new Date(),
-      updatedAt: new Date(),
-    }).where(eq(authSessions.tokenHash, tokenHash));
+    await this.context.db
+      .update(authSessions)
+      .set({
+        status: "revoked",
+        revokedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(authSessions.tokenHash, tokenHash));
   }
 
   async ensurePermissions(): Promise<Record<PermissionKey, string>> {
@@ -136,11 +173,29 @@ export class AuthRepository {
       }
     }
 
-    const rows = await this.context.db.select({ id: permissions.id, key: permissions.key }).from(permissions).where(inArray(permissions.key, corePermissions.map((item) => item.key)));
-    return Object.fromEntries(rows.map((row) => [row.key, row.id])) as Record<PermissionKey, string>;
+    const rows = await this.context.db
+      .select({ id: permissions.id, key: permissions.key })
+      .from(permissions)
+      .where(
+        inArray(
+          permissions.key,
+          corePermissions.map((item) => item.key),
+        ),
+      );
+    return Object.fromEntries(rows.map((row) => [row.key, row.id])) as Record<
+      PermissionKey,
+      string
+    >;
   }
 
-  async ensureRole(input: { organizationId?: string | null; name: string; scope: RoleScope; systemKey?: string; description: string; permissionKeys: PermissionKey[] }): Promise<string> {
+  async ensureRole(input: {
+    organizationId?: string | null;
+    name: string;
+    scope: RoleScope;
+    systemKey?: string;
+    description: string;
+    permissionKeys: PermissionKey[];
+  }): Promise<string> {
     const permissionIds = await this.ensurePermissions();
     const existing = await this.getRole(input.organizationId ?? null, input.name, input.systemKey);
     const roleId = existing?.id ?? randomUUID();
@@ -177,10 +232,13 @@ export class AuthRepository {
   }
 
   async assignRoleToMembership(membershipId: string, roleId: string): Promise<void> {
-    const rows = await this.context.db.select({ id: membershipRoles.id }).from(membershipRoles).where(and(
-      eq(membershipRoles.membershipId, membershipId),
-      eq(membershipRoles.roleId, roleId),
-    )).limit(1);
+    const rows = await this.context.db
+      .select({ id: membershipRoles.id })
+      .from(membershipRoles)
+      .where(
+        and(eq(membershipRoles.membershipId, membershipId), eq(membershipRoles.roleId, roleId)),
+      )
+      .limit(1);
 
     if (rows.length) return;
 
@@ -192,7 +250,10 @@ export class AuthRepository {
     });
   }
 
-  async createWorkspaceMembership(workspaceId: string, organizationMembershipId: string): Promise<void> {
+  async createWorkspaceMembership(
+    workspaceId: string,
+    organizationMembershipId: string,
+  ): Promise<void> {
     await this.context.db.insert(workspaceMemberships).values({
       id: randomUUID(),
       workspaceId,
@@ -204,18 +265,29 @@ export class AuthRepository {
   }
 
   async getMembershipByOrganizationAndUser(organizationId: string, userId: string) {
-    const rows = await this.context.db.select().from(organizationMemberships).where(and(
-      eq(organizationMemberships.organizationId, organizationId),
-      eq(organizationMemberships.userId, userId),
-    )).limit(1);
+    const rows = await this.context.db
+      .select()
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.organizationId, organizationId),
+          eq(organizationMemberships.userId, userId),
+        ),
+      )
+      .limit(1);
     return rows[0] ?? null;
   }
 
   async getMembershipsWithPermissions(userId: string) {
-    const memberships = await this.context.db.select().from(organizationMemberships).where(and(
-      eq(organizationMemberships.userId, userId),
-      eq(organizationMemberships.status, "active"),
-    ));
+    const memberships = await this.context.db
+      .select()
+      .from(organizationMemberships)
+      .where(
+        and(
+          eq(organizationMemberships.userId, userId),
+          eq(organizationMemberships.status, "active"),
+        ),
+      );
     const result = [];
 
     for (const membership of memberships) {
@@ -244,20 +316,33 @@ export class AuthRepository {
     const rows = await this.context.db
       .select({ key: permissions.key })
       .from(membershipRoles)
-      .innerJoin(organizationMemberships, eq(membershipRoles.membershipId, organizationMemberships.id))
+      .innerJoin(
+        organizationMemberships,
+        eq(membershipRoles.membershipId, organizationMemberships.id),
+      )
       .innerJoin(roles, eq(membershipRoles.roleId, roles.id))
       .innerJoin(rolePermissions, eq(roles.id, rolePermissions.roleId))
       .innerJoin(permissions, eq(rolePermissions.permissionId, permissions.id))
-      .where(and(
-        eq(organizationMemberships.userId, userId),
-        eq(organizationMemberships.status, "active"),
-        eq(roles.scope, "platform"),
-      ));
+      .where(
+        and(
+          eq(organizationMemberships.userId, userId),
+          eq(organizationMemberships.status, "active"),
+          eq(roles.scope, "platform"),
+        ),
+      );
 
     return Array.from(new Set(rows.map((row) => row.key as PermissionKey)));
   }
 
-  async recordSecurityEvent(input: { userId?: string; organizationId?: string; eventType: string; severity?: "info" | "warning" | "critical"; ipAddress?: string; userAgent?: string; metadata?: Record<string, unknown> }): Promise<void> {
+  async recordSecurityEvent(input: {
+    userId?: string;
+    organizationId?: string;
+    eventType: string;
+    severity?: "info" | "warning" | "critical";
+    ipAddress?: string;
+    userAgent?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<void> {
     await this.context.db.insert(securityEvents).values({
       id: randomUUID(),
       userId: input.userId,
@@ -272,26 +357,41 @@ export class AuthRepository {
   }
 
   private async getPermissionByKey(key: PermissionKey) {
-    const rows = await this.context.db.select().from(permissions).where(eq(permissions.key, key)).limit(1);
+    const rows = await this.context.db
+      .select()
+      .from(permissions)
+      .where(eq(permissions.key, key))
+      .limit(1);
     return rows[0] ?? null;
   }
 
   private async getRole(organizationId: string | null, name: string, systemKey?: string) {
-    const rows = await this.context.db.select().from(roles).where(or(
-      systemKey ? eq(roles.systemKey, systemKey) : undefined,
-      and(
-        organizationId ? eq(roles.organizationId, organizationId) : isNull(roles.organizationId),
-        eq(roles.name, name),
-      ),
-    )).limit(1);
+    const rows = await this.context.db
+      .select()
+      .from(roles)
+      .where(
+        or(
+          systemKey ? eq(roles.systemKey, systemKey) : undefined,
+          and(
+            organizationId
+              ? eq(roles.organizationId, organizationId)
+              : isNull(roles.organizationId),
+            eq(roles.name, name),
+          ),
+        ),
+      )
+      .limit(1);
     return rows[0] ?? null;
   }
 
   private async rolePermissionExists(roleId: string, permissionId: string): Promise<boolean> {
-    const rows = await this.context.db.select({ id: rolePermissions.id }).from(rolePermissions).where(and(
-      eq(rolePermissions.roleId, roleId),
-      eq(rolePermissions.permissionId, permissionId),
-    )).limit(1);
+    const rows = await this.context.db
+      .select({ id: rolePermissions.id })
+      .from(rolePermissions)
+      .where(
+        and(eq(rolePermissions.roleId, roleId), eq(rolePermissions.permissionId, permissionId)),
+      )
+      .limit(1);
     return rows.length > 0;
   }
 }

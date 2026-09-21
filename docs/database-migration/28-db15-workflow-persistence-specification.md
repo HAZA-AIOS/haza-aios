@@ -1,8 +1,32 @@
 # DB-15: Workflow Persistence Specification
 
-Status: proposed implementation scope; implementation has not started.
+Status: implemented on `feature/db15-workflow-persistence`; pending review and merge.
 Base: develop after PR #25, merge commit 94b915d.
 Branch: feature/db15-workflow-persistence.
+
+## Implemented baseline
+
+- MySQL persists tenant-scoped workflow definitions, immutable ordered step revisions,
+  workflow runs, step-run outcomes, and human workflow tasks.
+- Definition and step writes use optimistic revision checks. Each step edit creates a
+  new immutable revision, while existing runs retain their definition and step snapshots.
+- Start requests support workspace/workflow-scoped idempotency keys. Run and task updates
+  condition on the current lifecycle state so terminal cancellation cannot be overwritten
+  by a stale client update.
+- `workflow.read`, `workflow.manage`, and `workflow.run` extend the existing DB-4 RBAC
+  system. Organization, workspace, user, role, agent, agent-run, workflow, and step
+  references are validated server-side.
+- The existing frontend workflow service now uses authenticated `/api/v1` operations
+  instead of localStorage. Legacy browser records are left untouched and are not imported.
+- The browser runner remains the execution authority for this phase. Persisted step results
+  are explicitly `client_reported`, include the authenticated reporter, and cannot authorize
+  privileged server-side effects. Unsupported step types fail instead of appearing successful.
+
+Migration: `0012_certain_argent.sql`. It is forward-only and additive; it creates five
+workflow tables and grants idempotent workflow permissions without changing existing data.
+
+Explicitly deferred: durable background workers, distributed queues, scheduling, external
+side-effect idempotency, generalized graph transitions, and DB-14 embeddings/vector search.
 
 ## Objective
 

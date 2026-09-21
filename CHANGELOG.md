@@ -2,6 +2,12 @@
 
 ### Added
 
+- **DB-15: Workflow, Tasks & Orchestration Persistence**
+  - Added tenant-scoped MySQL persistence for workflow definitions, immutable step revisions, runs, step outcomes, and human tasks.
+  - Added optimistic revision checks, immutable run snapshots, idempotent starts, lifecycle concurrency protection, and workflow RBAC permissions.
+  - Replaced workflow localStorage persistence with authenticated API operations while retaining the existing workspace design.
+  - Added validation, unit coverage, and disposable-database integration coverage for tenant isolation and durable orchestration state.
+
 - **Epic 13: Agent Configuration & Builder**
   - Implemented `AgentConfiguration` schema on `AgentInstance`.
   - Created low-code `AgentBuilderPage` at `/workspace/agents/:id/configure`.
@@ -10,7 +16,6 @@
   - Implemented `updateConfiguration` in `AgentService`.
   - Added reusable `agent-builder-primitives` to `@haza-aios/ui`.
 
-
 - **Epic 12: AI Agent Registry & Marketplace**
   - Created the Agent Marketplace UI foundation at `/workspace/agents`.
   - Implemented discoverable global `AgentTemplate` registry.
@@ -18,7 +23,6 @@
   - Added dedicated `/workspace/agents/active` page for managing instantiated agents.
   - Added `AgentDetailsPage` handling both Template inspection and Instance configuration paths.
   - Created reusable UI primitives (`AgentSearch`, `AgentFilters`, `AgentCategoryNav`).
-
 
 - **Epic 11: AI Agent Platform Foundation**
   - Established generic agent domain models (`AgentTemplate`, `AgentInstance`, `AgentRun`, `Tool`, `Capability`).

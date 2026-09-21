@@ -21,10 +21,10 @@ export const WorkflowRunPage: React.FC = () => {
 
   useEffect(() => {
     if (!currentOrganization || !id) return;
-    WorkflowService.getWorkflow(id, currentOrganization.id).then(w => {
+    WorkflowService.getWorkflow(id, currentOrganization.id).then((w) => {
       setWorkflow(w);
       if (w) {
-        WorkflowService.getWorkflowSteps(w.id).then(s => setSteps(s));
+        WorkflowService.getWorkflowSteps(w.id).then((s) => setSteps(s));
       }
       setLoading(false);
     });
@@ -32,8 +32,12 @@ export const WorkflowRunPage: React.FC = () => {
 
   // Polling for active task
   useEffect(() => {
-    let interval: any;
-    if (activeTask && ["pending", "running", "waiting"].includes(activeTask.status) && currentOrganization) {
+    let interval: ReturnType<typeof setInterval> | undefined;
+    if (
+      activeTask &&
+      ["pending", "running", "waiting"].includes(activeTask.status) &&
+      currentOrganization
+    ) {
       interval = setInterval(async () => {
         const t = await WorkflowService.getTask(activeTask.id, currentOrganization.id);
         if (t) setActiveTask(t);
@@ -46,20 +50,22 @@ export const WorkflowRunPage: React.FC = () => {
     if (!workflow || !currentOrganization) return;
 
     const newTask: Task = {
-      id: `task_${Date.now()}`,
+      id: crypto.randomUUID(),
       organizationId: currentOrganization.id,
       workflowId: workflow.id,
       status: "pending",
       input: {}, // Could get from a form
       stepResults: {},
-      startedAt: new Date().toISOString()
+      startedAt: new Date().toISOString(),
     };
-    
+
     await WorkflowService.saveTask(newTask);
     setActiveTask(newTask);
 
     // Kick off in background
-    WorkflowExecutionManager.startTask(newTask, workflow, steps, "current_user").catch(console.error);
+    WorkflowExecutionManager.startTask(newTask, workflow, steps, "current_user").catch(
+      console.error,
+    );
   };
 
   const handleCancel = async () => {
@@ -74,25 +80,25 @@ export const WorkflowRunPage: React.FC = () => {
   return (
     <div className="max-w-7xl space-y-8">
       <div>
-        <button 
+        <button
           onClick={() => navigate(`/workspace/workflows/${workflow.id}`)}
-          className="text-sm font-medium text-slate-400 hover:text-white mb-2 flex items-center gap-1"
+          className="mb-2 flex items-center gap-1 text-sm font-medium text-slate-400 hover:text-white"
         >
-          <ArrowLeft className="w-4 h-4" /> Back to Builder
+          <ArrowLeft className="h-4 w-4" /> Back to Builder
         </button>
-        <div className="flex justify-between items-center">
-          <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
+        <div className="flex items-center justify-between">
+          <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight text-white">
             Run Workflow: {workflow.name}
           </h1>
           <Button onClick={handleStart} disabled={activeTask?.status === "running"}>
-            <Play className="w-4 h-4 mr-2" /> Start Workflow
+            <Play className="mr-2 h-4 w-4" /> Start Workflow
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-6">
-          <Card className="bg-[#0f141f] border-white/5">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-1">
+          <Card className="border-white/5 bg-[#0f141f]">
             <CardHeader>
               <CardTitle>Steps Outline</CardTitle>
             </CardHeader>
@@ -101,7 +107,7 @@ export const WorkflowRunPage: React.FC = () => {
                 const stepResult = activeTask?.stepResults[step.id];
                 let Icon = Circle;
                 let colorClass = "text-slate-500";
-                
+
                 if (stepResult) {
                   if (stepResult.status === "completed") {
                     Icon = CheckCircle2;
@@ -116,7 +122,7 @@ export const WorkflowRunPage: React.FC = () => {
 
                 return (
                   <div key={step.id} className="flex items-center gap-3">
-                    <Icon className={`w-5 h-5 ${colorClass}`} />
+                    <Icon className={`h-5 w-5 ${colorClass}`} />
                     <div>
                       <div className="text-sm font-medium text-slate-200">{step.name}</div>
                       <div className="text-xs text-slate-500 uppercase">{step.type}</div>
@@ -128,38 +134,53 @@ export const WorkflowRunPage: React.FC = () => {
           </Card>
         </div>
 
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="bg-[#0f141f] border-white/5 min-h-[500px]">
-            <CardHeader className="flex flex-row justify-between items-center border-b border-white/5 pb-4">
+        <div className="space-y-6 lg:col-span-2">
+          <Card className="min-h-[500px] border-white/5 bg-[#0f141f]">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-white/5 pb-4">
               <CardTitle>Execution Trace</CardTitle>
               {activeTask && (
-                <Badge variant={activeTask.status === "completed" ? "default" : activeTask.status === "failed" ? "destructive" : "secondary"}>
+                <Badge
+                  variant={
+                    activeTask.status === "completed"
+                      ? "default"
+                      : activeTask.status === "failed"
+                        ? "destructive"
+                        : "secondary"
+                  }
+                >
                   {activeTask.status}
                 </Badge>
               )}
             </CardHeader>
-            <CardContent className="p-6 space-y-6">
+            <CardContent className="space-y-6 p-6">
               {!activeTask ? (
-                <div className="text-center text-slate-500 italic mt-10">
+                <div className="mt-10 text-center text-slate-500 italic">
                   Click "Start Workflow" to begin execution.
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {steps.map(step => {
+                  {steps.map((step) => {
                     const res = activeTask.stepResults[step.id];
                     if (!res) return null;
                     return (
-                      <div key={step.id} className="border border-white/10 rounded-lg p-4 bg-slate-900/50">
-                        <div className="flex justify-between items-center mb-2">
+                      <div
+                        key={step.id}
+                        className="rounded-lg border border-white/10 bg-slate-900/50 p-4"
+                      >
+                        <div className="mb-2 flex items-center justify-between">
                           <h4 className="font-semibold text-white">{step.name}</h4>
                           <Badge variant="secondary">{res.status}</Badge>
                         </div>
                         {res.error && (
-                          <div className="text-red-400 text-sm bg-red-950/30 p-2 rounded">{res.error}</div>
+                          <div className="rounded bg-red-950/30 p-2 text-sm text-red-400">
+                            {res.error}
+                          </div>
                         )}
                         {res.data && (
-                          <div className="mt-2 bg-black/40 p-2 rounded text-xs font-mono text-slate-300 whitespace-pre-wrap max-h-[200px] overflow-y-auto">
-                            {typeof res.data === "object" ? JSON.stringify(res.data, null, 2) : String(res.data)}
+                          <div className="mt-2 max-h-[200px] overflow-y-auto rounded bg-black/40 p-2 font-mono text-xs whitespace-pre-wrap text-slate-300">
+                            {typeof res.data === "object"
+                              ? JSON.stringify(res.data, null, 2)
+                              : String(res.data)}
                           </div>
                         )}
                       </div>
@@ -168,7 +189,9 @@ export const WorkflowRunPage: React.FC = () => {
 
                   {["running", "pending"].includes(activeTask.status) && (
                     <div className="flex justify-end pt-4">
-                      <Button variant="destructive" onClick={handleCancel}>Cancel Execution</Button>
+                      <Button variant="destructive" onClick={handleCancel}>
+                        Cancel Execution
+                      </Button>
                     </div>
                   )}
                 </div>

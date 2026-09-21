@@ -6,7 +6,15 @@ import { createRepositoryContext } from "../../../database/repositories/reposito
 import { withTransaction } from "../../../database/transactions.js";
 import { OrganizationRepository } from "../../platform/repositories/organization.repository.js";
 import { generateSlug } from "../../platform/validation/platform-validation.js";
-import type { AuthContext, AuthResult, CreateUserInput, LoginInput, PermissionKey, RegisterInput, SafeUser } from "../auth.types.js";
+import type {
+  AuthContext,
+  AuthResult,
+  CreateUserInput,
+  LoginInput,
+  PermissionKey,
+  RegisterInput,
+  SafeUser,
+} from "../auth.types.js";
 import { AuthRepository, toSafeUser } from "../repositories/auth.repository.js";
 import { normalizeEmail } from "../validation/auth-validation.js";
 import { hashPassword, verifyPassword } from "./password.service.js";
@@ -21,6 +29,9 @@ const ownerPermissions: PermissionKey[] = [
   "module.manage",
   "agent.read",
   "agent.manage",
+  "workflow.read",
+  "workflow.manage",
+  "workflow.run",
   "member.read",
   "member.manage",
 ];
@@ -33,6 +44,9 @@ const adminPermissions: PermissionKey[] = [
   "module.manage",
   "agent.read",
   "agent.manage",
+  "workflow.read",
+  "workflow.manage",
+  "workflow.run",
   "member.read",
   "member.manage",
 ];
@@ -42,6 +56,8 @@ const memberPermissions: PermissionKey[] = [
   "workspace.read",
   "module.read",
   "agent.read",
+  "workflow.read",
+  "workflow.run",
   "member.read",
 ];
 
@@ -57,7 +73,10 @@ export class AuthService {
         passwordHash: await hashPassword(input.password),
       });
 
-      await authRepository.recordSecurityEvent({ userId: user.id, eventType: "auth.register_identity" });
+      await authRepository.recordSecurityEvent({
+        userId: user.id,
+        eventType: "auth.register_identity",
+      });
       return this.issueSession(authRepository, toSafeUser(user), false);
     }).catch((error: unknown) => {
       const mapped = mapDatabaseError(error);
@@ -109,13 +128,21 @@ export class AuthService {
       });
       await authRepository.assignRoleToMembership(bootstrap.membershipId, ownerRoleId);
       await authRepository.createWorkspaceMembership(bootstrap.workspaceId, bootstrap.membershipId);
-      await authRepository.recordSecurityEvent({ userId: user.id, organizationId: organization.id, eventType: "auth.register" });
+      await authRepository.recordSecurityEvent({
+        userId: user.id,
+        organizationId: organization.id,
+        eventType: "auth.register",
+      });
 
       return this.issueSession(authRepository, toSafeUser(user), false);
     }).catch((error: unknown) => {
       const mapped = mapDatabaseError(error);
       if (mapped.code === "DATABASE_UNIQUE_CONSTRAINT") {
-        throw new ApiError(409, "DATABASE_UNIQUE_CONSTRAINT", "User or organization already exists.");
+        throw new ApiError(
+          409,
+          "DATABASE_UNIQUE_CONSTRAINT",
+          "User or organization already exists.",
+        );
       }
       throw error;
     });
@@ -194,9 +221,15 @@ export class AuthService {
     };
   }
 
-  async requireOrganizationPermission(request: IncomingMessage, organizationId: string, permission: PermissionKey): Promise<AuthContext> {
+  async requireOrganizationPermission(
+    request: IncomingMessage,
+    organizationId: string,
+    permission: PermissionKey,
+  ): Promise<AuthContext> {
     const auth = await this.authenticateRequest(request);
-    const membership = auth.memberships.find((item) => item.organizationId === organizationId && item.status === "active");
+    const membership = auth.memberships.find(
+      (item) => item.organizationId === organizationId && item.status === "active",
+    );
 
     if (!membership) {
       throw new ApiError(404, "NOT_FOUND", "Organization not found.");
@@ -209,22 +242,25 @@ export class AuthService {
     return auth;
   }
 
-  async createOrganizationForUser(user: SafeUser, input: {
-    name: string;
-    legalName?: string;
-    slug?: string;
-    industry: string;
-    organizationType: string;
-    email: string;
-    country: string;
-    description?: string;
-    website?: string;
-    phone?: string;
-    timezone?: string;
-    currency?: string;
-    workspaceName?: string;
-    workspaceCode?: string;
-  }) {
+  async createOrganizationForUser(
+    user: SafeUser,
+    input: {
+      name: string;
+      legalName?: string;
+      slug?: string;
+      industry: string;
+      organizationType: string;
+      email: string;
+      country: string;
+      description?: string;
+      website?: string;
+      phone?: string;
+      timezone?: string;
+      currency?: string;
+      workspaceName?: string;
+      workspaceCode?: string;
+    },
+  ) {
     return withTransaction(this.database, async ({ tx }) => {
       const context = createRepositoryContext(tx);
       const organizationRepository = new OrganizationRepository(context);
@@ -234,7 +270,8 @@ export class AuthService {
         organizationId: organization.id,
         ownerId: user.id,
         workspaceName: input.workspaceName ?? `${organization.name} Workspace`,
-        workspaceCode: input.workspaceCode ?? generateSlug(input.workspaceName ?? organization.name),
+        workspaceCode:
+          input.workspaceCode ?? generateSlug(input.workspaceName ?? organization.name),
         timezone: organization.timezone,
         currency: organization.currency,
       });
@@ -252,9 +289,15 @@ export class AuthService {
     });
   }
 
-  private async issueSession(repository: AuthRepository, user: SafeUser, rememberMe: boolean): Promise<AuthResult> {
+  private async issueSession(
+    repository: AuthRepository,
+    user: SafeUser,
+    rememberMe: boolean,
+  ): Promise<AuthResult> {
     const token = createSessionToken();
-    const expiresAt = new Date(Date.now() + (rememberMe ? 1000 * 60 * 60 * 24 * 30 : 1000 * 60 * 60 * 8));
+    const expiresAt = new Date(
+      Date.now() + (rememberMe ? 1000 * 60 * 60 * 24 * 30 : 1000 * 60 * 60 * 8),
+    );
     const session = await repository.createSession({
       userId: user.id,
       tokenHash: hashSessionToken(token),
@@ -275,7 +318,10 @@ export class AuthService {
     };
   }
 
-  private async ensureOrganizationRoles(repository: AuthRepository, organizationId: string): Promise<void> {
+  private async ensureOrganizationRoles(
+    repository: AuthRepository,
+    organizationId: string,
+  ): Promise<void> {
     await repository.ensureRole({
       organizationId,
       name: "Owner",

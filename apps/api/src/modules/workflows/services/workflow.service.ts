@@ -12,6 +12,7 @@ import {
 import { createRepositoryContext } from "../../../database/repositories/repository-context.js";
 import { withTransaction } from "../../../database/transactions.js";
 import { WorkflowRepository } from "../repositories/workflow.repository.js";
+import { OperationalService } from "../../operations/services/operational.service.js";
 import type {
   CreateWorkflowInput,
   CreateWorkflowRunInput,
@@ -226,6 +227,62 @@ export class WorkflowService {
       });
       if (!run)
         throw new ApiError(409, "VALIDATION_FAILED", "Workflow run state changed concurrently.");
+      if (
+        input.status !== existing.status &&
+        ["completed", "failed", "cancelled"].includes(input.status)
+      ) {
+        const operations = new OperationalService(this.database);
+        await operations.emitDomainEvent(
+          {
+            organizationId,
+            workspaceId: run.workspaceId,
+            eventType: `workflow.${input.status}`,
+            aggregateType: "workflow_run",
+            aggregateId: run.id,
+            actorUserId: input.reportedBy,
+            payload: { workflowId: run.workflowId, status: run.status },
+            correlationId: run.id,
+            idempotencyKey: `workflow-run:${run.id}:${input.status}`,
+          },
+          tx,
+        );
+        await operations.recordAudit(
+          {
+            organizationId,
+            workspaceId: run.workspaceId,
+            actorUserId: input.reportedBy,
+            action: `workflow.run.${input.status}`,
+            resourceType: "workflow_run",
+            resourceId: run.id,
+            operation: "update",
+            correlationId: run.id,
+            beforeSnapshot: { status: existing.status },
+            afterSnapshot: { status: run.status },
+            changedFields: ["status"],
+          },
+          tx,
+        );
+        if (input.status === "failed") {
+          await operations.recordOperationalEvent(
+            {
+              organizationId,
+              workspaceId: run.workspaceId,
+              severity: "error",
+              component: "workflow",
+              eventType: "workflow.execution.failed",
+              status: "failed",
+              resourceType: "workflow_run",
+              resourceId: run.id,
+              workflowRunId: run.id,
+              correlationId: run.id,
+              summary: "Workflow execution failed.",
+              safeErrorMessage: run.safeErrorMessage,
+              metadata: { workflowId: run.workflowId },
+            },
+            tx,
+          );
+        }
+      }
       return { run, stepRuns: await repository.listStepRuns(organizationId, runId) };
     });
   }
@@ -249,7 +306,69 @@ export class WorkflowService {
       input.assignedRole,
       input.assignedAgentId,
     );
-    return this.repository().createTask(input, run.workspaceId);
+    return withTransaction(this.database, async ({ tx }) => {
+      const task = await new WorkflowRepository(createRepositoryContext(tx)).createTask(
+        input,
+        run.workspaceId,
+      );
+      const operations = new OperationalService(this.database);
+      const event = await operations.emitDomainEvent(
+        {
+          organizationId: input.organizationId,
+          workspaceId: run.workspaceId,
+          eventType: "workflow.task.assigned",
+          aggregateType: "workflow_task",
+          aggregateId: task.id,
+          actorUserId: input.createdBy,
+          payload: {
+            workflowRunId: task.workflowRunId,
+            workflowStepId: task.workflowStepId,
+            assignedUserId: task.assignedUserId,
+            assignedRole: task.assignedRole,
+          },
+          correlationId: run.id,
+          idempotencyKey: `workflow-task:${task.id}:assigned`,
+        },
+        tx,
+      );
+      await operations.recordAudit(
+        {
+          organizationId: input.organizationId,
+          workspaceId: run.workspaceId,
+          actorUserId: input.createdBy,
+          action: "workflow.task.assigned",
+          resourceType: "workflow_task",
+          resourceId: task.id,
+          operation: "create",
+          correlationId: run.id,
+          afterSnapshot: {
+            status: task.status,
+            assignedUserId: task.assignedUserId,
+            assignedRole: task.assignedRole,
+          },
+        },
+        tx,
+      );
+      if (task.assignedUserId && event) {
+        await operations.createUserNotification(
+          {
+            organizationId: input.organizationId,
+            workspaceId: run.workspaceId,
+            recipientUserId: task.assignedUserId,
+            notificationType: "workflow.task.assigned",
+            title: task.title,
+            message: task.description ?? "A workflow task requires your attention.",
+            priority: task.priority,
+            sourceEventId: event.id,
+            relatedResourceType: "workflow_task",
+            relatedResourceId: task.id,
+            actionPath: `/workspace/workflows/runs/${run.id}`,
+          },
+          tx,
+        );
+      }
+      return task;
+    });
   }
 
   async updateTask(

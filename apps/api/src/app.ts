@@ -15,6 +15,7 @@ import { educationModule } from "./modules/education/education.module.js";
 import { foundationModule } from "./modules/foundation/foundation.module.js";
 import { healthModule } from "./modules/health/health.module.js";
 import { registerModules } from "./modules/module-registry.js";
+import { operationsModule } from "./modules/operations/operations.module.js";
 import { platformModule } from "./modules/platform/platform.module.js";
 import { workflowsModule } from "./modules/workflows/workflows.module.js";
 import { ApiRouter } from "./routes/router.js";
@@ -34,6 +35,7 @@ export function createApp(
     agentsModule,
     knowledgeModule,
     workflowsModule,
+    operationsModule,
     educationModule,
   ]);
 

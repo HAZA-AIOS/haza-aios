@@ -111,6 +111,13 @@ export const securityEventSeverity = mysqlEnum("security_event_severity", [
   "warning",
   "critical",
 ]);
+export const auditResult = mysqlEnum("audit_result", ["success", "failure", "denied"]);
+export const operationalEventSeverity = mysqlEnum("operational_event_severity", [
+  "info",
+  "warning",
+  "error",
+  "critical",
+]);
 
 export const internalDatabaseChecks = mysqlTable("internal_database_checks", {
   id: char("id", { length: 36 }).primaryKey(),
@@ -907,6 +914,166 @@ export const securityEvents = mysqlTable(
     index("security_events_user_idx").on(table.userId),
     index("security_events_org_idx").on(table.organizationId),
     index("security_events_type_idx").on(table.eventType),
+  ],
+);
+
+export const auditLogs = mysqlTable(
+  "audit_logs",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    actorType: varchar("actor_type", { length: 40 }).notNull().default("user"),
+    actorUserId: char("actor_user_id", { length: 36 }).references(() => users.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    action: varchar("action", { length: 160 }).notNull(),
+    resourceType: varchar("resource_type", { length: 120 }).notNull(),
+    resourceId: varchar("resource_id", { length: 160 }),
+    operation: varchar("operation", { length: 40 }).notNull(),
+    result: auditResult.notNull().default("success"),
+    source: varchar("source", { length: 120 }).notNull().default("api"),
+    requestId: varchar("request_id", { length: 128 }),
+    correlationId: varchar("correlation_id", { length: 128 }),
+    ipAddress: varchar("ip_address", { length: 80 }),
+    userAgent: varchar("user_agent", { length: 500 }),
+    beforeSnapshot: json("before_snapshot").$type<Record<string, unknown>>(),
+    afterSnapshot: json("after_snapshot").$type<Record<string, unknown>>(),
+    changedFields: json("changed_fields").$type<string[]>(),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("audit_logs_org_created_idx").on(table.organizationId, table.createdAt),
+    index("audit_logs_workspace_created_idx").on(table.workspaceId, table.createdAt),
+    index("audit_logs_actor_created_idx").on(table.actorUserId, table.createdAt),
+    index("audit_logs_resource_created_idx").on(
+      table.organizationId,
+      table.resourceType,
+      table.resourceId,
+      table.createdAt,
+    ),
+    index("audit_logs_action_result_idx").on(
+      table.organizationId,
+      table.action,
+      table.result,
+      table.createdAt,
+    ),
+    index("audit_logs_correlation_idx").on(table.correlationId),
+  ],
+);
+
+export const domainEvents = mysqlTable(
+  "domain_events",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    eventType: varchar("event_type", { length: 160 }).notNull(),
+    aggregateType: varchar("aggregate_type", { length: 120 }).notNull(),
+    aggregateId: varchar("aggregate_id", { length: 160 }).notNull(),
+    actorUserId: char("actor_user_id", { length: 36 }).references(() => users.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    schemaVersion: int("schema_version").notNull().default(1),
+    payload: json("payload").$type<Record<string, unknown>>().notNull().default({}),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    correlationId: varchar("correlation_id", { length: 128 }),
+    causationId: char("causation_id", { length: 36 }),
+    idempotencyKey: varchar("idempotency_key", { length: 160 }),
+    occurredAt: timestamp("occurred_at", { fsp: 3 }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("domain_events_org_idempotency_unique").on(
+      table.organizationId,
+      table.idempotencyKey,
+    ),
+    index("domain_events_org_type_occurred_idx").on(
+      table.organizationId,
+      table.eventType,
+      table.occurredAt,
+    ),
+    index("domain_events_workspace_occurred_idx").on(table.workspaceId, table.occurredAt),
+    index("domain_events_aggregate_idx").on(
+      table.organizationId,
+      table.aggregateType,
+      table.aggregateId,
+    ),
+    index("domain_events_correlation_idx").on(table.correlationId),
+  ],
+);
+
+export const operationalEvents = mysqlTable(
+  "operational_events",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    severity: operationalEventSeverity.notNull().default("info"),
+    component: varchar("component", { length: 120 }).notNull(),
+    eventType: varchar("event_type", { length: 160 }).notNull(),
+    status: varchar("status", { length: 40 }).notNull(),
+    resourceType: varchar("resource_type", { length: 120 }),
+    resourceId: varchar("resource_id", { length: 160 }),
+    workflowRunId: char("workflow_run_id", { length: 36 }).references(() => workflowRuns.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    agentRunId: char("agent_run_id", { length: 36 }).references(() => aiAgentRuns.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
+    correlationId: varchar("correlation_id", { length: 128 }),
+    summary: varchar("summary", { length: 500 }).notNull(),
+    safeErrorCode: varchar("safe_error_code", { length: 120 }),
+    safeErrorMessage: varchar("safe_error_message", { length: 1000 }),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    occurredAt: timestamp("occurred_at", { fsp: 3 }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("operational_events_org_severity_idx").on(
+      table.organizationId,
+      table.severity,
+      table.occurredAt,
+    ),
+    index("operational_events_workspace_status_idx").on(
+      table.workspaceId,
+      table.status,
+      table.occurredAt,
+    ),
+    index("operational_events_component_type_idx").on(
+      table.organizationId,
+      table.component,
+      table.eventType,
+      table.occurredAt,
+    ),
+    index("operational_events_resource_idx").on(
+      table.organizationId,
+      table.resourceType,
+      table.resourceId,
+    ),
+    index("operational_events_workflow_run_idx").on(table.workflowRunId),
+    index("operational_events_agent_run_idx").on(table.agentRunId),
+    index("operational_events_correlation_idx").on(table.correlationId),
   ],
 );
 
@@ -2087,7 +2254,15 @@ export const sisNotifications = mysqlTable(
     recipientId: varchar("recipient_id", { length: 120 }).notNull(),
     recipientUserId: char("recipient_user_id", { length: 36 }),
     notificationType: varchar("notification_type", { length: 120 }).notNull(),
+    sourceEventId: char("source_event_id", { length: 36 }).references(() => domainEvents.id, {
+      onDelete: "restrict",
+      onUpdate: "cascade",
+    }),
     isRead: boolean("is_read").notNull().default(false),
+    readAt: datetime("read_at", { fsp: 3 }),
+    acknowledgedAt: datetime("acknowledged_at", { fsp: 3 }),
+    dismissedAt: datetime("dismissed_at", { fsp: 3 }),
+    expiresAt: datetime("expires_at", { fsp: 3 }),
     payload: json("payload").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
@@ -2100,6 +2275,13 @@ export const sisNotifications = mysqlTable(
       table.isRead,
     ),
     index("sis_notifications_user_idx").on(table.workspaceId, table.recipientUserId),
+    index("sis_notifications_user_unread_idx").on(
+      table.workspaceId,
+      table.recipientUserId,
+      table.isRead,
+      table.createdAt,
+    ),
+    index("sis_notifications_source_event_idx").on(table.sourceEventId),
   ],
 );
 
@@ -2126,11 +2308,24 @@ export const communicationDeliveries = mysqlTable(
     recipientKind: varchar("recipient_kind", { length: 40 }).notNull(),
     channel: varchar("channel", { length: 40 }).notNull(),
     status: varchar("status", { length: 40 }).notNull(),
+    attemptNumber: int("attempt_number").notNull().default(1),
+    providerReference: varchar("provider_reference", { length: 255 }),
+    safeErrorCode: varchar("safe_error_code", { length: 120 }),
+    safeErrorMessage: varchar("safe_error_message", { length: 1000 }),
+    attemptedAt: datetime("attempted_at", { fsp: 3 }),
+    completedAt: datetime("completed_at", { fsp: 3 }),
     payload: json("payload").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
   },
-  (table) => [index("communication_deliveries_workspace_idx").on(table.workspaceId, table.status)],
+  (table) => [
+    index("communication_deliveries_workspace_idx").on(table.workspaceId, table.status),
+    index("communication_deliveries_notification_attempt_idx").on(
+      table.notificationId,
+      table.channel,
+      table.attemptNumber,
+    ),
+  ],
 );
 
 export const notificationPreferences = mysqlTable(
@@ -2242,6 +2437,9 @@ export const knowledgeChunks = mysqlTable(
 );
 
 export const schema = {
+  auditLogs,
+  domainEvents,
+  operationalEvents,
   workflowDefinitions,
   workflowSteps,
   workflowRuns,

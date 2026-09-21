@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
-import {
-  AdminPageHeader,
-  DataTable,
-} from "@haza-aios/ui";
+import { AdminPageHeader, DataTable } from "@haza-aios/ui";
 import type { DataTableColumn } from "@haza-aios/ui";
-import { platformAdminService } from "@/admin/platform-admin-service";
 import type { AuditLogEntry } from "@/admin/platform-admin.types";
+import { operationalService } from "@/operations/operational-service";
+import { useOrganization } from "@/org/use-organization";
 import { navigate } from "@/routes/navigation";
 
 const ACTION_TYPE_LABELS: Record<string, string> = {
@@ -26,24 +24,46 @@ const ACTION_TYPE_COLORS: Record<string, string> = {
 };
 
 function AdminAuditLogPage() {
+  const { currentOrganization } = useOrganization();
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string>("all");
 
   useEffect(() => {
     let active = true;
-    platformAdminService.getAuditLog().then((log) => {
-      if (active) {
-        setEntries(log);
-        setIsLoading(false);
-      }
-    });
-    return () => { active = false; };
-  }, []);
+    setIsLoading(true);
+    setError(null);
 
-  const filtered = filterType === "all"
-    ? entries
-    : entries.filter((e) => e.actionType === filterType);
+    if (!currentOrganization) {
+      setEntries([]);
+      setIsLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    operationalService
+      .getAuditLog(currentOrganization.id)
+      .then((log) => {
+        if (active) setEntries(log);
+      })
+      .catch((reason: unknown) => {
+        if (active) {
+          setEntries([]);
+          setError(reason instanceof Error ? reason.message : "Unable to load the audit trail.");
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentOrganization]);
+
+  const filtered =
+    filterType === "all" ? entries : entries.filter((e) => e.actionType === filterType);
 
   const formatTimestamp = (iso: string) => {
     const d = new Date(iso);
@@ -60,7 +80,7 @@ function AdminAuditLogPage() {
       header: "Timestamp",
       sortable: true,
       render: (row) => (
-        <span className="text-xs text-slate-400 font-mono whitespace-nowrap">
+        <span className="font-mono text-xs whitespace-nowrap text-slate-400">
           {formatTimestamp(row.timestamp)}
         </span>
       ),
@@ -71,8 +91,9 @@ function AdminAuditLogPage() {
       render: (row) => (
         <div className="flex items-center gap-2">
           <span
-            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-              ACTION_TYPE_COLORS[row.actionType] || "bg-slate-500/10 text-slate-400 border-slate-500/20"
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${
+              ACTION_TYPE_COLORS[row.actionType] ||
+              "border-slate-500/20 bg-slate-500/10 text-slate-400"
             }`}
           >
             {ACTION_TYPE_LABELS[row.actionType] || row.actionType}
@@ -105,7 +126,7 @@ function AdminAuditLogPage() {
       key: "details",
       header: "Details",
       render: (row) => (
-        <p className="text-xs text-slate-400 max-w-[300px] truncate">{row.details}</p>
+        <p className="max-w-[300px] truncate text-xs text-slate-400">{row.details}</p>
       ),
     },
   ];
@@ -113,8 +134,8 @@ function AdminAuditLogPage() {
   if (isLoading) {
     return (
       <AppShell>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="size-8 rounded-full border-2 border-red-500 border-t-transparent animate-spin" />
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <div className="size-8 animate-spin rounded-full border-2 border-red-500 border-t-transparent" />
         </div>
       </AppShell>
     );
@@ -125,31 +146,35 @@ function AdminAuditLogPage() {
       <div className="space-y-6 pb-8">
         <AdminPageHeader
           title="Audit Log"
-          description="Complete platform-wide audit trail of all administrative actions."
+          description="Immutable audit trail for the active organization."
           breadcrumbs={[
             { label: "Admin", onClick: () => navigate("/admin") },
             { label: "Audit Log" },
           ]}
         />
 
+        {error ? (
+          <div className="border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            {error}
+          </div>
+        ) : null}
+
         {/* Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex flex-wrap items-center gap-3">
           {["all", "create", "update", "delete", "login", "system"].map((type) => (
             <button
               key={type}
               onClick={() => setFilterType(type)}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wider border transition-all ${
+              className={`rounded-lg border px-3 py-1.5 text-[10px] font-semibold tracking-wider uppercase transition-all ${
                 filterType === type
-                  ? "bg-red-500/10 border-red-500/20 text-red-400"
-                  : "bg-transparent border-white/10 text-slate-400 hover:text-white hover:border-white/20"
+                  ? "border-red-500/20 bg-red-500/10 text-red-400"
+                  : "border-white/10 bg-transparent text-slate-400 hover:border-white/20 hover:text-white"
               }`}
             >
               {type === "all" ? "All Events" : ACTION_TYPE_LABELS[type] || type}
             </button>
           ))}
-          <span className="text-xs text-slate-500 ml-auto">
-            {filtered.length} entries
-          </span>
+          <span className="ml-auto text-xs text-slate-500">{filtered.length} entries</span>
         </div>
 
         {/* Data Table */}

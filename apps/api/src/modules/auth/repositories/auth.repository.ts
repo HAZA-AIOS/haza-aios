@@ -43,6 +43,10 @@ export const corePermissions: PermissionSeed[] = [
   { key: "workflow.read", description: "Read organization workflows, runs, and tasks." },
   { key: "workflow.manage", description: "Manage and execute organization workflows and tasks." },
   { key: "workflow.run", description: "Execute organization workflows and report run progress." },
+  { key: "audit.read", description: "Read organization audit records." },
+  { key: "event.read", description: "Read organization domain and operational events." },
+  { key: "notification.read", description: "Read and manage personal notifications." },
+  { key: "notification.manage", description: "Manage organization notification operations." },
   { key: "member.read", description: "Read organization members." },
   { key: "member.manage", description: "Manage organization members and roles." },
 ];

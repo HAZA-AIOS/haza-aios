@@ -17,6 +17,7 @@ import type {
 } from "../agent.types.js";
 import { AgentRepository } from "../repositories/agent.repository.js";
 import { AgentRuntimeRepository } from "../repositories/agent-runtime.repository.js";
+import { OperationalService } from "../../operations/services/operational.service.js";
 
 const allowedTransitions: Record<AgentRunStatus, AgentRunStatus[]> = {
   queued: ["running", "waiting", "completed", "failed", "cancelled"],
@@ -55,9 +56,7 @@ export class AgentRuntimeService {
     return run;
   }
 
-  async createRun(
-    input: CreateAgentRunInput,
-  ): Promise<{
+  async createRun(input: CreateAgentRunInput): Promise<{
     run: AgentRunRecord;
     conversation: AgentConversationRecord;
     userMessage: AgentMessageRecord;
@@ -157,6 +156,28 @@ export class AgentRuntimeService {
           content: contentFromPayload(input.output),
           metadata: { source: "agent-run-complete" },
         });
+      }
+
+      if (input.status === "failed") {
+        await new OperationalService(this.database).recordOperationalEvent(
+          {
+            organizationId: updated.organizationId,
+            workspaceId: updated.workspaceId,
+            severity: "error",
+            component: "agent-runtime",
+            eventType: "agent.run.failed",
+            status: "failed",
+            resourceType: "agent_run",
+            resourceId: updated.id,
+            agentRunId: updated.id,
+            correlationId: updated.id,
+            summary: "Agent run failed.",
+            safeErrorCode: updated.errorCode,
+            safeErrorMessage: updated.safeErrorMessage,
+            metadata: { agentId: updated.agentId, conversationId: updated.conversationId },
+          },
+          tx,
+        );
       }
 
       return updated;

@@ -2,6 +2,10 @@
 
 ### Added
 
+- **DB-18: Backup and Recovery Hardening**
+  - Added guarded disposable MySQL backup/restore rehearsal and read-only foreign-key and tenant integrity checks.
+  - Documented production backup prerequisites and incident recovery decisions; no production backup or restore was executed.
+
 - **DB-17: Usage, Metering & SaaS Billing Persistence**
   - Added tenant-scoped immutable usage facts for terminal agent and workflow runs, with idempotency and summary APIs.
   - Added an unseeded SaaS plan catalog, billing accounts, subscriptions, and statements without charging or payment integration.

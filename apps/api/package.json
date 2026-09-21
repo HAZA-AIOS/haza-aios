@@ -12,6 +12,8 @@
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "tsx src/database/scripts/migrate.ts",
     "db:migrate:status": "tsx src/database/scripts/migration-status.ts",
+    "db:recovery:disposable": "tsx src/database/scripts/recovery-disposable.ts",
+    "db:integrity": "tsx src/database/scripts/integrity-check.ts",
     "lint": "npx eslint .",
     "typecheck": "npx tsc -p tsconfig.json --noEmit",
     "test": "vitest run"

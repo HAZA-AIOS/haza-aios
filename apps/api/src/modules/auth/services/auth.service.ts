@@ -32,6 +32,10 @@ const ownerPermissions: PermissionKey[] = [
   "workflow.read",
   "workflow.manage",
   "workflow.run",
+  "audit.read",
+  "event.read",
+  "notification.read",
+  "notification.manage",
   "member.read",
   "member.manage",
 ];
@@ -47,6 +51,10 @@ const adminPermissions: PermissionKey[] = [
   "workflow.read",
   "workflow.manage",
   "workflow.run",
+  "audit.read",
+  "event.read",
+  "notification.read",
+  "notification.manage",
   "member.read",
   "member.manage",
 ];
@@ -58,6 +66,7 @@ const memberPermissions: PermissionKey[] = [
   "agent.read",
   "workflow.read",
   "workflow.run",
+  "notification.read",
   "member.read",
 ];
 

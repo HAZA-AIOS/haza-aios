@@ -44,6 +44,10 @@ export type PermissionKey =
   | "workflow.read"
   | "workflow.manage"
   | "workflow.run"
+  | "audit.read"
+  | "event.read"
+  | "notification.read"
+  | "notification.manage"
   | "member.read"
   | "member.manage";
 

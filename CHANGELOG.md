@@ -2,6 +2,13 @@
 
 ### Added
 
+- **DB-16: Audit, Events, Notifications & Operational Persistence**
+  - Added immutable tenant-scoped audit logs, domain events, and operational diagnostics with correlation and sanitization.
+  - Extended DB-8 notifications and delivery attempts with event linkage, durable user state, expiry, and safe provider metadata.
+  - Added organization-scoped audit/event APIs, user-scoped notification APIs, and DB-4 permission integration.
+  - Integrated workflow task assignments, workflow transitions, and failed workflow/agent runs with transactional operational records.
+  - Replaced the admin audit page's static source with persisted organization audit data and added disposable-MySQL integration coverage.
+
 - **DB-15: Workflow, Tasks & Orchestration Persistence**
   - Added tenant-scoped MySQL persistence for workflow definitions, immutable step revisions, runs, step outcomes, and human tasks.
   - Added optimistic revision checks, immutable run snapshots, idempotent starts, lifecycle concurrency protection, and workflow RBAC permissions.

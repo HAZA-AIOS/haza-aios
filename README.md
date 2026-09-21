@@ -230,10 +230,10 @@ React -> API -> Authentication -> Tenant Context -> RBAC -> Domain Services -> R
 | DB-12 | Agent Runtime, Runs & Conversation Persistence | COMPLETE             |
 | DB-13 | Agent Memory Persistence                       | COMPLETE             |
 | DB-14 | Agent Knowledge Persistence                    | BASELINE IMPLEMENTED |
-| DB-15 | Workflow Persistence                           | PLANNED              |
-| DB-16 | Audit/Operational Persistence                  | PLANNED              |
-| DB-17 | Usage, Metering & SaaS Persistence             | PLANNED              |
-| DB-18 | Production Hardening                           | PLANNED              |
+| DB-15 | Workflow Persistence                           | COMPLETE             |
+| DB-16 | Audit/Operational Persistence                  | COMPLETE             |
+| DB-17 | Usage, Metering & SaaS Persistence             | COMPLETE             |
+| DB-18 | Backup and Recovery Hardening                  | COMPLETE             |
 
 ## AI Agent Platform
 
@@ -320,7 +320,7 @@ Frontend storage may still be used for legitimate UI state, preferences, test fi
 - Organization/workspace architecture, tenant switching, members, settings, module activation, and platform admin foundations.
 - Education SIS Epic 10A through 10J.
 - AI Agent Platform foundation through registry, marketplace, builder, runtime, memory, knowledge, conversation, and workflow prototype layers.
-- Database retrofit DB-0 through DB-13.
+- Database retrofit DB-0 through DB-18, with DB-14 advanced retrieval deferred.
 
 ### SIS Epics
 
@@ -499,10 +499,7 @@ For data-bearing features, UI alone is not complete. The project standard is:
 
 ### Planned
 
-- DB-15 - Workflow Persistence.
-- DB-16 - Audit/Operational Persistence.
-- DB-17 - Usage, Metering & SaaS Persistence.
-- DB-18 - Production Hardening.
+- Stage 19 controlled production data activation, pending audit and approval.
 - Deployment/pilot readiness.
 - Broader multi-industry expansion.
 

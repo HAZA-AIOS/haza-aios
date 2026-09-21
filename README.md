@@ -519,6 +519,12 @@ For data-bearing features, UI alone is not complete. The project standard is:
 - [DB-11 AI Agent Registry & Configuration Persistence](docs/database-migration/24-db11-ai-agent-registry-configuration-persistence.md)
 - [DB-12 Agent Runtime, Runs & Conversation Persistence](docs/database-migration/25-db12-agent-runtime-runs-conversation-persistence.md)
 - [DB-13 Agent Memory Persistence](docs/database-migration/26-db13-agent-memory-persistence.md)
+- [DB-14 Agent Knowledge Persistence](docs/database-migration/27-db14-agent-knowledge-persistence.md)
+- [DB-15 Workflow Persistence](docs/database-migration/28-db15-workflow-persistence-specification.md)
+- [DB-16 Operational Persistence](docs/database-migration/29-db16-audit-events-notifications-operational-persistence.md)
+- [DB-17 Usage and Billing Persistence](docs/database-migration/30-db17-usage-metering-saas-billing-persistence.md)
+- [DB-18 Backup and Recovery Hardening](docs/database-migration/31-db18-backup-recovery-hardening.md)
+- [Stage 19A Production Data Readiness](docs/database-migration/32-stage19a-production-data-readiness.md)
 - [Organization Workspace Architecture](docs/architecture/organization-workspace.md)
 - [Organization & Multi-Tenancy Architecture](docs/architecture/organizations.md)
 - [Authentication Architecture](docs/architecture/authentication.md)
@@ -532,7 +538,7 @@ For data-bearing features, UI alone is not complete. The project standard is:
 
 ## Project Stage
 
-HAZA AIOS is under active development. Platform foundations and the Education SIS are substantially implemented, SIS persistence is complete through DB-9, platform module registry persistence is complete through DB-10, AI Agent registry/configuration persistence is complete through DB-11, runtime run/conversation persistence is complete through DB-12, and long-term agent memory persistence is complete through DB-13. DB-14 now provides a verified text knowledge persistence baseline with tenant-scoped keyword retrieval. Advanced document ingestion, embeddings, workflow persistence, production deployment hardening, and broader multi-industry modules remain planned/in progress.
+HAZA AIOS is under active development. The database retrofit is implemented through DB-18 on `develop`, including Education SIS, platform modules, AI Agent runtime and memory, text knowledge retrieval, workflows, operations, usage metering, and a local backup/recovery foundation. Advanced document ingestion, embeddings, vector search, and production data activation remain pending. Stage 19A is **NO-GO** until the production and development branches, migration state, and backup prerequisites are reconciled and verified.
 
 ## License
 

@@ -20,7 +20,7 @@ integration("DB-14 persistent knowledge", () => {
     const config = loadConfig({
       ...process.env,
       NODE_ENV: "test",
-      TEST_DATABASE_NAME: "haza_aios_test",
+      TEST_DATABASE_NAME: process.env.TEST_DATABASE_NAME ?? "haza_aios_test",
       LOG_LEVEL: "error",
     });
     database = createDatabaseClient(config.database, createLogger(config));

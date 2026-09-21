@@ -13,6 +13,7 @@ import { createRepositoryContext } from "../../../database/repositories/reposito
 import { withTransaction } from "../../../database/transactions.js";
 import { WorkflowRepository } from "../repositories/workflow.repository.js";
 import { OperationalService } from "../../operations/services/operational.service.js";
+import { MeteringService } from "../../metering/metering.service.js";
 import type {
   CreateWorkflowInput,
   CreateWorkflowRunInput,
@@ -231,6 +232,17 @@ export class WorkflowService {
         input.status !== existing.status &&
         ["completed", "failed", "cancelled"].includes(input.status)
       ) {
+        await new MeteringService(this.database).recordTerminalRun(
+          {
+            organizationId,
+            workspaceId: run.workspaceId,
+            sourceType: "workflow_run",
+            sourceId: run.id,
+            outcome: input.status as "completed" | "failed" | "cancelled",
+            occurredAt: completedAt ?? new Date(),
+          },
+          tx,
+        );
         const operations = new OperationalService(this.database);
         await operations.emitDomainEvent(
           {

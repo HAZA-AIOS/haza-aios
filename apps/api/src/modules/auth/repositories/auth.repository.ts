@@ -47,6 +47,8 @@ export const corePermissions: PermissionSeed[] = [
   { key: "event.read", description: "Read organization domain and operational events." },
   { key: "notification.read", description: "Read and manage personal notifications." },
   { key: "notification.manage", description: "Manage organization notification operations." },
+  { key: "usage.read", description: "Read organization usage and metering records." },
+  { key: "billing.read", description: "Read organization SaaS billing records." },
   { key: "member.read", description: "Read organization members." },
   { key: "member.manage", description: "Manage organization members and roles." },
 ];

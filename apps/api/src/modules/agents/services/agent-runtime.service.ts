@@ -18,6 +18,7 @@ import type {
 import { AgentRepository } from "../repositories/agent.repository.js";
 import { AgentRuntimeRepository } from "../repositories/agent-runtime.repository.js";
 import { OperationalService } from "../../operations/services/operational.service.js";
+import { MeteringService } from "../../metering/metering.service.js";
 
 const allowedTransitions: Record<AgentRunStatus, AgentRunStatus[]> = {
   queued: ["running", "waiting", "completed", "failed", "cancelled"],
@@ -175,6 +176,20 @@ export class AgentRuntimeService {
             safeErrorCode: updated.errorCode,
             safeErrorMessage: updated.safeErrorMessage,
             metadata: { agentId: updated.agentId, conversationId: updated.conversationId },
+          },
+          tx,
+        );
+      }
+
+      if (["completed", "failed", "cancelled"].includes(input.status)) {
+        await new MeteringService(this.database).recordTerminalRun(
+          {
+            organizationId: updated.organizationId,
+            workspaceId: updated.workspaceId,
+            sourceType: "agent_run",
+            sourceId: updated.id,
+            outcome: input.status as "completed" | "failed" | "cancelled",
+            occurredAt: completedAt ?? new Date(),
           },
           tx,
         );

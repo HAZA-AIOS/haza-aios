@@ -2,6 +2,11 @@
 
 ### Added
 
+- **DB-17: Usage, Metering & SaaS Billing Persistence**
+  - Added tenant-scoped immutable usage facts for terminal agent and workflow runs, with idempotency and summary APIs.
+  - Added an unseeded SaaS plan catalog, billing accounts, subscriptions, and statements without charging or payment integration.
+  - Added Owner/Admin usage and billing read permissions and disposable-MySQL integration coverage.
+
 - **DB-16: Audit, Events, Notifications & Operational Persistence**
   - Added immutable tenant-scoped audit logs, domain events, and operational diagnostics with correlation and sanitization.
   - Extended DB-8 notifications and delivery attempts with event linkage, durable user state, expiry, and safe provider metadata.

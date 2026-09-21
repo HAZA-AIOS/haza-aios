@@ -2,6 +2,7 @@ import {
   boolean,
   char,
   datetime,
+  foreignKey,
   index,
   int,
   json,
@@ -2436,7 +2437,159 @@ export const knowledgeChunks = mysqlTable(
   ],
 );
 
+export const usageMeterEvents = mysqlTable(
+  "usage_meter_events",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    meterKey: varchar("meter_key", { length: 120 }).notNull(),
+    quantity: int("quantity").notNull(),
+    sourceType: varchar("source_type", { length: 80 }).notNull(),
+    sourceId: char("source_id", { length: 36 }).notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 180 }).notNull(),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    occurredAt: timestamp("occurred_at", { fsp: 3 }).notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("usage_meter_events_org_key_unique").on(table.organizationId, table.idempotencyKey),
+    index("usage_meter_events_org_meter_time_idx").on(
+      table.organizationId,
+      table.meterKey,
+      table.occurredAt,
+    ),
+    index("usage_meter_events_workspace_time_idx").on(table.workspaceId, table.occurredAt),
+    index("usage_meter_events_source_idx").on(
+      table.organizationId,
+      table.sourceType,
+      table.sourceId,
+    ),
+  ],
+);
+
+export const saasPlans = mysqlTable(
+  "saas_plans",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    code: varchar("code", { length: 80 }).notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    status: mysqlEnum("saas_plan_status", ["draft", "active", "retired"])
+      .notNull()
+      .default("draft"),
+    currency: char("currency", { length: 3 }).notNull(),
+    interval: mysqlEnum("saas_plan_interval", ["monthly", "annual"]).notNull(),
+    priceCents: int("price_cents").notNull(),
+    includedUnits: json("included_units").$type<Record<string, number>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [uniqueIndex("saas_plans_code_unique").on(table.code)],
+);
+
+export const billingAccounts = mysqlTable(
+  "billing_accounts",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id),
+    billingEmail: varchar("billing_email", { length: 255 }).notNull(),
+    currency: char("currency", { length: 3 }).notNull(),
+    status: mysqlEnum("billing_account_status", ["pending", "active", "suspended"])
+      .notNull()
+      .default("pending"),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [uniqueIndex("billing_accounts_org_unique").on(table.organizationId)],
+);
+
+export const organizationSubscriptions = mysqlTable(
+  "organization_subscriptions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id),
+    billingAccountId: char("billing_account_id", { length: 36 }).notNull(),
+    planId: char("plan_id", { length: 36 })
+      .notNull()
+      .references(() => saasPlans.id),
+    status: mysqlEnum("saas_subscription_status", [
+      "pending",
+      "trialing",
+      "active",
+      "past_due",
+      "cancelled",
+    ])
+      .notNull()
+      .default("pending"),
+    periodStart: datetime("period_start", { fsp: 3 }).notNull(),
+    periodEnd: datetime("period_end", { fsp: 3 }).notNull(),
+    cancelledAt: datetime("cancelled_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    index("organization_subscriptions_org_period_idx").on(
+      table.organizationId,
+      table.periodStart,
+      table.periodEnd,
+    ),
+    index("organization_subscriptions_account_idx").on(table.billingAccountId),
+    foreignKey({
+      columns: [table.billingAccountId],
+      foreignColumns: [billingAccounts.id],
+      name: "org_sub_billing_account_fk",
+    }),
+  ],
+);
+
+export const billingStatements = mysqlTable(
+  "billing_statements",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id),
+    subscriptionId: char("subscription_id", { length: 36 }).notNull(),
+    status: mysqlEnum("billing_statement_status", ["draft", "finalized", "void"])
+      .notNull()
+      .default("draft"),
+    currency: char("currency", { length: 3 }).notNull(),
+    amountCents: int("amount_cents").notNull().default(0),
+    periodStart: datetime("period_start", { fsp: 3 }).notNull(),
+    periodEnd: datetime("period_end", { fsp: 3 }).notNull(),
+    usageSnapshot: json("usage_snapshot").$type<Record<string, number>>().notNull().default({}),
+    finalizedAt: datetime("finalized_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("billing_statements_subscription_period_unique").on(
+      table.subscriptionId,
+      table.periodStart,
+      table.periodEnd,
+    ),
+    index("billing_statements_org_created_idx").on(table.organizationId, table.createdAt),
+    foreignKey({
+      columns: [table.subscriptionId],
+      foreignColumns: [organizationSubscriptions.id],
+      name: "billing_stmt_subscription_fk",
+    }),
+  ],
+);
+
 export const schema = {
+  usageMeterEvents,
+  saasPlans,
+  billingAccounts,
+  organizationSubscriptions,
+  billingStatements,
   auditLogs,
   domainEvents,
   operationalEvents,

@@ -36,6 +36,8 @@ const ownerPermissions: PermissionKey[] = [
   "event.read",
   "notification.read",
   "notification.manage",
+  "usage.read",
+  "billing.read",
   "member.read",
   "member.manage",
 ];
@@ -55,6 +57,8 @@ const adminPermissions: PermissionKey[] = [
   "event.read",
   "notification.read",
   "notification.manage",
+  "usage.read",
+  "billing.read",
   "member.read",
   "member.manage",
 ];

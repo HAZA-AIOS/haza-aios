@@ -11,15 +11,20 @@ import { createLogger } from "../src/common/logging/logger.js";
 import { loadConfig } from "../src/config/env.js";
 import { createDatabaseClient, type DatabaseClient } from "../src/database/client.js";
 import {
+  billingAccounts,
+  billingStatements,
   communicationDeliveries,
   membershipRoles,
+  organizationSubscriptions,
   organizationMemberships,
   operationalEvents,
   roles,
+  saasPlans,
   workspaceMemberships,
 } from "../src/database/schema.js";
 import { AuthService } from "../src/modules/auth/services/auth.service.js";
 import { OperationalService } from "../src/modules/operations/services/operational.service.js";
+import { MeteringService } from "../src/modules/metering/metering.service.js";
 
 const integration = process.env.RUN_DB_INTEGRATION_TESTS === "true" ? describe : describe.skip;
 
@@ -299,6 +304,76 @@ integration("DB-16 operational persistence", () => {
         ),
       );
     expect(failures).toHaveLength(1);
+    const metering = new MeteringService(database);
+    expect(await metering.usageSummary(owner.organizationId, {})).toContainEqual({
+      meterKey: "workflow.run",
+      quantity: 1,
+      events: 1,
+    });
+    expect((await metering.listUsage(foreign.organizationId, { limit: 10, offset: 0 })).total).toBe(
+      0,
+    );
+    const existingUsage = (await metering.listUsage(owner.organizationId, { limit: 10, offset: 0 }))
+      .items[0];
+    const repeatedUsage = await metering.recordTerminalRun({
+      organizationId: owner.organizationId,
+      workspaceId,
+      sourceType: "workflow_run",
+      sourceId: runId,
+      outcome: "failed",
+      occurredAt: new Date(),
+    });
+    expect(repeatedUsage.id).toBe(existingUsage.id);
+    await expect(
+      metering.recordTerminalRun({
+        organizationId: foreign.organizationId,
+        workspaceId,
+        sourceType: "workflow_run",
+        sourceId: runId,
+        outcome: "failed",
+        occurredAt: new Date(),
+      }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    const planId = randomUUID();
+    const accountId = randomUUID();
+    const subscriptionId = randomUUID();
+    const periodStart = new Date("2026-09-01T00:00:00Z");
+    const periodEnd = new Date("2026-10-01T00:00:00Z");
+    await database.db.insert(saasPlans).values({
+      id: planId,
+      code: `test-${randomUUID()}`,
+      name: "Synthetic plan",
+      currency: "USD",
+      interval: "monthly",
+      priceCents: 0,
+    });
+    await database.db.insert(billingAccounts).values({
+      id: accountId,
+      organizationId: owner.organizationId,
+      billingEmail: `billing-${randomUUID()}@example.test`,
+      currency: "USD",
+    });
+    await database.db.insert(organizationSubscriptions).values({
+      id: subscriptionId,
+      organizationId: owner.organizationId,
+      billingAccountId: accountId,
+      planId,
+      periodStart,
+      periodEnd,
+    });
+    await database.db.insert(billingStatements).values({
+      id: randomUUID(),
+      organizationId: owner.organizationId,
+      subscriptionId,
+      currency: "USD",
+      periodStart,
+      periodEnd,
+      usageSnapshot: { "workflow.run": 1 },
+    });
+    expect((await metering.billingOverview(owner.organizationId)).account?.id).toBe(accountId);
+    expect((await metering.billingOverview(foreign.organizationId)).account).toBeNull();
+    expect((await metering.billingOverview(owner.organizationId)).chargingEnabled).toBe(false);
+    expect((await apiRequest(owner, "/billing/overview")).status).toBe(200);
   }, 90_000);
 
   async function registerTenant(label: string) {

@@ -1,202 +1,198 @@
-# Stage 19A.2.2: production schema compatibility checkpoint (2026-09-22)
+# Stage 19A.2.2: production schema compatibility checkpoint (2026-09-27)
 
-**Decision: ADDITIONAL EVIDENCE REQUIRED.** Stage 19B remains blocked. This
-report combines operator-supplied read-only Railway MySQL metadata, exact
-repository SQL, and a disposable local MariaDB rehearsal. Codex did not
-connect to production SQL or change production.
+**Decision: RECONCILIATION REQUIRED.** Production remains unchanged and
+Stage 19B remains blocked. The production schema matches the verified
+`origin/main` 0010 baseline, but the exact pending migration chain cannot run
+on production-equivalent MySQL 9.4.0. Migrations 0012 and 0014 contain
+fractional-timestamp columns whose `ON UPDATE CURRENT_TIMESTAMP` expressions
+omit the `(3)` precision required by MySQL 9.4.
 
-## Repository and evidence
+## Safety and repository scope
 
-- Root: `D:/HAZA-APPS/HAZA-AIOS`. The obsolete checkout was not used.
+- Authoritative root: `D:/HAZA-APPS/HAZA-AIOS`.
 - Branch: `release/stage19-production-reconciliation`.
-- Starting HEAD: `fe50e47b5de1f5b6e597b0539f5da5ef24df31d7`; clean and
-  aligned with `origin/release/stage19-production-reconciliation`.
-- Production fingerprint from Stage 19A.2.1: MySQL 9.4.0, database `railway`,
-  11 applied migrations through `0010_many_sandman`. All eleven hashes match
-  `origin/main`, not this branch's historical 0000-0010 SQL. Production has
-  62 base tables including the journal, exactly the main 0010 table set.
-- Metadata export: `D:/HAZA-APPS/HAZA_Stage19A22_Production_Metadata/00-production-schema-metadata-all.txt`,
-  SHA-256 `acd2bce1c96b0c3fb34e4328fc2ed2e1b47b2fbd092de8e7dcc1cfdc4cab6065`.
-  This operator-supplied SELECT output was read locally and not committed.
-- The export contains 661 column rows, 435 index rows, 152 foreign-key rows
-  and 266 table-constraint rows. It contains no application rows.
+- Rehearsal starting commit: `f39b687ca05745da7c4bbf7af94a9e4fa26d7350`.
+- Production SQL access remained read-only. The operator supplied only
+  `information_schema` results; no business rows were inspected.
+- No production migration, schema/data/journal write, backup, restore,
+  deployment, Railway change, Cloudflare change, PR, or merge occurred.
+- All executable rehearsal work used local disposable MySQL databases.
+- The authoritative checkout already had unrelated deletions under
+  `apps/api/src` and `apps/api/tests`. They were not restored, staged, or
+  discarded. Validation ran from clean disposable Git archives of `HEAD`.
 
-## Production schema versus executed main 0010
+## Production evidence
 
-The 61 application tables contain 658 columns. Against the main 0010
-snapshot, all table/column names, types, nullability and effective defaults
-match after normalizing MySQL's `boolean`/`tinyint(1)` aliases and main's
-applied `CURRENT_TIMESTAMP(3)` rewrite. The only textual default difference
-is `organization_settings.preferences`: snapshot `('{}')` versus MySQL
-`_utf8mb4'{}'`, both the empty JSON object. This field is not touched by
-0011-0014.
+Stage 19A.2.1 established:
 
-All 137 declared main indexes and 61 application primary keys exist with
-expected columns, order and uniqueness. Production has 51 application
-unique constraints and 152 FKs, plus a primary and unique constraint for
-`__drizzle_migrations`. All 152 production FK names, source columns,
-referenced tables and referenced columns match the **executed main SQL**.
+- MySQL `9.4.0`, database `railway`.
+- 11 journal rows through `0010_many_sandman`; every hash matches
+  `origin/main`.
+- 62 base tables including `__drizzle_migrations`, exactly the main 0010
+  table set.
 
-The 0010 Drizzle snapshot is not a perfect record of the executed main
-migration: it lists additional `communication_deliveries` foreign keys and
-a differently named `sis_notifications` FK that main SQL did not install.
-Production matches the actual main SQL, so these snapshot discrepancies
-are not production drift.
+The operator-supplied metadata export remains:
 
-For the ten existing tables used by pending migrations - `organizations`,
-`workspaces`, `users`, `ai_agent_definitions`, `ai_agent_runs`,
-`permissions`, `roles`, `role_permissions`, `communication_deliveries`
-and `sis_notifications` - the 117 columns, declared index definitions,
-15 FK mappings and 35 constraints are compatible with main 0010.
-The referenced parent IDs are `char(36)` primary keys. The RBAC insert
-columns and the uniqueness of `permissions.permission_key` and
-`role_permissions(role_id,permission_id)` are present.
+- `D:/HAZA-APPS/HAZA_Stage19A22_Production_Metadata/00-production-schema-metadata-all.txt`
+- SHA-256
+  `acd2bce1c96b0c3fb34e4328fc2ed2e1b47b2fbd092de8e7dcc1cfdc4cab6065`
+- 661 column rows, 435 index rows, 152 foreign-key rows, and 266 constraint
+  rows; no application records.
 
-**Drift classification: no material migration-relevant drift found in
-the supplied metadata.** The export omits FK update/delete rules and
-character-set/collation metadata. These details remain unverified, not
-implicitly matching. New `char(36)` FK columns will inherit the database
-default collation, which must be compatible with the existing parent IDs.
+The two additional read-only production queries close the remaining metadata
+gaps:
 
-The remaining production metadata is narrowly scoped. In the Railway
-MySQL console, run only these read-only SELECT statements; do not query
-business rows or run a migration:
+- `organizations.id`, `workspaces.id`, `users.id`,
+  `ai_agent_definitions.id`, and `ai_agent_runs.id` are `utf8mb4` /
+  `utf8mb4_0900_ai_ci`.
+- The production database default is also `utf8mb4` /
+  `utf8mb4_0900_ai_ci`.
+- All 15 targeted existing foreign keys report `UPDATE CASCADE` and
+  `DELETE RESTRICT`.
 
-```sql
-SELECT c.TABLE_NAME, c.COLUMN_NAME, c.CHARACTER_SET_NAME, c.COLLATION_NAME,
-       s.DEFAULT_CHARACTER_SET_NAME, s.DEFAULT_COLLATION_NAME
-FROM information_schema.COLUMNS AS c
-JOIN information_schema.SCHEMATA AS s ON s.SCHEMA_NAME = c.TABLE_SCHEMA
-WHERE c.TABLE_SCHEMA = DATABASE()
-  AND c.COLUMN_NAME = 'id'
-  AND c.TABLE_NAME IN ('organizations','workspaces','users',
-    'ai_agent_definitions','ai_agent_runs')
-ORDER BY c.TABLE_NAME;
+## Production schema comparison
 
-SELECT TABLE_NAME, CONSTRAINT_NAME, UPDATE_RULE, DELETE_RULE
-FROM information_schema.REFERENTIAL_CONSTRAINTS
-WHERE CONSTRAINT_SCHEMA = DATABASE()
-  AND TABLE_NAME IN ('workspaces','ai_agent_definitions','ai_agent_runs',
-    'roles','role_permissions','communication_deliveries',
-    'sis_notifications')
-ORDER BY TABLE_NAME, CONSTRAINT_NAME;
-```
+The 61 application tables contain 658 columns. Against the executed main
+0010 lineage, table/column names, types, nullability, effective defaults,
+primary keys, declared indexes, unique constraints, and foreign-key mappings
+match after normalizing MySQL aliases such as `boolean` / `tinyint(1)`.
 
-## Pending migration prerequisites and local results
+The only textual default difference remains
+`organization_settings.preferences`: snapshot `('{}')` versus production
+`_utf8mb4'{}'`. Both represent an empty JSON object and pending migrations do
+not touch that field.
 
-All four pending SQL files were read completely. Their 15 target tables
-are absent in production. Migration 0013's six delivery and five
-notification columns are absent, as are its new existing-table index/FK
-names. No top-level destructive DDL occurs. Migrations 0012-0014 also
-insert RBAC rows; no such write was executed against production.
+The 0010 Drizzle snapshot contains a few foreign-key declarations that differ
+from the executed main SQL. Production matches the executed SQL, which is the
+authoritative migration behavior. This is snapshot debt, not production drift.
 
-| Migration | Prerequisites from production metadata | Local MariaDB 10.4 result |
+For all ten existing tables referenced by 0011-0014, required parent columns,
+indexes, uniqueness, collation, and referential actions are present. All 15
+new target tables, all 11 columns added by 0013, and all new index/constraint
+names are absent in production as expected.
+
+**Production drift classification: none material to 0011-0014.** The failure
+described below is in pending repository SQL, not in production state.
+
+## Production-equivalent MySQL 9.4 rehearsal
+
+The Windows MySQL 9.4.0 archive was obtained from Oracle's official archive
+and its MD5 `6D64FB54D93410AD8B91F55AC7FF8FCA` matched Oracle's published
+checksum. A local server ran on `127.0.0.1:3310`; it had no production or
+Railway connection.
+
+A fresh database used production's default `utf8mb4_0900_ai_ci`. Exact
+`origin/main` migrations 0000-0010 applied sequentially and produced 61
+application tables. A disposable Drizzle journal was seeded with the 11
+verified production hashes/timestamps. Two synthetic organizations,
+workspaces, users, roles, agents, runs, deliveries, and notifications were
+inserted before pending migration testing.
+
+| Step | Exact SQL result on MySQL 9.4 | Evidence |
 | --- | --- | --- |
-| `0011_dazzling_zaran` | `organizations.id` and `users.id` compatible; two target tables absent. | PASS: 2 tables, 4 FKs, 2 indexes, 1 unique constraint. |
-| `0012_certain_argent` | `organizations`, `workspaces`, `users`, agent definitions/runs and RBAC keys present; five target tables absent. | PASS: 5 tables, 23 FKs, 13 indexes, 3 unique constraints, 3 permission rows. |
-| `0013_abnormal_johnny_storm` | Existing deliveries/notifications and their referenced columns exist; 11 new columns and target names absent. | PASS: 3 tables, 11 FKs, 20 indexes, 1 unique constraint, 11 added columns; existing rows preserved. |
-| `0014_third_rawhide_kid` | Organization/workspace parents and RBAC keys present; five target tables absent. | PASS: 5 tables, 8 FKs, 6 indexes, 4 unique constraints, 2 permission rows. |
+| Main 0000-0010 | PASS | 62 base tables including journal; 11 journal rows; production collation; two baseline tenants preserved. |
+| `0011_dazzling_zaran` | PASS | 64 base tables; 12 journal rows; two source/chunk pairs; zero tenant mismatch. |
+| `0012_certain_argent` | **FAIL** | First `CREATE TABLE workflow_definitions` returns MySQL `ERROR 1294 (HY000): Invalid ON UPDATE clause for 'updated_at' column`. Journal remains at 12 rows. |
+| `0013_abnormal_johnny_storm` | PASS in diagnostic scaffold only | Exact 0013 SQL succeeds after a non-journaled disposable 0012 scaffold qualifies timestamp precision. Three tables and 11 additive columns appear; two original deliveries/notifications remain; defaults and event tenant links are correct. |
+| `0014_third_rawhide_kid` | **FAIL** | First `CREATE TABLE billing_accounts` returns the same `ERROR 1294`; zero 0014 tables are created. |
 
-Structural prerequisites are supported by the export, but **none of the
-four migrations is verified safe to execute on production MySQL 9.4**.
-In particular, pending SQL 0012-0014 still has fractional-timestamp
-`DEFAULT (now())` and unqualified `ON UPDATE CURRENT_TIMESTAMP` forms,
-whereas main's already-applied MySQL 9 compatibility change rewrote
-0000-0010. Whether pending forms execute on MySQL 9.4 must be established
-in a disposable MySQL 9.4 rehearsal, not inferred from MariaDB.
+The exact production candidate chain therefore stops at 0012. No journal row
+was inserted for a failed or transformed migration.
 
-## Disposable rehearsal and quality gates
+For diagnosis only, a non-journaled disposable scaffold changed
+`ON UPDATE CURRENT_TIMESTAMP` to `ON UPDATE CURRENT_TIMESTAMP(3)` in 0012 and
+0014. It produced the expected 77-table target schema, 198 foreign keys, and
+two complete synthetic tenant data sets. Baseline data remained present.
+Equivalent explicit-alias checks reported 198 foreign-key groups and zero
+orphans. All seven repository tenant checks returned zero failures. This
+proves the target model is structurally coherent; it does **not** make the
+original migration chain executable or authorize that transformation.
 
-A new local XAMPP database, `haza_aios_stage19a22_local_20260922`, was
-created on MariaDB 10.4.32. It is **not** Railway or production. The exact
-`origin/main` SQL 0000-0010 was applied in order, yielding 61 application
-tables. The 11 main-family hashes/timestamps from the verified fingerprint
-were inserted into a disposable journal to model the starting state. This
-was a manual SQL/journal rehearsal, not a Drizzle migration invocation.
+## Root cause and required reconciliation
 
-Before upgrade, two synthetic organizations, workspaces, users, roles,
-agents, agent runs, communication deliveries and SIS notifications were
-seeded. Pending files 0011 -> 0012 -> 0013 -> 0014 were then applied
-**individually**; after each, the disposable journal was advanced with
-the exact branch SQL hash and journal timestamp. Synthetic knowledge,
-workflow, event and billing/usage records were added for both tenants.
-No production application data was copied.
+The incompatible clauses are on `timestamp(3)` `updated_at` columns:
 
-| After migration | Base tables including journal | Journal rows | Preservation/integrity checkpoint |
-| --- | ---: | ---: | --- |
-| Main 0010 | 62 | 11 | Two tenants and related records seeded. |
-| 0011 | 64 | 12 | Two knowledge source/chunk pairs; no cross-tenant mismatch. |
-| 0012 | 69 | 13 | Two workflow sets; no cross-tenant run mismatch. |
-| 0013 | 72 | 14 | Both original deliveries and notifications preserved; new `attempt_number=1`; events linked within tenants. |
-| 0014 | 77 | 15 | Two billing/usage sets; no tenant mismatch. |
+- five occurrences in `0012_certain_argent.sql`;
+- three occurrences in `0014_third_rawhide_kid.sql`.
 
-Each migration's declared tables, added columns, indexes, FKs and unique
-constraints was present at the end. The final journal has 15 rows and
-latest timestamp `1789978889085`. A database integration test invoked
-the actual Drizzle migrator on this completed disposable journal and
-passed its idempotence check. The full API suite with integration enabled
-passed **21 files / 81 tests**. `npm run db:check`, API typecheck and API
-lint passed. After the suite, `npm run db:integrity` reported **198 FK
-checks, seven tenant checks and zero failures**. Both synthetic baseline
-tenants and their original delivery/notification rows remained.
+Each uses `ON UPDATE CURRENT_TIMESTAMP` without `(3)`. MySQL 9.4 rejects the
+precision mismatch. `DEFAULT (now())` itself executed in the diagnostic
+scaffold; the failing expression is the unqualified `ON UPDATE` clause.
 
-The first Vitest attempt stopped before running tests because the sandbox
-could not create its temporary config file in D:. The authorized rerun
-passed; this was not a migration failure. No web suite was rerun because
-no frontend code changed. No application source or migration SQL changed,
-so a separate fresh-install regression was not needed for this
-documentation-only update.
+An ordinary 0015 forward migration cannot repair this because Drizzle must
+execute 0012 before it can reach 0015. Do not alter production's 0000-0010
+lineage or manually edit the production journal.
 
-**Limit:** MariaDB 10.4.32 is not production-equivalent MySQL 9.4.0.
-The local exercise supports schema/order/data-preservation analysis, not
-a production execution guarantee. Collation and FK referential-action
-metadata are also missing from the supplied production export.
+The smallest separately reviewed remediation is:
 
-## Reconciliation, application order and rollback
+1. Treat 0012 and 0014 as **unapplied pending artifacts**, not as applied
+   production history.
+2. Reissue those pending artifacts with all eight clauses qualified as
+   `ON UPDATE CURRENT_TIMESTAMP(3)`, keeping every other DDL/DML statement
+   unchanged.
+3. Regenerate or synchronize migration snapshot/journal metadata and hashes
+   for the reissued pending lineage. Do not change production's first 11
+   hashes.
+4. Add explicit lowercase aliases in `integrity-check.ts` for
+   `TABLE_NAME`, `COLUMN_NAME`, `REFERENCED_TABLE_NAME`,
+   `REFERENCED_COLUMN_NAME`, and `CONSTRAINT_NAME`; MySQL 9.4 otherwise
+   returns uppercase result keys and the checker builds `undefined`
+   identifiers.
+5. Repeat a fresh main-0010-to-target MySQL 9.4 rehearsal using the actual
+   Drizzle migrator, including fresh-install, upgrade, idempotence, full
+   integration, integrity, and old-main rollback-compatibility tests.
 
-No production structural drift requiring a forward-only reconciliation
-migration is shown. The candidate pending path is **0011 -> 0012 ->
-0013 -> 0014**, but the exact safe production path remains **UNKNOWN**
-until MySQL 9.4 rehearsal and the remaining metadata checks. If pending
-SQL fails on MySQL 9.4, revise only unapplied pending SQL or design a
-reviewed forward-only correction; do not rewrite applied 0000-0010 or
-repair the production journal. Repeat upgrade and fresh-install tests
-for any such change. No reconciliation migration was created here.
+No migration or application file was changed in this stage. The remediation
+requires a separate explicitly approved implementation and review.
 
-| Application/database combination | Current assessment |
+## Repository quality gates
+
+Validation used a clean `HEAD` archive with a fresh lockfile installation,
+because the authoritative working tree's API source/test directories were
+already deleted and its existing dependency tree could not be trusted.
+
+| Gate | Result |
 | --- | --- |
-| Current production application + main 0010 | Existing deployed state; no new live functional test in this stage. |
-| Current production application + post-0014 | CONDITIONALLY_SAFE at schema level: new tables and additive columns with defaults/NULL; old-main application regression on MySQL 9.4 not yet tested. |
-| Branch application + main 0010 | UNSAFE for complete functionality: required tables/columns are absent. |
-| Branch application + post-0014 | PASS for 81 API tests on local MariaDB; MySQL 9.4 behavior UNKNOWN. |
+| `npm run db:check` | PASS |
+| API TypeScript check | PASS |
+| API lint | PASS |
+| Unit/default suite | PASS: 7 files passed, 14 skipped; 46 tests passed, 35 skipped (81 total) |
+| MySQL 9.4 integration suite | BLOCKED: 13 database suites fail in setup at exact 0012; 7 non-database files pass, 46 tests pass, 31 skip |
+| `npm run db:integrity` | TOOLING FAIL: MySQL 9.4 uppercase metadata keys become `undefined`; equivalent explicit-alias execution reports 198 FK and 7 tenant checks with zero data failures |
 
-The provisional dependency order is **verified recovery point -> one
-migration path -> new API deployment -> validation**. Railway's API
-`preDeployCommand` already runs `npm run db:migrate`; a future plan must
-avoid running the same chain separately and again during deployment.
-This is **not** an authorized or final Stage 19B plan. The old main
-application is only **CONDITIONALLY_SAFE** as a code rollback candidate
-at schema level. A code rollback does not reverse DDL; database rollback
-would require a verified recovery point or forward repair.
+The 13 integration-suite failures share one root cause and occur before test
+bodies: the Drizzle migrator reaches exact 0012 and receives
+`ER_INVALID_ON_UPDATE`. They are migration failures, not 13 independent
+application regressions. The integrity command failure is a MySQL 9.4 tooling
+compatibility defect, not an orphan or tenant-integrity finding.
 
-## Remaining gates and safety
+## Deployment and rollback analysis
 
-1. Collect the two targeted read-only FK-rule/collation result sets.
-2. Recreate the verified main 0010 baseline on disposable **MySQL 9.4**,
-   seed synthetic cross-tenant data, run 0011-0014 individually, and
-   validate schema, data, integrity, Drizzle and both application versions.
-3. If MySQL 9.4 exposes a pending-SQL incompatibility, make the smallest
-   reviewable unapplied-SQL/forward-only correction and repeat upgrade
-   plus fresh-install regressions.
-4. Establish a verified production recovery point and isolated restore in
-   a separately approved backup checkpoint. Prior Railway inspection found
-   no volume backup, schedule or PITR configuration.
-5. Only then determine an exact Stage 19B deployment and rollback order.
+| Application/database combination | Assessment |
+| --- | --- |
+| Current production application + main 0010 | Existing state; unchanged by this stage. |
+| Branch application + main 0010 | UNSAFE for complete functionality because required pending tables/columns are absent. |
+| Current pending migrator + main 0010 | **NO-GO**: exact 0012 fails on MySQL 9.4. |
+| Branch application + diagnostic target scaffold | Structural/tenant checks pass, but not deployable evidence because the scaffold is not the committed migration lineage. |
+| Old main application + post-target schema | Not re-verified on exact MySQL 9.4 migration output; rollback compatibility remains unproven. |
 
-Production data, schema and migration journal: **unchanged**. Railway,
-Cloudflare, DNS, `main` and `develop`: **unchanged**. No production
-migration, backup, restore, deployment, PR or merge occurred. The evidence
-file contains schema metadata only and was not copied into Git. Stage 19B
-remains blocked.
+No safe production deployment order exists for the current pending artifacts.
+After remediation and a successful repeat rehearsal, the candidate order is:
+verified recovery point, one Railway deployment whose pre-deploy command runs
+the corrected migration chain once, API startup, health/database checks, and
+post-deploy validation. That remains provisional and is not Stage 19B
+authorization.
 
-**STAGE 19A.2.2 RESULT: ADDITIONAL EVIDENCE REQUIRED**
+Application rollback alone would not reverse additive DDL. Database rollback
+would require a verified recovery point or a reviewed forward repair. Backup
+and isolated restore verification remain a later, separately authorized
+checkpoint.
+
+## Final decision
+
+Production data, schema, migration journal, Railway, Cloudflare, DNS, `main`,
+and `develop` are unchanged. Stage 19B must not begin. The next work is a
+separately authorized reconciliation of unapplied migration artifacts and the
+MySQL 9.4 integrity checker, followed by a complete fresh rehearsal.
+
+**STAGE 19A.2.2 RESULT: RECONCILIATION REQUIRED**

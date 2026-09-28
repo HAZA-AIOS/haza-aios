@@ -1,9 +1,9 @@
-import { migrate } from "drizzle-orm/mysql2/migrator";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLogger } from "../../common/logging/logger.js";
 import { loadConfig } from "../../config/env.js";
 import { createDatabaseClient } from "../client.js";
+import { migrate } from "../mysql94-migrator.js";
 
 const config = loadConfig(process.env);
 const logger = createLogger(config);

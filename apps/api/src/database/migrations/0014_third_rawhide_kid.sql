@@ -5,7 +5,7 @@ CREATE TABLE `billing_accounts` (
 	`currency` char(3) NOT NULL,
 	`billing_account_status` enum('pending','active','suspended') NOT NULL DEFAULT 'pending',
 	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `billing_accounts_id` PRIMARY KEY(`id`),
 	CONSTRAINT `billing_accounts_org_unique` UNIQUE(`organization_id`)
 );
@@ -36,7 +36,7 @@ CREATE TABLE `organization_subscriptions` (
 	`period_end` datetime(3) NOT NULL,
 	`cancelled_at` datetime(3),
 	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `organization_subscriptions_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -50,7 +50,7 @@ CREATE TABLE `saas_plans` (
 	`price_cents` int NOT NULL,
 	`included_units` json NOT NULL DEFAULT ('{}'),
 	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `saas_plans_id` PRIMARY KEY(`id`),
 	CONSTRAINT `saas_plans_code_unique` UNIQUE(`code`)
 );

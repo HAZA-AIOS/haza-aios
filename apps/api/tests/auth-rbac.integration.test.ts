@@ -1,4 +1,4 @@
-import { migrate } from "drizzle-orm/mysql2/migrator";
+import { migrate } from "../src/database/mysql94-migrator.js";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

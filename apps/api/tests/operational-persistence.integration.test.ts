@@ -4,7 +4,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import { and, eq } from "drizzle-orm";
-import { migrate } from "drizzle-orm/mysql2/migrator";
+import { migrate } from "../src/database/mysql94-migrator.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { createLogger } from "../src/common/logging/logger.js";
@@ -186,9 +186,11 @@ integration("DB-16 operational persistence", () => {
       .select()
       .from(communicationDeliveries)
       .where(eq(communicationDeliveries.id, attempt!.id));
-    expect(JSON.parse(String(deliveryRows[0].payload))).toEqual({
-      authorization: "[REDACTED]",
-    });
+    const persistedPayload =
+      typeof deliveryRows[0].payload === "string"
+        ? JSON.parse(deliveryRows[0].payload)
+        : deliveryRows[0].payload;
+    expect(persistedPayload).toEqual({ authorization: "[REDACTED]" });
     await expect(
       operations.recordDeliveryAttempt({
         organizationId: foreign.organizationId,

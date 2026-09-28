@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { resolve } from "node:path";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
-import { migrate } from "drizzle-orm/mysql2/migrator";
+import { migrate } from "../src/database/mysql94-migrator.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { loadConfig } from "../src/config/env.js";

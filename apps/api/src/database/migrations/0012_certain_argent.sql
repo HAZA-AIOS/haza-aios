@@ -11,7 +11,7 @@ CREATE TABLE `workflow_definitions` (
 	`configuration` json NOT NULL,
 	`created_by` char(36) NOT NULL,
 	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `workflow_definitions_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
@@ -36,7 +36,7 @@ CREATE TABLE `workflow_runs` (
 	`started_at` datetime(3),
 	`completed_at` datetime(3),
 	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `workflow_runs_id` PRIMARY KEY(`id`),
 	CONSTRAINT `workflow_runs_idempotency_unique` UNIQUE(`workspace_id`,`workflow_id`,`idempotency_key`)
 );
@@ -56,7 +56,7 @@ CREATE TABLE `workflow_step_runs` (
 	`started_at` datetime(3),
 	`completed_at` datetime(3),
 	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `workflow_step_runs_id` PRIMARY KEY(`id`),
 	CONSTRAINT `workflow_step_runs_run_step_attempt_unique` UNIQUE(`workflow_run_id`,`workflow_step_id`,`attempt`)
 );
@@ -74,7 +74,7 @@ CREATE TABLE `workflow_steps` (
 	`max_attempts` int NOT NULL DEFAULT 1,
 	`retry_delay_ms` int NOT NULL DEFAULT 1000,
 	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `workflow_steps_id` PRIMARY KEY(`id`),
 	CONSTRAINT `workflow_steps_workflow_revision_order_unique` UNIQUE(`workflow_id`,`revision`,`step_order`)
 );
@@ -101,7 +101,7 @@ CREATE TABLE `workflow_tasks` (
 	`completed_at` datetime(3),
 	`created_by` char(36) NOT NULL,
 	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `workflow_tasks_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint

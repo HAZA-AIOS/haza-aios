@@ -32,11 +32,13 @@ try {
   await db.query("SET TRANSACTION READ ONLY");
   await db.query("START TRANSACTION");
   const [foreignKeys] = await db.query<ForeignKeyRow[]>(
-    `SELECT table_name, column_name, referenced_table_name, referenced_column_name,
-            constraint_name
+    `SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name,
+            REFERENCED_TABLE_NAME AS referenced_table_name,
+            REFERENCED_COLUMN_NAME AS referenced_column_name,
+            CONSTRAINT_NAME AS constraint_name
        FROM information_schema.key_column_usage
-      WHERE table_schema = DATABASE() AND referenced_table_name IS NOT NULL
-      ORDER BY table_name, constraint_name, ordinal_position`,
+      WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL
+      ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION`,
   );
   const groups = new Map<string, ForeignKeyRow[]>();
   for (const key of foreignKeys) {

@@ -1,5 +1,5 @@
 import { ApiError } from "../../../common/errors/api-error.js";
-import type { CreateUserInput, LoginInput, RegisterInput } from "../auth.types.js";
+import type { CreateUserInput, ForgotPasswordInput, LoginInput, RegisterInput, ResetPasswordInput } from "../auth.types.js";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -17,6 +17,18 @@ export function validateLogin(input: unknown): LoginInput {
     password,
     rememberMe: value.rememberMe === true,
   };
+}
+
+export function validateForgotPassword(input: unknown): ForgotPasswordInput {
+  const value = assertRecord(input);
+  return { email: requireEmail(value.email) };
+}
+
+export function validateResetPassword(input: unknown): ResetPasswordInput {
+  const value = assertRecord(input);
+  const token = requireText(value.token, "token", 1, 512);
+  const password = requirePassword(value.password);
+  return { token, password };
 }
 
 export function validateCreateUser(input: unknown): CreateUserInput {

@@ -9,8 +9,10 @@ import {
 import { assertRegistrationAllowed } from "./registration-policy.js";
 import {
   validateCreateUser,
+  validateForgotPassword,
   validateLogin,
   validateRegister,
+  validateResetPassword,
 } from "./validation/auth-validation.js";
 
 export const authModule: BackendModule = {
@@ -22,7 +24,7 @@ export const authModule: BackendModule = {
       async handler(request, response, { config, database }) {
         const input = validateCreateUser(request.body);
         assertRegistrationAllowed(input.email, config.registrationAllowedEmails);
-        const result = await new AuthService(database).registerIdentity(input);
+        const result = await new AuthService(database, config.email).registerIdentity(input);
         response.setHeader(
           "set-cookie",
           buildSessionCookie(
@@ -41,7 +43,7 @@ export const authModule: BackendModule = {
       async handler(request, response, { config, database }) {
         const input = validateRegister(request.body);
         assertRegistrationAllowed(input.email, config.registrationAllowedEmails);
-        const result = await new AuthService(database).register(input);
+        const result = await new AuthService(database, config.email).register(input);
         response.setHeader(
           "set-cookie",
           buildSessionCookie(
@@ -59,7 +61,7 @@ export const authModule: BackendModule = {
       path: "/api/v1/auth/login",
       async handler(request, response, { config, database }) {
         const input = validateLogin(request.body);
-        const result = await new AuthService(database).login(input, request);
+        const result = await new AuthService(database, config.email).login(input, request);
         response.setHeader(
           "set-cookie",
           buildSessionCookie(
@@ -75,9 +77,9 @@ export const authModule: BackendModule = {
     router.register({
       method: "POST",
       path: "/api/v1/auth/logout",
-      async handler(request, response, { database }) {
+      async handler(request, response, { config, database }) {
         const token = readBearerToken(request) ?? readCookie(request, sessionCookieName);
-        await new AuthService(database).logout(token);
+        await new AuthService(database, config.email).logout(token);
         response.setHeader("set-cookie", buildExpiredSessionCookie());
         sendJson(response, 204, {});
       },
@@ -86,8 +88,8 @@ export const authModule: BackendModule = {
     router.register({
       method: "GET",
       path: "/api/v1/auth/me",
-      async handler(request, response, { database }) {
-        const auth = await new AuthService(database).authenticateRequest(request);
+      async handler(request, response, { config, database }) {
+        const auth = await new AuthService(database, config.email).authenticateRequest(request);
         sendJson(response, 200, {
           user: auth.user,
           session: {
@@ -100,6 +102,27 @@ export const authModule: BackendModule = {
           memberships: auth.memberships,
           platformPermissions: auth.platformPermissions,
         });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/auth/forgot-password",
+      async handler(request, response, { config, database }) {
+        const input = validateForgotPassword(request.body);
+        // Always returns 200 — prevents email enumeration.
+        await new AuthService(database, config.email).forgotPassword(input, request);
+        sendJson(response, 200, { message: "If that email is registered, a reset link has been sent." });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/auth/reset-password",
+      async handler(request, response, { config, database }) {
+        const input = validateResetPassword(request.body);
+        await new AuthService(database, config.email).resetPassword(input, request);
+        sendJson(response, 200, { message: "Password updated. Please sign in with your new password." });
       },
     });
   },

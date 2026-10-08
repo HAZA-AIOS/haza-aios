@@ -111,19 +111,37 @@ const authService: AuthService = {
   },
 
   async forgotPassword(input) {
-    if (!isValidEmail(input.email)) {
-      throw new Error("Enter a valid work email address.");
-    }
+    await requestOrTestFixture(
+      () =>
+        apiClient.request<void>("/api/v1/auth/forgot-password", {
+          method: "POST",
+          body: JSON.stringify({ email: input.email }),
+        }),
+      () => {
+        if (!isValidEmail(input.email)) {
+          throw new Error("Enter a valid work email address.");
+        }
+      },
+    );
   },
 
   async resetPassword(input) {
-    if (!input.token.trim()) {
-      throw new Error("Reset token is missing or expired.");
-    }
+    await requestOrTestFixture(
+      () =>
+        apiClient.request<void>("/api/v1/auth/reset-password", {
+          method: "POST",
+          body: JSON.stringify({ token: input.token, password: input.password }),
+        }),
+      () => {
+        if (!input.token.trim()) {
+          throw new Error("Reset token is missing or expired.");
+        }
 
-    if (input.password.length < 8) {
-      throw new Error("Password must contain at least 8 characters.");
-    }
+        if (input.password.length < 8) {
+          throw new Error("Password must contain at least 8 characters.");
+        }
+      },
+    );
   },
 
   async verifyEmail(token) {

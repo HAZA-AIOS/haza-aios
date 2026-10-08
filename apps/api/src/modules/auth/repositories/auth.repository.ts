@@ -4,6 +4,7 @@ import {
   authSessions,
   membershipRoles,
   organizationMemberships,
+  passwordResetTokens,
   permissions,
   rolePermissions,
   roles,
@@ -92,6 +93,68 @@ export class AuthRepository {
       .where(eq(users.normalizedEmail, normalizeEmail(email)))
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  async updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
+    await this.context.db
+      .update(users)
+      .set({ passwordHash, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+  }
+
+  async createResetToken(input: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: Date;
+    ipAddress?: string;
+  }): Promise<void> {
+    await this.context.db.insert(passwordResetTokens).values({
+      id: randomUUID(),
+      userId: input.userId,
+      tokenHash: input.tokenHash,
+      expiresAt: input.expiresAt,
+      ipAddress: input.ipAddress,
+      createdAt: new Date(),
+    });
+  }
+
+  async getValidResetToken(tokenHash: string): Promise<{
+    id: string;
+    userId: string;
+    usedAt: Date | null;
+    expiresAt: Date;
+  } | null> {
+    const rows = await this.context.db
+      .select({
+        id: passwordResetTokens.id,
+        userId: passwordResetTokens.userId,
+        usedAt: passwordResetTokens.usedAt,
+        expiresAt: passwordResetTokens.expiresAt,
+      })
+      .from(passwordResetTokens)
+      .where(
+        and(
+          eq(passwordResetTokens.tokenHash, tokenHash),
+          isNull(passwordResetTokens.usedAt),
+          gt(passwordResetTokens.expiresAt, new Date()),
+        ),
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  async markResetTokenUsed(tokenId: string): Promise<void> {
+    await this.context.db
+      .update(passwordResetTokens)
+      .set({ usedAt: new Date() })
+      .where(eq(passwordResetTokens.id, tokenId));
+  }
+
+  async revokeAllSessionsForUser(userId: string): Promise<void> {
+    await this.context.db
+      .update(authSessions)
+      .set({ status: "revoked", revokedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(authSessions.userId, userId), eq(authSessions.status, "active")));
   }
 
   async touchLastLogin(userId: string): Promise<void> {

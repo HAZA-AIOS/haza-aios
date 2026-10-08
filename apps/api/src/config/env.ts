@@ -11,9 +11,19 @@ export type ApiConfig = {
   logLevel: LogLevel;
   bodyLimitBytes: number;
   database: DatabaseConfig;
+  email: EmailConfig;
   apiBasePath: "/api/v1";
   serviceName: "haza-aios-api";
   version: string;
+};
+
+export type EmailConfig = {
+  /** Resend API key. Empty string means email delivery is disabled (dev/test). */
+  resendApiKey: string;
+  /** From address shown on outgoing emails. */
+  from: string;
+  /** Public base URL of the web app, used to construct password-reset links. */
+  appUrl: string;
 };
 
 export type DatabaseConfig = {
@@ -64,6 +74,7 @@ export function loadConfig(env: EnvInput = process.env): ApiConfig {
     1_048_576,
   );
   const database = readDatabaseConfig(env, nodeEnv);
+  const email = readEmailConfig(env, nodeEnv);
 
   return {
     nodeEnv,
@@ -75,9 +86,36 @@ export function loadConfig(env: EnvInput = process.env): ApiConfig {
     logLevel,
     bodyLimitBytes,
     database,
+    email,
     apiBasePath: "/api/v1",
     serviceName: "haza-aios-api",
     version: env.npm_package_version || "0.0.0",
+  };
+}
+function readEmailConfig(env: EnvInput, nodeEnv: NodeEnv): EmailConfig {
+  const resendApiKey = env.RESEND_API_KEY?.trim() ?? "";
+  const from =
+    env.EMAIL_FROM?.trim() ||
+    (nodeEnv === "production" ? undefined : "no-reply@haza-aios.com");
+
+  if (nodeEnv === "production" && !resendApiKey) {
+    throw new Error("RESEND_API_KEY is required in production");
+  }
+
+  if (nodeEnv === "production" && !from) {
+    throw new Error("EMAIL_FROM is required in production");
+  }
+
+  const appUrl = readString(
+    env.APP_URL,
+    "APP_URL",
+    nodeEnv === "production" ? undefined : "http://localhost:3000",
+  );
+
+  return {
+    resendApiKey,
+    from: from ?? "no-reply@haza-aios.com",
+    appUrl,
   };
 }
 

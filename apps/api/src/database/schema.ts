@@ -918,6 +918,25 @@ export const securityEvents = mysqlTable(
   ],
 );
 
+export const passwordResetTokens = mysqlTable(
+  "password_reset_tokens",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    userId: char("user_id", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    tokenHash: char("token_hash", { length: 64 }).notNull(),
+    expiresAt: datetime("expires_at", { fsp: 3 }).notNull(),
+    usedAt: datetime("used_at", { fsp: 3 }),
+    ipAddress: varchar("ip_address", { length: 80 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("password_reset_tokens_hash_unique").on(table.tokenHash),
+    index("password_reset_tokens_user_idx").on(table.userId),
+  ],
+);
+
 export const auditLogs = mysqlTable(
   "audit_logs",
   {

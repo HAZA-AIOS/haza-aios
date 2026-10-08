@@ -92,6 +92,15 @@ export type RegisterInput = CreateUserInput & {
   organizationEmail?: string;
 };
 
+export type ForgotPasswordInput = {
+  email: string;
+};
+
+export type ResetPasswordInput = {
+  token: string;
+  password: string;
+};
+
 export type AuthResult = {
   user: SafeUser;
   session: {

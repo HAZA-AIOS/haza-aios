@@ -1,4 +1,5 @@
 import type { IncomingMessage } from "node:http";
+import { createHash, randomBytes } from "node:crypto";
 import { ApiError } from "../../../common/errors/api-error.js";
 import type { DatabaseClient } from "../../../database/client.js";
 import { mapDatabaseError } from "../../../database/errors.js";
@@ -10,15 +11,19 @@ import type {
   AuthContext,
   AuthResult,
   CreateUserInput,
+  ForgotPasswordInput,
   LoginInput,
   PermissionKey,
   RegisterInput,
+  ResetPasswordInput,
   SafeUser,
 } from "../auth.types.js";
 import { AuthRepository, toSafeUser } from "../repositories/auth.repository.js";
 import { normalizeEmail } from "../validation/auth-validation.js";
 import { hashPassword, verifyPassword } from "./password.service.js";
 import { createSessionToken, hashSessionToken, sessionCookieName } from "./token.service.js";
+import type { EmailConfig } from "../../../config/env.js";
+import { EmailService } from "./email.service.js";
 
 const ownerPermissions: PermissionKey[] = [
   "organization.read",
@@ -74,8 +79,20 @@ const memberPermissions: PermissionKey[] = [
   "member.read",
 ];
 
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+const noopEmailConfig: EmailConfig = {
+  resendApiKey: "",
+  from: "no-reply@haza-aios.com",
+  appUrl: "http://localhost:3000",
+};
+
 export class AuthService {
-  constructor(private readonly database: DatabaseClient) {}
+  private readonly emailService: EmailService;
+
+  constructor(private readonly database: DatabaseClient, emailConfig: EmailConfig = noopEmailConfig) {
+    this.emailService = new EmailService(emailConfig);
+  }
 
   async registerIdentity(input: CreateUserInput): Promise<AuthResult> {
     return withTransaction(this.database, async ({ tx }) => {
@@ -209,6 +226,90 @@ export class AuthService {
     const repository = new AuthRepository(createRepositoryContext(this.database.db));
     await repository.revokeSessionByHash(hashSessionToken(token));
     await repository.recordSecurityEvent({ eventType: "logout" });
+  }
+
+  async forgotPassword(
+    input: ForgotPasswordInput,
+    request?: IncomingMessage,
+  ): Promise<void> {
+    const repository = new AuthRepository(createRepositoryContext(this.database.db));
+    const user = await repository.getUserByEmail(input.email);
+
+    // Always return success — never reveal whether an email is registered.
+    if (!user || user.status !== "active") {
+      return;
+    }
+
+    const rawToken = randomBytes(32).toString("base64url");
+    const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+    const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+    await repository.createResetToken({
+      userId: user.id,
+      tokenHash,
+      expiresAt,
+      ipAddress: readIpAddress(request),
+    });
+
+    await repository.recordSecurityEvent({
+      userId: user.id,
+      eventType: "auth.password_reset_requested",
+      severity: "info",
+      ipAddress: readIpAddress(request),
+      userAgent: readUserAgent(request),
+    });
+
+    const resetUrl = `${this.emailService.appUrl}/reset-password?token=${rawToken}`;
+
+    // Fire-and-forget — email failures must not surface as API errors.
+    this.emailService
+      .sendPasswordReset({ to: user.email, resetUrl, firstName: user.firstName })
+      .catch((err: unknown) => {
+        console.error("[auth] Email send failed:", err);
+      });
+  }
+
+  async resetPassword(
+    input: ResetPasswordInput,
+    request?: IncomingMessage,
+  ): Promise<void> {
+    const repository = new AuthRepository(createRepositoryContext(this.database.db));
+    const tokenHash = createHash("sha256").update(input.token.trim()).digest("hex");
+    const tokenRecord = await repository.getValidResetToken(tokenHash);
+
+    if (!tokenRecord) {
+      throw new ApiError(
+        400,
+        "INVALID_RESET_TOKEN",
+        "Reset link is invalid or has expired.",
+      );
+    }
+
+    const user = await repository.getUserById(tokenRecord.userId);
+    if (!user || user.status !== "active") {
+      throw new ApiError(
+        400,
+        "INVALID_RESET_TOKEN",
+        "Reset link is invalid or has expired.",
+      );
+    }
+
+    // Mark token as used FIRST — prevents concurrent re-use.
+    await repository.markResetTokenUsed(tokenRecord.id);
+
+    const newPasswordHash = await hashPassword(input.password);
+    await repository.updatePasswordHash(user.id, newPasswordHash);
+
+    // Revoke all active sessions so the old (possibly compromised) sessions can't persist.
+    await repository.revokeAllSessionsForUser(user.id);
+
+    await repository.recordSecurityEvent({
+      userId: user.id,
+      eventType: "auth.password_reset_completed",
+      severity: "info",
+      ipAddress: readIpAddress(request),
+      userAgent: readUserAgent(request),
+    });
   }
 
   async authenticateRequest(request: IncomingMessage): Promise<AuthContext> {

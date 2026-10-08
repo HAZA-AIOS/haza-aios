@@ -23,7 +23,9 @@
     "mysql2": "^3.23.3"
   },
   "devDependencies": {
+    "@types/supertest": "^7.2.1",
     "drizzle-kit": "^0.31.10",
+    "supertest": "^7.3.1",
     "tsx": "^4.23.12",
     "typescript": "^5.8.3"
   }

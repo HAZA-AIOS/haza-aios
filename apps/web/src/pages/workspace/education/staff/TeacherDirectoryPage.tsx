@@ -182,10 +182,28 @@ export function TeacherDirectoryPage() {
                           >
                             View
                           </button>
-                          <button className="text-blue-400 hover:text-blue-300 p-1.5 rounded-md hover:bg-blue-400/10 transition-colors" onClick={(e) => { e.stopPropagation(); }}>
+                          <button 
+                            className="text-blue-400 hover:text-blue-300 p-1.5 rounded-md hover:bg-blue-400/10 transition-colors" 
+                            onClick={(e) => { e.stopPropagation(); navigate(`/workspace/education/staff/${staff.id}/edit`); }}
+                          >
                             <Edit2 className="h-4 w-4" />
                           </button>
-                          <button className="text-red-400 hover:text-red-300 p-1.5 rounded-md hover:bg-red-400/10 transition-colors" onClick={(e) => { e.stopPropagation(); }}>
+                          <button 
+                            className="text-red-400 hover:text-red-300 p-1.5 rounded-md hover:bg-red-400/10 transition-colors" 
+                            onClick={async (e) => { 
+                              e.stopPropagation();
+                              if (window.confirm("Are you sure you want to delete this teacher?")) {
+                                try {
+                                  // NOTE: A proper delete API should be added to StaffService. 
+                                  // Assuming there's a delete method or using standard archival
+                                  console.log("Delete staff: ", staff.id);
+                                  alert("Staff deletion requires 'deleteStaff' method. Skipping UI stub.");
+                                } catch(err) {
+                                  console.error(err);
+                                }
+                              }
+                            }}
+                          >
                             <Trash2 className="h-4 w-4" />
                           </button>
                         </div>

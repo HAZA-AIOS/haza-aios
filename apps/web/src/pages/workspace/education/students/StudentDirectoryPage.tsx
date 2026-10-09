@@ -4,6 +4,7 @@ import type { Student } from "@/modules/education/sis/sis.types";
 import { StudentService } from "@/modules/education/sis/student.service";
 import { useOrganization } from "@/org/use-organization";
 import { Link } from "@/routes/router";
+import { navigate } from "@/routes/navigation";
 import { AppShell } from "@/components/AppShell";
 import { Search, Plus, UserCircle2, ArrowLeft, Edit2, Trash2 } from "lucide-react";
 
@@ -13,27 +14,51 @@ export const StudentDirectoryPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    if (currentOrganization) {
-      StudentService.getStudents(currentOrganization.id).then(data => {
-        setStudents(data);
-        setLoading(false);
-      });
+  const fetchStudents = async () => {
+    if (!currentOrganization) return;
+    setLoading(true);
+    try {
+      const data = await StudentService.getStudents(currentOrganization.id);
+      setStudents(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchStudents();
   }, [currentOrganization]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentOrganization) return;
     setLoading(true);
-    if (!searchQuery.trim()) {
-      const data = await StudentService.getStudents(currentOrganization.id);
-      setStudents(data);
-    } else {
-      const results = await StudentService.searchStudents(currentOrganization.id, searchQuery);
-      setStudents(results);
+    try {
+      if (!searchQuery.trim()) {
+        const data = await StudentService.getStudents(currentOrganization.id);
+        setStudents(data);
+      } else {
+        const results = await StudentService.searchStudents(currentOrganization.id, searchQuery);
+        setStudents(results);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!currentOrganization) return;
+    if (window.confirm("Are you sure you want to delete this student?")) {
+      try {
+        await StudentService.deleteStudent(id, currentOrganization.id);
+        setStudents(students.filter(s => s.id !== id));
+      } catch (error) {
+        console.error("Failed to delete student:", error);
+        alert("Failed to delete student.");
+      }
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -117,10 +142,20 @@ export const StudentDirectoryPage: React.FC = () => {
                             <Link to={`/workspace/education/students/${student.id}`}>
                               <Button variant="ghost" size="sm">View</Button>
                             </Link>
-                            <Button variant="ghost" size="sm" className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 h-8 w-8 p-0">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 h-8 w-8 p-0"
+                              onClick={() => navigate(`/workspace/education/students/${student.id}/edit`)}
+                            >
                               <Edit2 className="w-4 h-4" />
                             </Button>
-                            <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300 hover:bg-red-400/10 h-8 w-8 p-0">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="text-red-400 hover:text-red-300 hover:bg-red-400/10 h-8 w-8 p-0"
+                              onClick={() => handleDelete(student.id)}
+                            >
                               <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>

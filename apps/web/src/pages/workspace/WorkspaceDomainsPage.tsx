@@ -126,25 +126,49 @@ export function WorkspaceDomainsPage() {
           ) : (
             <div className="space-y-4">
               {domains.map((d) => (
-                <div key={d.id} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 p-4">
-                  <div>
-                    <div className="text-white font-medium">{d.domain}</div>
-                    <div className="text-xs text-slate-400 mt-1">
-                      Status: <span className={d.status === "verified" ? "text-emerald-400" : d.status === "failed" ? "text-red-400" : "text-amber-400"}>
-                        {d.status.toUpperCase()}
-                      </span>
+                <div key={d.id} className="rounded-lg border border-white/10 bg-white/5 p-4 flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-white font-medium">{d.domain}</div>
+                      <div className="text-xs text-slate-400 mt-1">
+                        Status: <span className={
+                          d.status === "verified" || d.status === "active" ? "text-emerald-400" :
+                          d.status === "failed" ? "text-red-400" : 
+                          "text-amber-400"
+                        }>
+                          {d.status.toUpperCase()}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  {hasWriteAccess && (
-                    <div className="flex items-center gap-3">
-                      {d.status !== "verified" && (
-                        <Button size="sm" variant="secondary" onClick={() => handleVerify(d.id)} disabled={isLoading}>
-                          Verify DNS
+                    {hasWriteAccess && (
+                      <div className="flex items-center gap-3">
+                        {d.status === "pending_verification" || d.status === "failed" ? (
+                          <Button size="sm" variant="secondary" onClick={() => handleVerify(d.id)} disabled={isLoading}>
+                            Verify DNS
+                          </Button>
+                        ) : null}
+                        <Button size="sm" variant="destructive" onClick={() => handleDelete(d.id)} disabled={isLoading}>
+                          Remove
                         </Button>
-                      )}
-                      <Button size="sm" variant="destructive" onClick={() => handleDelete(d.id)} disabled={isLoading}>
-                        Remove
-                      </Button>
+                      </div>
+                    )}
+                  </div>
+                  {(d.status === "pending_verification" || d.status === "failed") && d.verificationToken && (
+                    <div className="bg-slate-900 rounded-md p-3 text-xs text-slate-300 font-mono">
+                      <p className="mb-2 font-sans text-slate-400">To verify ownership, add the following TXT record to your domain's DNS configuration:</p>
+                      <div className="grid grid-cols-[80px_1fr] gap-2 mb-1">
+                        <span className="text-slate-500">Type:</span>
+                        <span>TXT</span>
+                      </div>
+                      <div className="grid grid-cols-[80px_1fr] gap-2 mb-1">
+                        <span className="text-slate-500">Name:</span>
+                        <span className="select-all text-white bg-white/5 px-1 py-0.5 rounded">_haza-aios-verification.{d.domain}</span>
+                      </div>
+                      <div className="grid grid-cols-[80px_1fr] gap-2">
+                        <span className="text-slate-500">Value:</span>
+                        <span className="select-all text-white bg-white/5 px-1 py-0.5 rounded">{d.verificationToken}</span>
+                      </div>
+                      <p className="mt-2 font-sans text-[10px] text-slate-500">DNS propagation may take a few minutes or up to 24 hours.</p>
                     </div>
                   )}
                 </div>

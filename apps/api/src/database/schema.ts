@@ -707,7 +707,10 @@ export const users = mysqlTable(
 export const tenantDomainStatus = mysqlEnum("tenant_domain_status", [
   "pending_verification",
   "verified",
+  "provisioning",
+  "active",
   "failed",
+  "disabled",
 ]);
 
 export const tenantDomains = mysqlTable(
@@ -718,6 +721,7 @@ export const tenantDomains = mysqlTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
     domain: varchar("domain", { length: 255 }).notNull(),
+    verificationToken: varchar("verification_token", { length: 128 }),
     status: tenantDomainStatus.notNull().default("pending_verification"),
     verifiedAt: timestamp("verified_at", { fsp: 3 }),
     createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),

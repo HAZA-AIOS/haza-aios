@@ -4,7 +4,8 @@ export type TenantDomain = {
   id: string;
   organizationId: string;
   domain: string;
-  status: "pending_verification" | "verified" | "failed";
+  verificationToken?: string | null;
+  status: "pending_verification" | "verified" | "provisioning" | "active" | "failed" | "disabled";
   verifiedAt: string | null;
   createdAt: string;
   updatedAt: string;

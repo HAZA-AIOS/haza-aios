@@ -13,16 +13,22 @@ Complete and verify end-to-end integration of:
 - **Frontend Integration:** The UI components in `apps/web/src/pages/workspace/education/attendance/MarkAttendancePage.tsx` and `ClassTimetablePage.tsx` successfully hit the backend API via the `sisRequest` interface.
 - **Tests:** The `sis-attendance-timetable.integration.test.ts` integration test asserts correct functionality of the database persistence, tenant isolation, and conflict resolution rules for timetable entries.
 
-### Tenant Domain Verification & Management (GAP-002)
+### Tenant Domain Verification & Management (GAP-002) - Stage 20C.1
 - **Problem:** The gap register (`INTEGRATION-GAP-REGISTER.md`) stated that "Domain verification mechanism is mocked" and required a Cloudflare API hook integration.
 - **Implementation Steps:**
-  1. **Schema:** Added `tenantDomains` table and `tenantDomainStatus` enum to `apps/api/src/database/schema.ts` to persistently store tenant domains associated with their respective organizations.
-  2. **Migration:** Generated the Drizzle migration `0016_left_deathstrike.sql`.
-  3. **Backend Service:** Created `apps/api/src/modules/platform/services/domain.service.ts` implementing `listTenantDomains`, `createTenantDomain`, `verifyTenantDomain`, and `deleteTenantDomain`. The verification method includes a placeholder/mock hook for Cloudflare DNS validation.
+  1. **Schema:** Added `tenantDomains` table with `tenantDomainStatus` enum (`pending_verification`, `verified`, `provisioning`, `active`, `failed`, `disabled`) and `verificationToken` column to `apps/api/src/database/schema.ts` to persistently store tenant domains associated with their respective organizations.
+  2. **Migration:** Generated the Drizzle migration `0016_left_deathstrike.sql` and `0017_youthful_silverclaw.sql`.
+  3. **Backend Service:** Updated `apps/api/src/modules/platform/services/domain.service.ts`:
+     - Added secure token generation (`ha-verify=<random_hex>`) using `node:crypto`.
+     - Implemented real DNS TXT record validation using `node:dns/promises`.
+     - Added IDN/punycode normalization.
+     - Added security checks rejecting prohibited or internal domains (e.g. `haza-aios.com`, `localhost`).
   4. **API Routes:** Integrated domain CRUD routes to `apps/api/src/modules/platform/platform.module.ts` under `/api/v1/organizations/:organizationId/domains`.
-  5. **Frontend Service:** Added `domain-service.ts` inside `apps/web/src/org/` which interfaces with the new API endpoints using the core `apiClient.request`.
-  6. **UI Component:** Created `WorkspaceDomainsPage.tsx` under `apps/web/src/pages/workspace/` allowing users to add, view, verify, and remove custom domains.
-  7. **Navigation:** Registered the `/workspace/domains` route in `App.tsx` and added the "Domains" link to the `AppShell` sidebar navigation under the Organization items.
+  5. **Frontend Service:** Updated `domain-service.ts` inside `apps/web/src/org/` which interfaces with the new API endpoints using the core `apiClient.request`. Added updated types for the domain statuses.
+  6. **UI Component:** Updated `WorkspaceDomainsPage.tsx` under `apps/web/src/pages/workspace/` allowing users to view DNS TXT record instructions (e.g. Type: TXT, Name: `_haza-aios-verification.<domain>`, Value: `ha-verify=...`), verify DNS, and view live status updates.
+  7. **Tests:** Written full unit test coverage for `DomainService` covering token generation, missing/incorrect TXT records, timeouts, and authorization controls. All 11 tests pass successfully.
+  8. **Cloudflare Provisioning:** Explicitly leaving automated provisioning pending until a safe, scoped testing token and sandbox configuration are provided for `customHostnames`.
+
 
 ## 3. Results
 - **API Builds:** Successfully compiled via `npx tsc`.

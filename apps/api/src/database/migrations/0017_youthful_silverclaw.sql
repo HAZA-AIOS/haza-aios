@@ -1,0 +1,2 @@
+ALTER TABLE `tenant_domains` MODIFY COLUMN `tenant_domain_status` enum('pending_verification','verified','provisioning','active','failed','disabled') NOT NULL DEFAULT 'pending_verification';--> statement-breakpoint
+ALTER TABLE `tenant_domains` ADD `verification_token` varchar(128);

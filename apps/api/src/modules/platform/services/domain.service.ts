@@ -2,20 +2,36 @@ import { ApiError } from "../../../common/errors/api-error.js";
 import type { DatabaseClient } from "../../../database/client.js";
 import { eq, and } from "drizzle-orm";
 import { tenantDomains } from "../../../database/schema.js";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import dns from "node:dns/promises";
 
 export class DomainService {
   constructor(private readonly database: DatabaseClient) {}
 
   async createTenantDomain(organizationId: string, domain: string) {
-    // Basic domain format validation
-    if (!/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(domain)) {
+    let normalizedDomain = domain.trim().toLowerCase();
+    
+    // Convert to punycode for IDN normalization
+    try {
+      normalizedDomain = new URL(`http://${normalizedDomain}`).hostname;
+    } catch {
       throw new ApiError(400, "VALIDATION_FAILED", "Invalid domain format.");
+    }
+    
+    // Basic domain format validation
+    if (!/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(normalizedDomain)) {
+      throw new ApiError(400, "VALIDATION_FAILED", "Invalid domain format.");
+    }
+
+    // Prevent registration of internal or system domains
+    const prohibitedDomains = ["haza-aios.com", "railway.app", "vercel.app", "herokuapp.com", "localhost"];
+    if (prohibitedDomains.some(d => normalizedDomain === d || normalizedDomain.endsWith(`.${d}`))) {
+      throw new ApiError(400, "VALIDATION_FAILED", "This domain is reserved or prohibited.");
     }
 
     const existing = await this.database.db.select()
       .from(tenantDomains)
-      .where(eq(tenantDomains.domain, domain))
+      .where(eq(tenantDomains.domain, normalizedDomain))
       .limit(1);
 
     if (existing.length > 0) {
@@ -23,10 +39,13 @@ export class DomainService {
     }
 
     const id = randomUUID();
+    const verificationToken = `ha-verify=${randomBytes(32).toString("hex")}`;
+    
     await this.database.db.insert(tenantDomains).values({
       id,
       organizationId,
-      domain,
+      domain: normalizedDomain,
+      verificationToken,
       status: "pending_verification",
     });
 
@@ -52,12 +71,30 @@ export class DomainService {
   }
 
   async verifyTenantDomain(organizationId: string, id: string) {
-    await this.getTenantDomain(organizationId, id);
+    const domainRecord = await this.getTenantDomain(organizationId, id);
     
-    // MOCK: Cloudflare API Hook for Domain Verification
-    // In a real scenario, this would call the Cloudflare API to check DNS records
-    // e.g., await cloudflareClient.customHostnames.get(...)
-    const isVerified = true; // Simulating successful DNS verification
+    if (domainRecord.status === "verified" || domainRecord.status === "active") {
+      return domainRecord;
+    }
+
+    const verifyHost = `_haza-aios-verification.${domainRecord.domain}`;
+    let isVerified = false;
+
+    try {
+      const records = await dns.resolveTxt(verifyHost);
+      for (const recordArray of records) {
+        const record = recordArray.join("");
+        if (record === domainRecord.verificationToken) {
+          isVerified = true;
+          break;
+        }
+      }
+    } catch (err: any) {
+      // DNS lookup failed or NO DATA
+      if (err.code !== "ENOTFOUND" && err.code !== "ENODATA") {
+        console.error("DNS resolution error:", err);
+      }
+    }
 
     if (!isVerified) {
       await this.database.db.update(tenantDomains)
@@ -75,9 +112,6 @@ export class DomainService {
 
   async deleteTenantDomain(organizationId: string, id: string) {
     await this.getTenantDomain(organizationId, id);
-    
-    // MOCK: Cloudflare API Hook to remove Custom Hostname
-    // e.g., await cloudflareClient.customHostnames.delete(...)
 
     await this.database.db.delete(tenantDomains)
       .where(and(eq(tenantDomains.id, id), eq(tenantDomains.organizationId, organizationId)));

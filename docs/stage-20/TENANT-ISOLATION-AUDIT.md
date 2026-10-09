@@ -10,3 +10,6 @@ The `auth` module correctly scopes tokens, but direct object references (e.g., f
 The `apps/api/tests/sis-*.integration.test.ts` files are skipped, meaning we lack automated protection against data leaking between schools.
 
 **Conclusion**: Core platform isolation is strong. Vertical-specific isolation (Education, Admin dashboards) requires rigorous Row-Level Security (RLS) or application-level `where` constraints before production availability.
+
+## Domain Verification Security (Stage 20C.1)
+The `tenant_domains` table securely isolates custom domains per `organizationId`. The `DomainService` implements cryptographic verification tokens (`ha-verify=...`) and strictly enforces tenant association before verification or deletion operations are permitted, eliminating cross-tenant domain hijacking vulnerabilities.

@@ -120,6 +120,13 @@
       "when": 1791528762714,
       "tag": "0016_left_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1791531699174,
+      "tag": "0017_youthful_silverclaw",
+      "breakpoints": true
     }
   ]
 }

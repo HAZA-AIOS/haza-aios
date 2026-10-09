@@ -9,8 +9,8 @@ CREATE TABLE `platform_modules` (
 	`status` varchar(40) NOT NULL DEFAULT 'available',
 	`is_core` boolean NOT NULL DEFAULT false,
 	`metadata` json NOT NULL,
-	`created_at` timestamp(3) NOT NULL DEFAULT (now()),
-	`updated_at` timestamp(3) NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	`created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+	`updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
 	CONSTRAINT `platform_modules_id` PRIMARY KEY(`id`),
 	CONSTRAINT `platform_modules_key_unique` UNIQUE(`module_key`)
 );

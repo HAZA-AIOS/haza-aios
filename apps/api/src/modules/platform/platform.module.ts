@@ -5,6 +5,7 @@ import { assertUuid, createTenantContext } from "./tenant-context.js";
 import { OrganizationModuleService } from "./services/organization-module.service.js";
 import { OrganizationService } from "./services/organization.service.js";
 import { WorkspaceService } from "./services/workspace.service.js";
+import { DomainService } from "./services/domain.service.js";
 import { validateCreateOrganization, validateCreateWorkspace, validateEnableModule, validateUpdateModuleConfiguration, validateUpdateOrganization, validateUpdateWorkspace } from "./validation/platform-validation.js";
 import type { OrganizationModuleRecord, OrganizationModuleWithCatalog, PlatformModuleRecord } from "./platform.types.js";
 
@@ -186,6 +187,52 @@ export const platformModule: BackendModule = {
         await new AuthService(database).requireOrganizationPermission(request, tenant.organizationId, "module.manage");
         const module = await new OrganizationModuleService(database).disableModule(tenant.organizationId, routeParams.moduleKey);
         sendJson(response, 200, { module: toModuleStateDto(module) });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/domains",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(request, tenant.organizationId, "organization.read");
+        const domains = await new DomainService(database).listTenantDomains(tenant.organizationId);
+        sendJson(response, 200, { domains });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/domains",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(request, tenant.organizationId, "organization.manage");
+        const body = request.body as Record<string, unknown>;
+        const domainStr = String(body.domain || "");
+        const domain = await new DomainService(database).createTenantDomain(tenant.organizationId, domainStr);
+        sendJson(response, 201, { domain });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/domains/:domainId/verify",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(request, tenant.organizationId, "organization.manage");
+        const domain = await new DomainService(database).verifyTenantDomain(tenant.organizationId, routeParams.domainId);
+        sendJson(response, 200, { domain });
+      },
+    });
+
+    router.register({
+      method: "DELETE",
+      path: "/api/v1/organizations/:organizationId/domains/:domainId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(request, tenant.organizationId, "organization.manage");
+        await new DomainService(database).deleteTenantDomain(tenant.organizationId, routeParams.domainId);
+        sendJson(response, 200, { ok: true });
       },
     });
   },

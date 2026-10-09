@@ -19,6 +19,7 @@ import { WorkspaceOverviewPage } from "./pages/workspace/WorkspaceOverviewPage";
 import { WorkspaceMembersPage } from "./pages/workspace/WorkspaceMembersPage";
 import { WorkspaceModulesPage } from "./pages/workspace/WorkspaceModulesPage";
 import { WorkspaceSettingsPage } from "./pages/workspace/WorkspaceSettingsPage";
+import { WorkspaceDomainsPage } from "./pages/workspace/WorkspaceDomainsPage";
 import { WorkspaceDiscoverPage, WorkspaceActiveAgentsPage, AgentDetailsPage } from "./pages/workspace/agents";
 import { AgentBuilderPage } from "./pages/workspace/agents/builder/AgentBuilderPage";
 import { AgentRunPage } from "./pages/workspace/agents/run/AgentRunPage";
@@ -153,6 +154,14 @@ function App() {
         <ProtectedRoute>
           <WorkspaceGuard>
             <WorkspaceSettingsPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/domains":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <WorkspaceDomainsPage />
           </WorkspaceGuard>
         </ProtectedRoute>
       );

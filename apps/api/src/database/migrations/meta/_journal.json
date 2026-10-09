@@ -113,6 +113,13 @@
       "when": 1791360568301,
       "tag": "0015_loose_longshot",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1791528762714,
+      "tag": "0016_left_deathstrike",
+      "breakpoints": true
     }
   ]
 }

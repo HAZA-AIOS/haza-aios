@@ -704,6 +704,31 @@ export const users = mysqlTable(
   ],
 );
 
+export const tenantDomainStatus = mysqlEnum("tenant_domain_status", [
+  "pending_verification",
+  "verified",
+  "failed",
+]);
+
+export const tenantDomains = mysqlTable(
+  "tenant_domains",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    domain: varchar("domain", { length: 255 }).notNull(),
+    status: tenantDomainStatus.notNull().default("pending_verification"),
+    verifiedAt: timestamp("verified_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("tenant_domains_domain_unique").on(table.domain),
+    index("tenant_domains_org_idx").on(table.organizationId),
+  ],
+);
+
 export const workspaces = mysqlTable(
   "workspaces",
   {

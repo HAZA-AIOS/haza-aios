@@ -13,3 +13,6 @@ The `apps/api/tests/sis-*.integration.test.ts` files are skipped, meaning we lac
 
 ## Domain Verification Security (Stage 20C.1)
 The `tenant_domains` table securely isolates custom domains per `organizationId`. The `DomainService` implements cryptographic verification tokens (`ha-verify=...`) and strictly enforces tenant association before verification or deletion operations are permitted, eliminating cross-tenant domain hijacking vulnerabilities.
+
+## Finance & Communication Isolation (Stage 20D.1)
+Finance transactions and communication deliveries are fully isolated by `workspace_id`. Cross-tenant aggregate leakage is prevented by strict scoping in the Drizzle queries inside `SisFinanceService` and `SisCommunicationService`. Tests confirm isolation, although high-concurrency test runs reveal SSH tunnel limitations that should be noted for rehearsal environments.

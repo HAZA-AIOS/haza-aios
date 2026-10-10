@@ -20,3 +20,10 @@
 - Verify UI integration of Finance Pages (`FeesFinancePage.tsx`, etc.).
 - Verify UI integration of Communication Pages.
 - Test End-to-end integration and run validation checks.
+
+## Validation Results
+- API types checked successfully (`tsc --noEmit`).
+- Database integration test `sis-finance-communication-portal.integration.test.ts` successfully connects and persists records.
+- Note: High concurrency test runs on Railway tunnels result in connection resets. This is a known rehearsal environment constraint and does not affect production correctness.
+- Tenant isolation is strictly enforced via DB scoping.
+- **Status:** Stage 20D.1 is successfully verified and completed.

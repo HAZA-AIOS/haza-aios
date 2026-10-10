@@ -4,6 +4,6 @@
 |---|---|---|---|---|---|---|
 | GAP-001 | Education / SIS | Fully Integrated | Backend CRUD tested and wired to UI. Tests un-skipped. | - | Resolved | Stage 20B |
 | GAP-002 | Registration | Resolved | DNS TXT verification implemented | DNS verification done via `node:dns`. Cloudflare provisioning pending auth setup. | P1 | Stage 20C.1 |
-| GAP-003 | Education / Finance | UI-Only | Finance reports and invoice pages have no API client backing | Create `finance` module routes and API client | P2 | Stage 20D |
+| GAP-003 | Education / Finance | Resolved | Finance reports and invoice pages have no API client backing | Create `finance` module routes and API client | P2 | Stage 20D |
 | GAP-004 | Platform | Backend-Only | Operational logging is robust but lacks frontend filtering capabilities | Add pagination and filtering to `AdminAuditLogPage.tsx` | P3 | Stage 20E |
 | GAP-005 | Shared | UI-Only | Search function relies on local state | Implement full-text search backend endpoint | P2 | Stage 20C |

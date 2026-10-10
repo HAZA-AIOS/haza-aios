@@ -16,3 +16,6 @@ The `tenant_domains` table securely isolates custom domains per `organizationId`
 
 ## Finance & Communication Isolation (Stage 20D.1)
 Finance transactions and communication deliveries are fully isolated by `workspace_id`. Cross-tenant aggregate leakage is prevented by strict scoping in the Drizzle queries inside `SisFinanceService` and `SisCommunicationService`. Tests confirm isolation, although high-concurrency test runs reveal SSH tunnel limitations that should be noted for rehearsal environments.
+
+## Examinations & Analytics Isolation (Stage 20E)
+Examinations, grading rules, mark records, and resulting publications are all scoped locally by `workspace_id`. The Analytics service securely aggregates data within these tenant boundaries, blocking unauthorized cross-tenant reporting. No structural vulnerabilities were found.

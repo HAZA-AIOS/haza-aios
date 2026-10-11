@@ -21,5 +21,5 @@
 - Tests unskipped but blocked due to database tunnel connection limits. 
 
 ## Sprint 20F: Final Validation & Testing Infrastructure (P1)
-- Resolve `GAP-002` (Domain Verification).
-- Resolve `GAP-006` (Implement a reliable isolated local database or CI mysql database test runner to unblock database integration tests).
+- Resolved `GAP-002` (Domain Verification).
+- Resolved `GAP-006` (Implemented isolated local MySQL/MariaDB integration test runner with strict safety guard and comprehensive Stage 20F.2 multi-tenant RBAC security suite).

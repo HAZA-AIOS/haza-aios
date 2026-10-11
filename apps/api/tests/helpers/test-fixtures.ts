@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import type { DatabaseClient } from "../../src/database/client.js";
 import { AuthService } from "../../src/modules/auth/services/auth.service.js";
 import { SisService, type SisTenantContext } from "../../src/modules/education/sis.service.js";
-import { SisAttendanceService } from "../../src/modules/education/sis-attendance.service.js";
 import { SisFinanceService } from "../../src/modules/education/sis-finance.service.js";
 import { SisCommunicationService } from "../../src/modules/education/sis-communication.service.js";
 import { SisExaminationService } from "../../src/modules/education/sis-examination.service.js";
@@ -73,17 +72,16 @@ export async function createAcademicClassFixture(
     status: "active",
   });
 
-  const grade = await sis.createGradeLevel(tenant, {
+  const grade = await sis.createGrade(tenant, {
     name: `Grade-${suffix}`,
-    code: `G-${suffix}`,
-    sequence: 1,
+    level: 1,
+    order: 1,
     status: "active",
   });
 
   const section = await sis.createSection(tenant, {
     gradeId: grade.id,
     name: `Sec-${suffix}`,
-    roomNumber: `R-${suffix}`,
     capacity: 30,
     status: "active",
   });
@@ -92,24 +90,27 @@ export async function createAcademicClassFixture(
     name: `Math-${suffix}`,
     code: `M-${suffix}`,
     status: "active",
+    displayOrder: 1,
   });
 
-  await sis.linkClassSubject(tenant, grade.id, subject.id);
+  await sis.assignSubjectToClass(tenant, grade.id, subject.id);
 
   const staff = await sis.createStaff(tenant, {
     firstName: "Teacher",
     lastName: `Staff-${suffix}`,
     email: `teacher-${suffix}@example.test`,
+    staffType: "teacher",
+    employmentStatus: "full_time",
     status: "active",
-    employmentType: "full_time",
   });
 
-  await sis.assignTeacher(tenant, {
+  await sis.createTeachingAssignment(tenant, {
     staffId: staff.id,
+    academicYear: year.name,
     gradeId: grade.id,
     sectionId: section.id,
     subjectId: subject.id,
-    isPrimary: true,
+    isActive: true,
   });
 
   const student = await sis.createStudent(tenant, {
@@ -135,7 +136,7 @@ export async function createAcademicClassFixture(
 
   const enrollment = await sis.createEnrollment(tenant, {
     studentId: student.id,
-    academicYearId: year.id,
+    academicYear: year.name,
     gradeId: grade.id,
     sectionId: section.id,
     enrollmentDate: "2026-08-01",
@@ -161,24 +162,25 @@ export async function createAttendanceFixture(
   tenant: SisTenantContext,
   classFixture: ClassFixture
 ) {
-  const attendance = new SisAttendanceService(database);
-  const session = await attendance.createSession(tenant, {
+  const sis = new SisService(database);
+  const session = await sis.createAttendanceSession(tenant, {
+    academicYearId: classFixture.year.id,
     date: "2026-09-01",
     gradeId: classFixture.grade.id,
     sectionId: classFixture.section.id,
-    type: "morning",
-    recordedBy: classFixture.staff.id,
-    status: "open",
+    sessionType: "daily",
+    markedBy: classFixture.staff.id,
+    status: "draft",
   });
 
-  const record = await attendance.recordAttendance(tenant, {
-    sessionId: session.id,
-    studentId: classFixture.student.id,
-    status: "present",
-    remarks: "On time",
-  });
+  const records = await sis.saveAttendanceRecords(
+    tenant,
+    session.id,
+    [{ studentId: classFixture.student.id, status: "present", note: "On time" }],
+    classFixture.staff.id
+  );
 
-  return { session, record };
+  return { session, records };
 }
 
 /**

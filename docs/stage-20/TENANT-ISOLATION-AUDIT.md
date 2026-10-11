@@ -19,3 +19,14 @@ Finance transactions and communication deliveries are fully isolated by `workspa
 
 ## Examinations & Analytics Isolation (Stage 20E)
 Examinations, grading rules, mark records, and resulting publications are all scoped locally by `workspace_id`. The Analytics service securely aggregates data within these tenant boundaries, blocking unauthorized cross-tenant reporting. No structural vulnerabilities were found.
+
+## Multi-Tenant & RBAC Security Suite (Stage 20F.2)
+Automated negative and boundary security test suite (`tenant-rbac-security.integration.test.ts`) executed 22 dedicated test cases against the local test database:
+- **Authentication & Sessions**: Token absence, signature tampering, session revocation after logout, and unauthorized workspace traversal all safely reject (401/404).
+- **SIS Core Isolation**: Cross-tenant student and staff reading, updating, deleting, class enrollments, and teaching assignments strictly return null or 404.
+- **Attendance & Timetable**: Foreign student attendance records rejected (400) and history access blocked (404).
+- **Finance RBAC & Isolation**: Unauthorized roles (Teacher) blocked from fee creation and invoice generation (403). Foreign invoice querying and payment strictly blocked.
+- **Communications**: Audience broadcast lists strictly filtered to tenant members; cross-tenant template and notification manipulation blocked (404).
+- **Examinations & Results**: Cross-tenant mark entry blocked (404) and cross-tenant result queries return null.
+- **Domain Verification**: Cross-tenant verification and deletion blocked (404) with high-entropy verification tokens validated.
+

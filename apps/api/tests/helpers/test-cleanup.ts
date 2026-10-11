@@ -2,11 +2,13 @@ import { inArray, eq } from "drizzle-orm";
 import type { DatabaseClient } from "../../src/database/client.js";
 import {
   organizations,
+  organizationSettings,
   workspaces,
   workspaceMemberships,
   organizationMemberships,
   membershipRoles,
   roles,
+  rolePermissions,
   users,
   authSessions,
   tenantDomains,
@@ -32,6 +34,9 @@ import {
   financeInvoices,
   financePayments,
   financeReceipts,
+  communicationTemplates,
+  announcements,
+  sisNotifications,
   communicationMessages,
   communicationDeliveries,
   portalPolicies,
@@ -40,6 +45,7 @@ import {
   examinationSubjects,
   markRecords,
   resultPublications,
+  organizationModules,
 } from "../../src/database/schema.js";
 import { assertSafeConnectedDatabase } from "./test-database-guard.js";
 
@@ -77,50 +83,63 @@ export async function cleanupTrackedFixtures(
   const db = database.db;
 
   if (orgIds.length > 0) {
-    // Reverse dependency cleanup for organization-scoped tables
-    await db.delete(markRecords).where(inArray(markRecords.tenantId, orgIds));
-    await db.delete(resultPublications).where(inArray(resultPublications.tenantId, orgIds));
-    await db.delete(examinationSubjects).where(inArray(examinationSubjects.tenantId, orgIds));
-    await db.delete(examinations).where(inArray(examinations.tenantId, orgIds));
+    // Find workspaces belonging to these organizations
+    const workspaceRows = await db.select({ id: workspaces.id }).from(workspaces).where(inArray(workspaces.organizationId, orgIds));
+    const workspaceIds = workspaceRows.map((r) => r.id);
 
-    await db.delete(financeReceipts).where(inArray(financeReceipts.tenantId, orgIds));
-    await db.delete(financePayments).where(inArray(financePayments.tenantId, orgIds));
-    await db.delete(financeInvoices).where(inArray(financeInvoices.tenantId, orgIds));
-    await db.delete(financeStudentFeeAssignments).where(inArray(financeStudentFeeAssignments.tenantId, orgIds));
-    await db.delete(financeFeeStructures).where(inArray(financeFeeStructures.tenantId, orgIds));
-    await db.delete(financeFeeCategories).where(inArray(financeFeeCategories.tenantId, orgIds));
+    if (workspaceIds.length > 0) {
+      // Reverse dependency cleanup for workspace-scoped tables
+      await db.delete(markRecords).where(inArray(markRecords.workspaceId, workspaceIds));
+      await db.delete(resultPublications).where(inArray(resultPublications.workspaceId, workspaceIds));
+      await db.delete(examinationSubjects).where(inArray(examinationSubjects.workspaceId, workspaceIds));
+      await db.delete(examinations).where(inArray(examinations.workspaceId, workspaceIds));
 
-    await db.delete(communicationDeliveries).where(inArray(communicationDeliveries.tenantId, orgIds));
-    await db.delete(communicationMessages).where(inArray(communicationMessages.tenantId, orgIds));
-    await db.delete(portalUpdateRequests).where(inArray(portalUpdateRequests.tenantId, orgIds));
-    await db.delete(portalPolicies).where(inArray(portalPolicies.tenantId, orgIds));
+      await db.delete(financeReceipts).where(inArray(financeReceipts.workspaceId, workspaceIds));
+      await db.delete(financePayments).where(inArray(financePayments.workspaceId, workspaceIds));
+      await db.delete(financeInvoices).where(inArray(financeInvoices.workspaceId, workspaceIds));
+      await db.delete(financeStudentFeeAssignments).where(inArray(financeStudentFeeAssignments.workspaceId, workspaceIds));
+      await db.delete(financeFeeStructures).where(inArray(financeFeeStructures.workspaceId, workspaceIds));
+      await db.delete(financeFeeCategories).where(inArray(financeFeeCategories.workspaceId, workspaceIds));
 
-    await db.delete(attendanceRecords).where(inArray(attendanceRecords.tenantId, orgIds));
-    await db.delete(attendanceSessions).where(inArray(attendanceSessions.tenantId, orgIds));
-    await db.delete(timetableEntries).where(inArray(timetableEntries.tenantId, orgIds));
+      await db.delete(communicationDeliveries).where(inArray(communicationDeliveries.workspaceId, workspaceIds));
+      await db.delete(communicationMessages).where(inArray(communicationMessages.workspaceId, workspaceIds));
+      await db.delete(communicationTemplates).where(inArray(communicationTemplates.workspaceId, workspaceIds));
+      await db.delete(announcements).where(inArray(announcements.workspaceId, workspaceIds));
+      await db.delete(sisNotifications).where(inArray(sisNotifications.workspaceId, workspaceIds));
+      await db.delete(portalUpdateRequests).where(inArray(portalUpdateRequests.workspaceId, workspaceIds));
+      await db.delete(portalPolicies).where(inArray(portalPolicies.workspaceId, workspaceIds));
 
-    await db.delete(teachingAssignments).where(inArray(teachingAssignments.tenantId, orgIds));
-    await db.delete(classSubjects).where(inArray(classSubjects.tenantId, orgIds));
-    await db.delete(enrollments).where(inArray(enrollments.tenantId, orgIds));
-    await db.delete(studentGuardians).where(inArray(studentGuardians.tenantId, orgIds));
-    await db.delete(guardians).where(inArray(guardians.tenantId, orgIds));
-    await db.delete(students).where(inArray(students.tenantId, orgIds));
+      await db.delete(attendanceRecords).where(inArray(attendanceRecords.workspaceId, workspaceIds));
+      await db.delete(attendanceSessions).where(inArray(attendanceSessions.workspaceId, workspaceIds));
+      await db.delete(timetableEntries).where(inArray(timetableEntries.workspaceId, workspaceIds));
 
-    await db.delete(sections).where(inArray(sections.tenantId, orgIds));
-    await db.delete(gradeLevels).where(inArray(gradeLevels.tenantId, orgIds));
-    await db.delete(academicTerms).where(inArray(academicTerms.tenantId, orgIds));
-    await db.delete(academicYears).where(inArray(academicYears.tenantId, orgIds));
+      await db.delete(teachingAssignments).where(inArray(teachingAssignments.workspaceId, workspaceIds));
+      await db.delete(classSubjects).where(inArray(classSubjects.workspaceId, workspaceIds));
+      await db.delete(enrollments).where(inArray(enrollments.workspaceId, workspaceIds));
+      await db.delete(studentGuardians).where(inArray(studentGuardians.studentId, db.select({ id: students.id }).from(students).where(inArray(students.workspaceId, workspaceIds))));
+      await db.delete(guardians).where(inArray(guardians.workspaceId, workspaceIds));
+      await db.delete(students).where(inArray(students.workspaceId, workspaceIds));
 
-    await db.delete(staffMembers).where(inArray(staffMembers.tenantId, orgIds));
-    await db.delete(staffDepartments).where(inArray(staffDepartments.tenantId, orgIds));
-    await db.delete(subjects).where(inArray(subjects.tenantId, orgIds));
+      await db.delete(sections).where(inArray(sections.workspaceId, workspaceIds));
+      await db.delete(gradeLevels).where(inArray(gradeLevels.workspaceId, workspaceIds));
+      await db.delete(academicTerms).where(inArray(academicTerms.workspaceId, workspaceIds));
+      await db.delete(academicYears).where(inArray(academicYears.workspaceId, workspaceIds));
+
+      await db.delete(staffMembers).where(inArray(staffMembers.workspaceId, workspaceIds));
+      await db.delete(staffDepartments).where(inArray(staffDepartments.workspaceId, workspaceIds));
+      await db.delete(subjects).where(inArray(subjects.workspaceId, workspaceIds));
+      await db.delete(workspaceMemberships).where(inArray(workspaceMemberships.workspaceId, workspaceIds));
+    }
+
     await db.delete(tenantDomains).where(inArray(tenantDomains.organizationId, orgIds));
 
-    await db.delete(workspaceMemberships).where(inArray(workspaceMemberships.organizationId, orgIds));
     await db.delete(workspaces).where(inArray(workspaces.organizationId, orgIds));
-    await db.delete(membershipRoles).where(inArray(membershipRoles.organizationId, orgIds));
+    await db.delete(organizationModules).where(inArray(organizationModules.organizationId, orgIds));
+    await db.delete(membershipRoles).where(inArray(membershipRoles.membershipId, db.select({ id: organizationMemberships.id }).from(organizationMemberships).where(inArray(organizationMemberships.organizationId, orgIds))));
     await db.delete(organizationMemberships).where(inArray(organizationMemberships.organizationId, orgIds));
+    await db.delete(rolePermissions).where(inArray(rolePermissions.roleId, db.select({ id: roles.id }).from(roles).where(inArray(roles.organizationId, orgIds))));
     await db.delete(roles).where(inArray(roles.organizationId, orgIds));
+    await db.delete(organizationSettings).where(inArray(organizationSettings.organizationId, orgIds));
     await db.delete(organizations).where(inArray(organizations.id, orgIds));
   }
 

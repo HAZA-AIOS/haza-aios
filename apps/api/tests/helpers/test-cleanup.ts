@@ -28,6 +28,8 @@ import {
   attendanceSessions,
   attendanceRecords,
   timetableEntries,
+  schoolSchedules,
+  timePeriods,
   financeFeeCategories,
   financeFeeStructures,
   financeStudentFeeAssignments,
@@ -43,6 +45,7 @@ import {
   portalUpdateRequests,
   examinations,
   examinationSubjects,
+  gradingRules,
   markRecords,
   resultPublications,
   organizationModules,
@@ -93,6 +96,7 @@ export async function cleanupTrackedFixtures(
       await db.delete(resultPublications).where(inArray(resultPublications.workspaceId, workspaceIds));
       await db.delete(examinationSubjects).where(inArray(examinationSubjects.workspaceId, workspaceIds));
       await db.delete(examinations).where(inArray(examinations.workspaceId, workspaceIds));
+      await db.delete(gradingRules).where(inArray(gradingRules.workspaceId, workspaceIds));
 
       await db.delete(financeReceipts).where(inArray(financeReceipts.workspaceId, workspaceIds));
       await db.delete(financePayments).where(inArray(financePayments.workspaceId, workspaceIds));
@@ -112,6 +116,8 @@ export async function cleanupTrackedFixtures(
       await db.delete(attendanceRecords).where(inArray(attendanceRecords.workspaceId, workspaceIds));
       await db.delete(attendanceSessions).where(inArray(attendanceSessions.workspaceId, workspaceIds));
       await db.delete(timetableEntries).where(inArray(timetableEntries.workspaceId, workspaceIds));
+      await db.delete(timePeriods).where(inArray(timePeriods.workspaceId, workspaceIds));
+      await db.delete(schoolSchedules).where(inArray(schoolSchedules.workspaceId, workspaceIds));
 
       await db.delete(teachingAssignments).where(inArray(teachingAssignments.workspaceId, workspaceIds));
       await db.delete(classSubjects).where(inArray(classSubjects.workspaceId, workspaceIds));

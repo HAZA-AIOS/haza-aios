@@ -11,21 +11,26 @@
 - **Status**: Currently displaying partial placeholder data.
 
 ## 3. Education / SIS Module
-- **Page**: `StudentDirectoryPage.tsx`, `TeacherDirectoryPage.tsx`
-- **Backend Route**: `/api/v1/education/students` (not fully implemented in controller layer)
-- **Status**: Broken/Missing links. The frontend component relies on hardcoded placeholder data. Database access layer exists in Drizzle schemas but lacks integration with the `education` module routes.
+- **Page**: `StudentDirectoryPage.tsx`, `TeacherDirectoryPage.tsx`, `StudentAdmissionPage.tsx`, `StudentProfilePage.tsx`
+- **Backend Route**: `/api/v1/organizations/:id/sis/students`, `/api/v1/organizations/:id/sis/staff`
+- **Status**: Fully Integrated. Frontend service layer (`student.service.ts`, `staff.service.ts`) communicates via authenticated `sisRequest` and persisted via Drizzle repositories in `apps/api`.
+- **Validation**: Verified end-to-end via `workflow-regression.integration.test.ts` and `sis-core.integration.test.ts`.
 
 ## 4. Admin
 - **Page**: `AdminAuditLogPage.tsx`
-- **Backend Route**: Integrated with `operational-service.ts` in the `apps/web/src/operations`.
+- **Backend Route**: Integrated with `operational-service.ts` in `apps/web/src/operations`.
 - **Status**: Fully Integrated backend layer (`operations.module.ts`).
 
 ### Stage 20D: Finance & Communication Integration
-- **Finance APIs mapped to frontend features**: Invoice Management, Payments, Fee Categories
-- **Communication APIs mapped**: Messaging, Announcements, Sent Receipts
+- **Finance APIs mapped to frontend features**: Invoice Management, Payments, Fee Categories, Student Ledgers
+- **Communication APIs mapped**: Messaging, Announcements, Sent Receipts, In-app Notifications
 - **Result**: Successfully integrated to backend services and exposed through tenant-scoped API routes.
 
 ### Stage 20E: Examinations & Analytics Integration
 - **Examination APIs mapped to frontend features**: Exam Creation, Assessment Management, Mark Entry, Results Publishing, Grading Rules
 - **Analytics APIs mapped**: Tenant-scoped overview, data quality, health metrics, and CSV reporting exports
 - **Result**: Successfully integrated to backend services and exposed through tenant-scoped API routes. The UI consumes these routes fully.
+
+### Stage 20F.3: End-to-End Workflow Regression
+- **Coverage**: Organization/Workspace Lifecycle, Custom Domains, Student/Staff Lifecycles, Attendance/Timetable Scheduling, Invoicing/Payments/Ledger, Communication/Notifications, Examination Results Protection, and Analytics Reporting.
+- **Verification**: 27/27 API suites (131 tests) and 34/34 Web suites (184 tests) passing.

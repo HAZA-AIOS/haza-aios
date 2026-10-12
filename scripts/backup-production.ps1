@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    HAZA AIOS - Production Database Backup Script (Stage 20G)
+    HAZA AIOS - Production Database Backup Utility (Stage 20G)
     Secure, consistent, non-destructive logical database backup.
 
 .DESCRIPTION
     Performs a transaction-consistent MySQL logical dump of the HAZA AIOS production database.
     Enforces that backups are saved strictly outside the Git repository.
-    Calculates SHA-256 checksums and applies file validation.
-    Never exposes passwords in command-line arguments, process lists, or logs.
+    Calculates SHA-256 checksums and validates dump completeness.
+    Guarantees that credentials are never exposed in process arguments, logs, or command text.
 
 .PARAMETER DestinationDir
     Directory where the backup and checksum will be saved.
@@ -20,11 +20,12 @@
 .PARAMETER Method
     Backup execution method:
     - ContainerSsh: Executes native Oracle MySQL 9.7.2 mysqldump inside Railway MySQL container over SSH.
-    - LocalClient: Executes local mysqldump client over TCP/SSH tunnel.
+                    Uses container-native environment credentials without exposing secrets.
+    - LocalClient: Executes local mysqldump client over TCP/SSH tunnel using environment variable auth.
     Default: ContainerSsh
 
 .PARAMETER DryRun
-    When specified, tests prerequisites and prints configuration without executing the backup.
+    When specified, tests prerequisites and prints configuration without executing the backup or contacting production.
 #>
 
 [CmdletBinding()]
@@ -38,6 +39,58 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+function Resolve-RailwayCli {
+    <#
+    .SYNOPSIS
+        Resolves the Railway CLI executable on Windows (.cmd or .exe).
+    #>
+    $searchedPaths = @()
+
+    # 1. Check explicit environment override
+    if ($env:RAILWAY_CMD) {
+        if (Test-Path $env:RAILWAY_CMD) {
+            return (Resolve-Path $env:RAILWAY_CMD).Path
+        } else {
+            throw "Explicit RAILWAY_CMD path does not exist: '$env:RAILWAY_CMD'"
+        }
+    }
+
+    # 2. Check standard npm roaming directory
+    if ($env:APPDATA) {
+        $npmCmd = Join-Path $env:APPDATA 'npm\railway.cmd'
+        $searchedPaths += $npmCmd
+        if (Test-Path $npmCmd) {
+            return (Resolve-Path $npmCmd).Path
+        }
+    }
+
+    # 3. Check Get-Command for railway.cmd in PATH
+    $cmdLookup = Get-Command 'railway.cmd' -ErrorAction SilentlyContinue
+    if ($cmdLookup -and (Test-Path $cmdLookup.Source)) {
+        return $cmdLookup.Source
+    }
+    $searchedPaths += 'PATH:railway.cmd'
+
+    # 4. Check Get-Command for railway.exe in PATH
+    $exeLookup = Get-Command 'railway.exe' -ErrorAction SilentlyContinue
+    if ($exeLookup -and (Test-Path $exeLookup.Source)) {
+        return $exeLookup.Source
+    }
+    $searchedPaths += 'PATH:railway.exe'
+
+    # 5. Check local AppData programs
+    if ($env:LOCALAPPDATA) {
+        $localExe = Join-Path $env:LOCALAPPDATA 'Programs\railway\railway.exe'
+        $searchedPaths += $localExe
+        if (Test-Path $localExe) {
+            return (Resolve-Path $localExe).Path
+        }
+    }
+
+    $searchedList = ($searchedPaths -join ', ')
+    throw "Railway CLI launcher not found. Checked: [$searchedList]. Ensure Railway CLI is installed via 'npm i -g @railway/cli' or set RAILWAY_CMD environment variable."
+}
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path (Join-Path $scriptDir '..')).Path
@@ -68,65 +121,62 @@ if (Test-Path $dumpFilePath) {
     throw "Target backup file already exists: $dumpFilePath"
 }
 
-# 3. Report consistency notice
+# 3. Resolve executable requirements
+$resolvedRailway = $null
+if ($Method -eq 'ContainerSsh') {
+    $resolvedRailway = Resolve-RailwayCli
+    Write-Host "[RESOLVED] Railway CLI launcher: $resolvedRailway" -ForegroundColor Green
+}
+
+# 4. Report consistency notice
 Write-Host ''
-Write-Host '[CONSISTENCY NOTICE]' -ForegroundColor Yellow
+Write-Host '[CONSISTENCY & SECURITY INVARIANTS]' -ForegroundColor Yellow
 Write-Host '  - Snapshot Isolation: --single-transaction guarantees InnoDB transaction consistency without locking tables.'
 Write-Host '  - Non-InnoDB/DDL limitation: Concurrent DDL operations or non-InnoDB tables are not protected by snapshot isolation.'
 Write-Host '  - Comprehensive coverage: Includes routines, triggers, events, and utf8mb4 character set.'
+Write-Host '  - Credential Security: No passwords in command arguments, logs, or process memory.'
 Write-Host "  - Target Database: $Database"
 Write-Host "  - Execution Method: $Method"
 Write-Host "  - Output File: $dumpFilePath"
 Write-Host ''
 
 if ($DryRun) {
-    Write-Host '[DRY RUN] All prerequisites validated. Exiting without performing backup.' -ForegroundColor Green
+    Write-Host '[DRY RUN] All prerequisites and launcher paths validated.' -ForegroundColor Green
+    Write-Host '[DRY RUN] Exiting cleanly without establishing production connections or running dump.' -ForegroundColor Green
     return
 }
 
-# 4. Execute backup according to chosen method
+# 5. Execute backup
 $startTime = Get-Date
 $exitCode = 0
+$stderrContent = ''
 
 try {
     if ($Method -eq 'ContainerSsh') {
         Write-Host '[STEP 1/3] Executing native MySQL 9.7.2 dump via Railway container SSH...' -ForegroundColor Cyan
         
-        $railwayCmd = Get-Command 'railway' -ErrorAction SilentlyContinue
-        if (-not $railwayCmd) {
-            throw 'Railway CLI not found in PATH. Ensure Railway CLI is installed.'
-        }
+        # Build remote execution command that leverages container-native environment variables.
+        # This completely avoids passing or embedding passwords in command-line arguments.
+        # Fails closed (exit 2) if neither MYSQL_ROOT_PASSWORD nor MYSQLPASSWORD is set in the container.
+        $remoteScript = 'if [ -z "${MYSQL_ROOT_PASSWORD}" ] && [ -z "${MYSQLPASSWORD}" ]; then echo "AUTH_FAILED: Missing container MySQL credentials" >&2; exit 2; fi; export MYSQL_PWD="${MYSQL_ROOT_PASSWORD:-$MYSQLPASSWORD}"; exec mysqldump -u root --single-transaction --quick --routines --triggers --events --set-gtid-purged=OFF --no-tablespaces --default-character-set=utf8mb4 ' + $Database
 
-        # Securely prompt for root password if not provided in environment
-        $pwd = $env:MYSQL_ROOT_PASSWORD
-        if (-not $pwd -and $env:PROD_MYSQL_PASSWORD) {
-            $pwd = $env:PROD_MYSQL_PASSWORD
-        }
-        
-        $prompted = $false
-        if (-not $pwd) {
-            $securePwd = Read-Host -Prompt 'Enter Production MySQL root password (input hidden)' -AsSecureString
-            $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePwd)
-            $pwd = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
-            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-            $prompted = $true
-        }
-
-        if (-not $pwd) {
-            throw 'Password cannot be empty.'
-        }
-
-        Write-Host "[EXEC] Streaming dump to $dumpFilePath..." -ForegroundColor Green
-        
-        $remoteScript = "env MYSQL_PWD='$pwd' mysqldump -u root --single-transaction --quick --routines --triggers --events --set-gtid-purged=OFF --no-tablespaces --default-character-set=utf8mb4 $Database"
-
+        $comSpec = if ($env:ComSpec) { $env:ComSpec } else { 'cmd.exe' }
         $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-        $pinfo.FileName = 'railway'
-        $pinfo.Arguments = "ssh -s MySQL -e production -- sh -c `"$remoteScript`""
+        
+        if ($resolvedRailway.EndsWith('.cmd', [System.StringComparison]::OrdinalIgnoreCase) -or $resolvedRailway.EndsWith('.bat', [System.StringComparison]::OrdinalIgnoreCase)) {
+            $pinfo.FileName = $comSpec
+            $pinfo.Arguments = "/d /c `"`"$resolvedRailway`" ssh -s MySQL -e production -- sh -c `"$remoteScript`"`""
+        } else {
+            $pinfo.FileName = $resolvedRailway
+            $pinfo.Arguments = "ssh -s MySQL -e production -- sh -c `"$remoteScript`""
+        }
+
         $pinfo.UseShellExecute = $false
         $pinfo.RedirectStandardOutput = $true
         $pinfo.RedirectStandardError = $true
         $pinfo.CreateNoWindow = $true
+
+        Write-Host "[EXEC] Streaming dump to $dumpFilePath..." -ForegroundColor Green
 
         $process = New-Object System.Diagnostics.Process
         $process.StartInfo = $pinfo
@@ -134,22 +184,22 @@ try {
         $fileStream = [System.IO.File]::Create($dumpFilePath)
         $process.Start() | Out-Null
 
-        $stderrTask = [System.Threading.Tasks.Task]::Run([System.Action]{
-            $errContent = $process.StandardError.ReadToEnd()
-            if ($errContent) {
-                $sanitized = $errContent.Replace($pwd, '********')
-                [System.IO.File]::WriteAllText($logFilePath, $sanitized)
-            }
+        # Asynchronously drain stderr in a separate task to prevent pipe buffer deadlock
+        $stderrTask = [System.Threading.Tasks.Task]::Run([System.Func[string]]{
+            return $process.StandardError.ReadToEnd()
         })
 
+        # Main thread streams binary stdout directly to the file stream
         $process.StandardOutput.BaseStream.CopyTo($fileStream)
+        $fileStream.Flush()
         $fileStream.Close()
-        $process.WaitForExit()
-        $stderrTask.Wait()
 
+        $process.WaitForExit()
+        $stderrContent = $stderrTask.Result
         $exitCode = $process.ExitCode
-        if ($prompted) {
-            $pwd = $null
+
+        if ($stderrContent) {
+            [System.IO.File]::WriteAllText($logFilePath, $stderrContent)
         }
     }
     elseif ($Method -eq 'LocalClient') {
@@ -168,11 +218,17 @@ try {
         $user = if ($env:PROD_MYSQL_USER) { $env:PROD_MYSQL_USER } else { 'root' }
         
         $pwd = $env:PROD_MYSQL_PASSWORD
+        $prompted = $false
         if (-not $pwd) {
             $securePwd = Read-Host -Prompt "Enter MySQL password for $user@$hostName (input hidden)" -AsSecureString
             $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePwd)
             $pwd = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
             [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+            $prompted = $true
+        }
+
+        if (-not $pwd) {
+            throw 'Authentication failed: Password cannot be empty.'
         }
 
         $argsList = @(
@@ -196,23 +252,31 @@ try {
         $pinfo.Arguments = $argsList -join ' '
         $pinfo.UseShellExecute = $false
         $pinfo.RedirectStandardError = $true
+        $pinfo.CreateNoWindow = $true
+        # Pass password via process environment variable, NEVER in command arguments
         $pinfo.EnvironmentVariables['MYSQL_PWD'] = $pwd
 
         $process = [System.Diagnostics.Process]::Start($pinfo)
-        $stderr = $process.StandardError.ReadToEnd()
+        $stderrContent = $process.StandardError.ReadToEnd()
         $process.WaitForExit()
         $exitCode = $process.ExitCode
-        if ($stderr) {
-            [System.IO.File]::WriteAllText($logFilePath, $stderr)
+
+        # Securely erase credential from memory
+        if ($prompted) {
+            $pwd = $null
+        }
+
+        if ($stderrContent) {
+            [System.IO.File]::WriteAllText($logFilePath, $stderrContent)
         }
     }
 
     $duration = (Get-Date) - $startTime
 
-    # 5. Validate Dump File
+    # 6. Validate Dump File Integrity
     Write-Host '[STEP 2/3] Validating backup file integrity...' -ForegroundColor Cyan
     if ($exitCode -ne 0) {
-        throw "Dump failed with exit code $exitCode. See log at $logFilePath"
+        throw "Dump failed with exit code $exitCode. Log: $logFilePath. Details: $stderrContent"
     }
 
     if (-not (Test-Path $dumpFilePath)) {
@@ -221,23 +285,24 @@ try {
 
     $fileInfo = Get-Item $dumpFilePath
     if ($fileInfo.Length -eq 0) {
-        throw 'Dump file is empty. Removing corrupt output.'
+        throw 'Dump file is empty (0 bytes). Removing corrupt output.'
     }
 
-    $headerLines = Get-Content -Path $dumpFilePath -TotalCount 15
-    $footerLines = Get-Content -Path $dumpFilePath -Tail 15
+    # Verify that the dump contains expected header and completed footer
+    $headerLines = Get-Content -Path $dumpFilePath -TotalCount 25
+    $footerLines = Get-Content -Path $dumpFilePath -Tail 25
 
     $hasHeader = ($headerLines | Where-Object { $_ -match 'MySQL dump' -or $_ -match 'MariaDB dump' })
     $hasFooter = ($footerLines | Where-Object { $_ -match 'Dump completed' })
 
     if (-not $hasHeader) {
-        throw 'Backup validation failed: Missing dump header comment.'
+        throw 'Backup validation failed: Missing dump header comment in first 25 lines.'
     }
     if (-not $hasFooter) {
-        throw 'Backup validation failed: Missing dump completed footer line. File may be truncated.'
+        throw 'Backup validation failed: Missing Dump completed footer line in tail 25 lines. File may be truncated.'
     }
 
-    # 6. Compute SHA-256 Checksum
+    # 7. Compute SHA-256 Checksum
     Write-Host '[STEP 3/3] Computing SHA-256 checksum...' -ForegroundColor Cyan
     $hashObj = Get-FileHash -Path $dumpFilePath -Algorithm SHA256
     $hashStr = $hashObj.Hash

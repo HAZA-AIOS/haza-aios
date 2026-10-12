@@ -15,14 +15,16 @@
 > This release plan is preparatory. Production deployment must NOT be triggered until explicit user confirmation and formal approval is provided. Do not merge into `main` without completing the preconditions below.
 
 ### Pre-Deployment Checklist
-- [ ] **Release Gate Approval:** Formal sign-off on Stage 20F.4 CONDITIONAL GO recommendation.
-- [ ] **Production Database Backup:** Execute manual or automated snapshot of Railway production MySQL database.
-- [ ] **Environment Variables Inspection:**
-  - Verify `DATABASE_URL` points to Railway production MySQL.
-  - Verify `RESEND_API_KEY` is active and valid for transactional emails.
-  - Verify `JWT_SECRET` is set with sufficient entropy.
-  - Verify `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID` are configured (required for custom domain provisioning).
-- [ ] **Local Clean Working Tree:** Confirm no unstaged changes or credentials in local repository.
+- [x] **Release Gate Approval:** Formal sign-off on Stage 20F.4 CONDITIONAL GO recommendation.
+- [ ] **Production Database Backup (BLOCKING):** Execute manual snapshot of Railway production MySQL 9.7.2 database (see `docs/stage-20/STAGE-20G1-PRODUCTION-PREFLIGHT.md` for exact command).
+- [x] **Environment Variables Inspection:**
+  - `DATABASE_URL`, `DATABASE_NAME` verified active.
+  - `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL` verified active.
+  - `JWT_SECRET` verified active.
+  - `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID` deferred post-release for GAP-002.
+- [x] **Local Clean Working Tree:** Confirmed zero unstaged changes or credentials in local repository.
+- [x] **Build & Test Gates:** 315/315 automated tests passing; TypeScript and production builds clean.
+
 
 ---
 

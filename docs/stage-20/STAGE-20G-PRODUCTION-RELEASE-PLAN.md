@@ -16,23 +16,24 @@
 
 ### Pre-Deployment Checklist
 - [x] **Release Gate Approval:** Formal sign-off on Stage 20F.4 CONDITIONAL GO recommendation.
-- [ ] **Production Database Backup (BLOCKING):** Execute manual snapshot of Railway production MySQL 9.7.2 database (see `docs/stage-20/STAGE-20G1-PRODUCTION-PREFLIGHT.md` for exact command).
+- [x] **Backup Script & Tooling:** `scripts/backup-production.ps1` validated with clean dry-run.
+- [ ] **Production Database Backup Execution (BLOCKING):** Execute manual snapshot of Railway production MySQL 9.7.2 database using `scripts/backup-production.ps1` (see `docs/stage-20/STAGE-20G1B-BACKUP-RECOVERY-VERIFICATION.md` for checkpoint details).
 - [x] **Environment Variables Inspection:**
-  - `DATABASE_URL`, `DATABASE_NAME` verified active.
+  - `DATABASE_URL`, `DATABASE_NAME` verified active (`railway`).
   - `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL` verified active.
   - `JWT_SECRET` verified active.
   - `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID` deferred post-release for GAP-002.
 - [x] **Local Clean Working Tree:** Confirmed zero unstaged changes or credentials in local repository.
 - [x] **Build & Test Gates:** 315/315 automated tests passing; TypeScript and production builds clean.
 
-
 ---
 
 ## 2. Database Migration Plan
 
 ### Migrations to Apply
-1. `0016_left_deathstrike.sql` (Creates `tenant_domains` table with FK constraint to `organizations.id`).
-2. `0017_youthful_silverclaw.sql` (Adds `verification_token` and updates `tenant_domain_status` enum).
+1. `0015_loose_longshot.sql` (Creates `password_reset_tokens` table with FK constraint to `users.id`).
+2. `0016_left_deathstrike.sql` (Creates `tenant_domains` table with FK constraint to `organizations.id`).
+3. `0017_youthful_silverclaw.sql` (Adds `verification_token` and updates `tenant_domain_status` enum).
 
 ### Migration Characteristics
 - **Type:** Additive schema extensions.
@@ -56,13 +57,13 @@
 2. Build phase executes: `npm install --include=dev && npm run build`.
 3. Pre-deploy phase executes: `npm run db:migrate`.
 4. Start phase executes: `npm run start`.
-5. Health check monitors `/api/v1/readiness` (120s timeout).
+5. Health check monitors `/api/health` (300s timeout).
 
-### Step 3: Cloudflare Pages Frontend Deployment
-1. Cloudflare Pages detects push to `main` on `apps/web`.
-2. Build command executes: `npm run build` in `apps/web`.
-3. Output directory deployed: `apps/web/dist`.
-4. Cache invalidated globally across Cloudflare edge CDN.
+### Step 3: Cloudflare Workers Frontend Deployment
+1. Cloudflare Workers Builds detects push to `main` on `apps/web`.
+2. Build command executes: `npm run build` in `apps/web` (or `npm run build:web`).
+3. Output directory deployed: `apps/web/dist` as static assets with SPA routing (`not_found_handling = "single-page-application"`).
+4. Rollback capability: One-click rollback in Cloudflare Dashboard under Workers & Pages deployments.
 
 ---
 

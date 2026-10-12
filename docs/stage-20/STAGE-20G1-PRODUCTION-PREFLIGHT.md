@@ -115,11 +115,12 @@ Get-FileHash C:\Users\theme\HAZA-AIOS-Private\production-backups\stage20g\haza-a
 ## 6. Cloudflare Frontend Deployment Review
 
 ### Configuration Inspection (`apps/web/wrangler.jsonc`)
-- **Worker / Pages Name:** `haza-aios`
+- **Architecture:** Cloudflare Workers with Static Assets (reconciled in Stage 20G.1B; NOT Cloudflare Pages).
+- **Worker Name:** `haza-aios`
 - **Asset Directory:** `./dist`
 - **Routing Strategy:** `not_found_handling = "single-page-application"` (SPA fallback for client-side routing)
-- **Deployment Trigger:** Push to `main` triggers Cloudflare Pages automated Vite build (`npm run build`).
-- **Rollback Mechanism:** Cloudflare Pages maintains persistent deployment history with one-click instant rollbacks (< 15 seconds edge propagation).
+- **Deployment Trigger:** Push to `main` triggers Cloudflare Workers Builds (`npm run build`).
+- **Rollback Mechanism:** Cloudflare Workers Versions & Deployments maintains persistent history with instant rollback to previous uploaded version.
 - **Status:** **PASS**
 
 ---
@@ -131,7 +132,7 @@ Production environment variables checked against `env.ts` schema requirements (r
 | Variable | Required in Production | Status | Purpose |
 |---|---|---|---|
 | `DATABASE_URL` | Yes | Configured on Railway | MySQL 9.7.2 production connection |
-| `DATABASE_NAME` | Yes | Configured on Railway | Production database name (`haza_aios`) |
+| `DATABASE_NAME` | Yes | Configured on Railway | Production database name (`railway`) |
 | `JWT_SECRET` | Yes | Configured on Railway | HS256 auth session token signing |
 | `RESEND_API_KEY` | Yes | Configured on Railway | Transactional recovery & notifications |
 | `EMAIL_FROM` | Yes | Configured on Railway | Sender address (e.g. `noreply@haza-aios.com`) |
@@ -162,12 +163,13 @@ Production environment variables checked against `env.ts` schema requirements (r
 | **Gate 2: TypeScript Compilation** | Zero type errors in API and Web | **PASS** | `tsc` exited 0 across all workspaces |
 | **Gate 3: Production Builds** | Both production bundles build cleanly | **PASS** | API `dist/` and Web Vite bundle emitted |
 | **Gate 4: Security & Isolation** | Multi-tenant RBAC verified | **PASS** | 22 dedicated negative tests passed |
-| **Gate 5: Migration Safety** | Migrations 0016-0017 additive | **PASS** | Additive schema changes with zero data loss |
+| **Gate 5: Migration Safety** | Migrations 0015-0017 additive | **PASS** | Additive schema changes with zero data loss |
 | **Gate 6: MySQL Engine Compatibility**| MySQL 9.7.2 syntax compatible | **PASS** | Verified against MySQL 9 DDL syntax |
 | **Gate 7: Railway Pipeline** | `preDeployCommand` and healthcheck | **PASS** | `db:migrate` preDeploy guard configured |
-| **Gate 8: Cloudflare Pages Pipeline**| SPA routing and assets directory | **PASS** | `wrangler.jsonc` SPA mode configured |
+| **Gate 8: Cloudflare Workers Pipeline**| Workers Static Assets & SPA routing | **PASS** | `wrangler.jsonc` SPA mode configured |
 | **Gate 9: Environment Secrets** | All required production env vars present | **PASS** | Verified against `env.ts` schema |
-| **Gate 10: Production Backup** | Verified live snapshot of MySQL | **BLOCKED** | **Manual snapshot required before deploy** |
+| **Gate 10: Production Backup Tooling** | Verified script & dry-run validation | **PASS** | `scripts/backup-production.ps1` dry-run tested |
+| **Gate 11: Production Backup Execution** | Verified live snapshot of MySQL | **BLOCKED** | **Operator backup execution checkpoint** |
 
 ---
 

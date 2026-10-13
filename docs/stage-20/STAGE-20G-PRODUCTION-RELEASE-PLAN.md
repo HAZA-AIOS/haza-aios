@@ -17,7 +17,8 @@
 ### Pre-Deployment Checklist
 - [x] **Release Gate Approval:** Formal sign-off on Stage 20F.4 CONDITIONAL GO recommendation.
 - [x] **Backup Script & Tooling:** `scripts/backup-production.ps1` validated with clean dry-run.
-- [ ] **Production Database Backup Execution (BLOCKING):** Execute manual snapshot of Railway production MySQL 9.7.2 database using `scripts/backup-production.ps1` (see `docs/stage-20/STAGE-20G1B-BACKUP-RECOVERY-VERIFICATION.md` for checkpoint details).
+- [x] **Production Database Backup Execution:** Snapshot `haza-aios-production-stage20-backup_20261013_082508.sql` (194,288 bytes) captured and SHA-256 validated (see `docs/stage-20/STAGE-20G1B-BACKUP-RECOVERY-VERIFICATION.md`).
+- [x] **Production Database Restore Rehearsal:** Full restore and migration rehearsal passed in isolated MySQL 9.7.2 environment (`haza_aios_stage20_restore`) with zero errors and verified FK enforcement (see `docs/stage-20/STAGE-20G1E-RESTORE-REHEARSAL.md`).
 - [x] **Environment Variables Inspection:**
   - `DATABASE_URL`, `DATABASE_NAME` verified active (`railway`).
   - `RESEND_API_KEY`, `EMAIL_FROM`, `APP_URL` verified active.
@@ -31,9 +32,9 @@
 ## 2. Database Migration Plan
 
 ### Migrations to Apply
-1. `0015_loose_longshot.sql` (Creates `password_reset_tokens` table with FK constraint to `users.id`).
-2. `0016_left_deathstrike.sql` (Creates `tenant_domains` table with FK constraint to `organizations.id`).
-3. `0017_youthful_silverclaw.sql` (Adds `verification_token` and updates `tenant_domain_status` enum).
+1. `0015_loose_longshot.sql` (Already applied in production baseline; verified in backup journal).
+2. `0016_left_deathstrike.sql` (Pending — Creates `tenant_domains` table with FK constraint to `organizations.id`).
+3. `0017_youthful_silverclaw.sql` (Pending — Adds `verification_token` and updates `tenant_domain_status` enum).
 
 ### Migration Characteristics
 - **Type:** Additive schema extensions.

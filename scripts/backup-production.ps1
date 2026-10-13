@@ -233,8 +233,10 @@ try {
         Write-Host '[STEP 1/3] Executing native MySQL 9.7.2 dump via Railway container SSH...' -ForegroundColor Cyan
         
         # Robust remote execution script without internal double quotes to prevent Windows/Node argument fragmentation.
-        # Fails closed (exit 2) if neither MYSQL_ROOT_PASSWORD nor MYSQLPASSWORD is set in the container.
-        $remoteScript = 'test -n $MYSQL_ROOT_PASSWORD -o -n $MYSQLPASSWORD || { echo AUTH_FAILED: Missing container MySQL credentials >&2; exit 2; }; export MYSQL_PWD=${MYSQL_ROOT_PASSWORD:-$MYSQLPASSWORD}; exec mysqldump -u root --single-transaction --quick --routines --triggers --events --set-gtid-purged=OFF --no-tablespaces --default-character-set=utf8mb4 ' + $Database
+        # Dynamically uses MYSQLUSER (fallback: root), MYSQLPASSWORD (fallback: MYSQL_ROOT_PASSWORD), and MYSQLDATABASE (fallback: $Database / railway).
+        # Fails closed (exit 2) if neither MYSQLPASSWORD nor MYSQL_ROOT_PASSWORD is set in the container.
+        $targetDbFallback = if ($Database) { $Database } else { 'railway' }
+        $remoteScript = 'test -n $MYSQLPASSWORD -o -n $MYSQL_ROOT_PASSWORD || { echo AUTH_FAILED: Missing container MySQL credentials >&2; exit 2; }; export MYSQL_PWD=${MYSQLPASSWORD:-$MYSQL_ROOT_PASSWORD}; u=${MYSQLUSER:-root}; db=${MYSQLDATABASE:-' + $targetDbFallback + '}; exec mysqldump -u $u --single-transaction --quick --routines --triggers --events --set-gtid-purged=OFF --no-tablespaces --default-character-set=utf8mb4 $db'
 
         $comSpec = if ($env:ComSpec) { $env:ComSpec } else { 'cmd.exe' }
         $pinfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -294,11 +296,12 @@ try {
             throw "Local mysqldump binary not found at $clientBin. Set MYSQLDUMP_BIN environment variable."
         }
 
-        $hostName = if ($env:PROD_MYSQL_HOST) { $env:PROD_MYSQL_HOST } else { '127.0.0.1' }
-        $port = if ($env:PROD_MYSQL_PORT) { $env:PROD_MYSQL_PORT } else { '3306' }
-        $user = if ($env:PROD_MYSQL_USER) { $env:PROD_MYSQL_USER } else { 'root' }
+        $hostName = if ($env:PROD_MYSQL_HOST) { $env:PROD_MYSQL_HOST } elseif ($env:MYSQLHOST) { $env:MYSQLHOST } else { '127.0.0.1' }
+        $port = if ($env:PROD_MYSQL_PORT) { $env:PROD_MYSQL_PORT } elseif ($env:MYSQLPORT) { $env:MYSQLPORT } else { '3306' }
+        $user = if ($env:PROD_MYSQL_USER) { $env:PROD_MYSQL_USER } elseif ($env:MYSQLUSER) { $env:MYSQLUSER } else { 'root' }
+        $targetDb = if ($Database) { $Database } elseif ($env:MYSQLDATABASE) { $env:MYSQLDATABASE } else { 'railway' }
         
-        $pwd = $env:PROD_MYSQL_PASSWORD
+        $pwd = if ($env:PROD_MYSQL_PASSWORD) { $env:PROD_MYSQL_PASSWORD } elseif ($env:MYSQLPASSWORD) { $env:MYSQLPASSWORD } else { $null }
         $prompted = $false
         if (-not $pwd) {
             $securePwd = Read-Host -Prompt "Enter MySQL password for $user@$hostName (input hidden)" -AsSecureString
@@ -325,10 +328,10 @@ try {
             '--no-tablespaces',
             '--default-character-set=utf8mb4',
             "--result-file=$dumpFilePath",
-            $Database
+            $targetDb
         )
 
-        $commandStructure = "$clientBin --host=$hostName --port=$port --user=$user [dump-options] [MYSQL_PWD in env] $Database"
+        $commandStructure = "$clientBin --host=$hostName --port=$port --user=$user [dump-options] [MYSQL_PWD in env] $targetDb"
 
         $pinfo = New-Object System.Diagnostics.ProcessStartInfo
         $pinfo.FileName = $clientBin

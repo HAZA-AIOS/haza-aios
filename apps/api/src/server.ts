@@ -5,14 +5,15 @@ import { createDatabaseClient } from "./database/client.js";
 
 const config = loadConfig();
 const logger = createLogger(config);
-const database = createDatabaseClient(config.database, logger);
+const database = createDatabaseClient(config.database, logger, { appEnv: config.appEnv });
 const server = createApp(config, logger, database);
 
 server.listen(config.port, config.host, () => {
   logger.info("api_started", {
     host: config.host,
     port: config.port,
-    environment: config.nodeEnv,
+    environment: config.appEnv,
+    nodeEnv: config.nodeEnv,
     apiBasePath: config.apiBasePath,
   });
 });

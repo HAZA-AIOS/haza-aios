@@ -10,9 +10,14 @@ export function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export function buildSessionCookie(token: string, expiresAt: Date, secure: boolean): string {
+export function buildSessionCookie(
+  token: string,
+  expiresAt: Date,
+  secure: boolean,
+  cookieName: string = sessionCookieName,
+): string {
   return [
-    `${sessionCookieName}=${token}`,
+    `${cookieName}=${token}`,
     "HttpOnly",
     "Path=/",
     "SameSite=Lax",
@@ -21,6 +26,6 @@ export function buildSessionCookie(token: string, expiresAt: Date, secure: boole
   ].join("; ");
 }
 
-export function buildExpiredSessionCookie(): string {
-  return `${sessionCookieName}=; HttpOnly; Path=/; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+export function buildExpiredSessionCookie(cookieName: string = sessionCookieName): string {
+  return `${cookieName}=; HttpOnly; Path=/; SameSite=Lax; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
 }

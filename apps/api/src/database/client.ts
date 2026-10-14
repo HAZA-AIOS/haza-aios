@@ -2,6 +2,7 @@ import { drizzle, type MySql2Database } from "drizzle-orm/mysql2";
 import mysql, { type Pool } from "mysql2/promise";
 import type { Logger } from "../common/logging/logger.js";
 import type { DatabaseConfig } from "../config/env.js";
+import { assertSafeStagingDatabaseConfig } from "../config/staging-database-guard.js";
 import { mapDatabaseError } from "./errors.js";
 import { schema, type DatabaseSchema } from "./schema.js";
 
@@ -15,7 +16,22 @@ export type DatabaseClient = {
   transaction: <T>(work: (transaction: DatabaseTransaction) => Promise<T>) => Promise<T>;
 };
 
-export function createDatabaseClient(config: DatabaseConfig, logger: Logger): DatabaseClient {
+export interface DatabaseClientOptions {
+  appEnv?: string;
+}
+
+export function createDatabaseClient(
+  config: DatabaseConfig,
+  logger: Logger,
+  options?: DatabaseClientOptions,
+): DatabaseClient {
+  const activeAppEnv = options?.appEnv ?? process.env.APP_ENV ?? process.env.NODE_ENV;
+
+  // Enforce staging database safety guard whenever staging environment is active
+  if (activeAppEnv === "staging") {
+    assertSafeStagingDatabaseConfig(config, { appEnv: "staging" });
+  }
+
   const pool = createPool(config);
   const db = drizzle(pool, {
     mode: "default",

@@ -24,13 +24,18 @@ export const authModule: BackendModule = {
       async handler(request, response, { config, database }) {
         const input = validateCreateUser(request.body);
         assertRegistrationAllowed(input.email, config.registrationAllowedEmails);
-        const result = await new AuthService(database, config.email).registerIdentity(input);
+        const result = await new AuthService(
+          database,
+          config.email,
+          config.sessionCookieName,
+        ).registerIdentity(input);
         response.setHeader(
           "set-cookie",
           buildSessionCookie(
             result.session.accessToken,
             new Date(result.session.expiresAt),
-            config.nodeEnv === "production",
+            config.nodeEnv === "production" || config.appEnv === "staging",
+            config.sessionCookieName,
           ),
         );
         sendJson(response, 201, result);
@@ -43,13 +48,18 @@ export const authModule: BackendModule = {
       async handler(request, response, { config, database }) {
         const input = validateRegister(request.body);
         assertRegistrationAllowed(input.email, config.registrationAllowedEmails);
-        const result = await new AuthService(database, config.email).register(input);
+        const result = await new AuthService(
+          database,
+          config.email,
+          config.sessionCookieName,
+        ).register(input);
         response.setHeader(
           "set-cookie",
           buildSessionCookie(
             result.session.accessToken,
             new Date(result.session.expiresAt),
-            config.nodeEnv === "production",
+            config.nodeEnv === "production" || config.appEnv === "staging",
+            config.sessionCookieName,
           ),
         );
         sendJson(response, 201, result);
@@ -61,13 +71,18 @@ export const authModule: BackendModule = {
       path: "/api/v1/auth/login",
       async handler(request, response, { config, database }) {
         const input = validateLogin(request.body);
-        const result = await new AuthService(database, config.email).login(input, request);
+        const result = await new AuthService(
+          database,
+          config.email,
+          config.sessionCookieName,
+        ).login(input, request);
         response.setHeader(
           "set-cookie",
           buildSessionCookie(
             result.session.accessToken,
             new Date(result.session.expiresAt),
-            config.nodeEnv === "production",
+            config.nodeEnv === "production" || config.appEnv === "staging",
+            config.sessionCookieName,
           ),
         );
         sendJson(response, 200, result);
@@ -78,9 +93,13 @@ export const authModule: BackendModule = {
       method: "POST",
       path: "/api/v1/auth/logout",
       async handler(request, response, { config, database }) {
-        const token = readBearerToken(request) ?? readCookie(request, sessionCookieName);
-        await new AuthService(database, config.email).logout(token);
-        response.setHeader("set-cookie", buildExpiredSessionCookie());
+        const cookieName = config.sessionCookieName ?? sessionCookieName;
+        const token =
+          readBearerToken(request) ??
+          readCookie(request, cookieName) ??
+          readCookie(request, sessionCookieName);
+        await new AuthService(database, config.email, cookieName).logout(token);
+        response.setHeader("set-cookie", buildExpiredSessionCookie(cookieName));
         sendJson(response, 204, {});
       },
     });
@@ -89,7 +108,11 @@ export const authModule: BackendModule = {
       method: "GET",
       path: "/api/v1/auth/me",
       async handler(request, response, { config, database }) {
-        const auth = await new AuthService(database, config.email).authenticateRequest(request);
+        const auth = await new AuthService(
+          database,
+          config.email,
+          config.sessionCookieName,
+        ).authenticateRequest(request);
         sendJson(response, 200, {
           user: auth.user,
           session: {
@@ -111,8 +134,14 @@ export const authModule: BackendModule = {
       async handler(request, response, { config, database }) {
         const input = validateForgotPassword(request.body);
         // Always returns 200 — prevents email enumeration.
-        await new AuthService(database, config.email).forgotPassword(input, request);
-        sendJson(response, 200, { message: "If that email is registered, a reset link has been sent." });
+        await new AuthService(
+          database,
+          config.email,
+          config.sessionCookieName,
+        ).forgotPassword(input, request);
+        sendJson(response, 200, {
+          message: "If that email is registered, a reset link has been sent.",
+        });
       },
     });
 
@@ -121,8 +150,14 @@ export const authModule: BackendModule = {
       path: "/api/v1/auth/reset-password",
       async handler(request, response, { config, database }) {
         const input = validateResetPassword(request.body);
-        await new AuthService(database, config.email).resetPassword(input, request);
-        sendJson(response, 200, { message: "Password updated. Please sign in with your new password." });
+        await new AuthService(
+          database,
+          config.email,
+          config.sessionCookieName,
+        ).resetPassword(input, request);
+        sendJson(response, 200, {
+          message: "Password updated. Please sign in with your new password.",
+        });
       },
     });
   },

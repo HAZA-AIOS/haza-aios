@@ -24,7 +24,7 @@ import { ApiRouter } from "./routes/router.js";
 export function createApp(
   config: ApiConfig,
   logger: Logger = createLogger(config),
-  database: DatabaseClient = createDatabaseClient(config.database, logger),
+  database: DatabaseClient = createDatabaseClient(config.database, logger, { appEnv: config.appEnv }),
 ) {
   const router = new ApiRouter();
 

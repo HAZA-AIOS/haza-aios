@@ -90,7 +90,11 @@ const noopEmailConfig: EmailConfig = {
 export class AuthService {
   private readonly emailService: EmailService;
 
-  constructor(private readonly database: DatabaseClient, emailConfig: EmailConfig = noopEmailConfig) {
+  constructor(
+    private readonly database: DatabaseClient,
+    emailConfig: EmailConfig = noopEmailConfig,
+    private readonly cookieName: string = sessionCookieName,
+  ) {
     this.emailService = new EmailService(emailConfig);
   }
 
@@ -313,7 +317,10 @@ export class AuthService {
   }
 
   async authenticateRequest(request: IncomingMessage): Promise<AuthContext> {
-    const token = readBearerToken(request) ?? readCookie(request, sessionCookieName);
+    const token =
+      readBearerToken(request) ??
+      readCookie(request, this.cookieName) ??
+      readCookie(request, sessionCookieName);
 
     if (!token) {
       throw new ApiError(401, "UNAUTHENTICATED", "Authentication is required.");

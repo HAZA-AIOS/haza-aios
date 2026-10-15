@@ -309,6 +309,30 @@ function App() {
           </WorkspaceGuard>
         </ProtectedRoute>
       );
+    case "/workspace/education/attendance":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AttendanceOverviewPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/education/attendance/mark":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <MarkAttendancePage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/education/attendance/history":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AttendanceHistoryPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
     case "/workspace/education/examinations":
       return (
         <ProtectedRoute>

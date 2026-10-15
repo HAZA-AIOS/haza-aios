@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { ApiError } from '../../common/errors/api-error.js';
 import type { DatabaseClient } from '../../database/client.js';
@@ -233,7 +233,7 @@ export class SisExaminationService {
     const source = sourceType === 'assessment' ? await this.resolveAssessmentMarkSource(tenant, String(input.sourceId)) : await this.resolveExaminationMarkSource(tenant, String(input.sourceId), typeof input.examinationSubjectId === 'string' ? input.examinationSubjectId : undefined);
     const student = (await this.database.db.select().from(students).where(and(eq(students.workspaceId, tenant.workspaceId), eq(students.id, String(input.studentId)))).limit(1))[0];
     if (!student) throw new ApiError(404, 'NOT_FOUND', 'Student not found for this organization.');
-    await this.findActiveEnrollment(tenant.workspaceId, String(input.studentId), source.academicYearName, source.gradeId, source.sectionId);
+    await this.findActiveEnrollment(tenant.workspaceId, String(input.studentId), source.academicYearName, source.academicYearId, source.gradeId, source.sectionId);
     assertMarks(source.maximumMarks, input.obtainedMarks, source.passingMarks);
     if (sourceType === 'examination') {
       const exam = await this.getExaminationRow(tenant.workspaceId, String(input.sourceId));
@@ -282,7 +282,7 @@ export class SisExaminationService {
     const examSubjects = (await this.listExaminationSubjects(tenant, examinationId)).filter((subject) => subject.gradeId === gradeId && (!subject.sectionId || subject.sectionId === sectionId));
     if (!examSubjects.length) throw new ApiError(400, 'VALIDATION_FAILED', 'No examination subjects configured for this class.');
     const academicYear = await this.getAcademicYearRow(tenant.workspaceId, examination.academicYearId);
-    const activeEnrollments = await this.findActiveEnrollments(tenant.workspaceId, academicYear.name, gradeId, sectionId);
+    const activeEnrollments = await this.findActiveEnrollments(tenant.workspaceId, academicYear.name, examination.academicYearId, gradeId, sectionId);
     const marks = await this.listMarks(tenant, { sourceType: 'examination', sourceId: examinationId });
     const results: StudentResult[] = [];
     for (const enrollment of activeEnrollments) {
@@ -379,14 +379,33 @@ export class SisExaminationService {
     if (!rows.length) this.notFound('Subject');
   }
 
-  private async findActiveEnrollment(workspaceId: string, studentId: string, academicYear: string, gradeId: string, sectionId: string) {
-    const rows = await this.database.db.select().from(enrollments).where(and(eq(enrollments.workspaceId, workspaceId), eq(enrollments.studentId, studentId), eq(enrollments.academicYear, academicYear), eq(enrollments.gradeId, gradeId), eq(enrollments.sectionId, sectionId), eq(enrollments.status, 'active'))).limit(1);
+  private async findActiveEnrollment(workspaceId: string, studentId: string, academicYearName: string, academicYearId: string, gradeId: string, sectionId?: string) {
+    const conditions = [
+      eq(enrollments.workspaceId, workspaceId),
+      eq(enrollments.studentId, studentId),
+      or(eq(enrollments.academicYear, academicYearName), eq(enrollments.academicYear, academicYearId)),
+      eq(enrollments.gradeId, gradeId),
+      eq(enrollments.status, 'active'),
+    ];
+    if (sectionId) {
+      conditions.push(eq(enrollments.sectionId, sectionId));
+    }
+    const rows = await this.database.db.select().from(enrollments).where(and(...conditions)).limit(1);
     if (!rows.length) throw new ApiError(400, 'VALIDATION_FAILED', 'Student is not actively enrolled in the selected academic context.');
     return rows[0];
   }
 
-  private async findActiveEnrollments(workspaceId: string, academicYear: string, gradeId: string, sectionId: string) {
-    return this.database.db.select().from(enrollments).where(and(eq(enrollments.workspaceId, workspaceId), eq(enrollments.academicYear, academicYear), eq(enrollments.gradeId, gradeId), eq(enrollments.sectionId, sectionId), eq(enrollments.status, 'active')));
+  private async findActiveEnrollments(workspaceId: string, academicYearName: string, academicYearId: string, gradeId: string, sectionId?: string) {
+    const conditions = [
+      eq(enrollments.workspaceId, workspaceId),
+      or(eq(enrollments.academicYear, academicYearName), eq(enrollments.academicYear, academicYearId)),
+      eq(enrollments.gradeId, gradeId),
+      eq(enrollments.status, 'active'),
+    ];
+    if (sectionId) {
+      conditions.push(eq(enrollments.sectionId, sectionId));
+    }
+    return this.database.db.select().from(enrollments).where(and(...conditions));
   }
 
   private async resolveExaminationMarkSource(tenant: Tenant, examinationId: string, examinationSubjectId?: string) {

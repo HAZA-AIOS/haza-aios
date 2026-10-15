@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, ne, or } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { ApiError } from "../../common/errors/api-error.js";
 import type { DatabaseClient } from "../../database/client.js";
@@ -340,12 +340,13 @@ export class SisService {
     if (data.subjectId) await this.assertSubject(tenant.workspaceId, String(data.subjectId));
     if (data.teacherId) await this.assertStaff(tenant.workspaceId, String(data.teacherId));
 
+    const targetSubjectId = typeof data.subjectId === "string" && data.subjectId.trim() ? data.subjectId.trim() : undefined;
     const existing = (await this.listAttendanceSessions(tenant, {
       academicYearId: String(data.academicYearId),
       date: String(data.date),
       gradeId: String(data.gradeId),
       sectionId: String(data.sectionId),
-    })).find((row) => row.sessionType === (data.sessionType ?? "daily") && row.subjectId === data.subjectId);
+    })).find((row) => row.sessionType === (data.sessionType ?? "daily") && (row.subjectId || undefined) === targetSubjectId);
     if (existing) return existing;
 
     const id = uuid();
@@ -391,7 +392,7 @@ export class SisService {
 
     await withTransaction(this.database, async ({ tx }) => {
       for (const record of records) {
-        const enrollment = await this.findEnrollmentForAttendance(tenant.workspaceId, String(record.studentId), academicYear.name, session.gradeId, session.sectionId);
+        const enrollment = await this.findEnrollmentForAttendance(tenant.workspaceId, String(record.studentId), academicYear.name, session.academicYearId, session.gradeId, session.sectionId);
         const existing = await tx.select().from(attendanceRecords).where(and(eq(attendanceRecords.workspaceId, tenant.workspaceId), eq(attendanceRecords.sessionId, sessionId), eq(attendanceRecords.enrollmentId, enrollment.id))).limit(1);
         if (existing[0]) {
           await tx.update(attendanceRecords).set({ status: record.status as typeof attendanceRecords.$inferInsert.status, note: record.note, markedBy, updatedAt: new Date() }).where(eq(attendanceRecords.id, existing[0].id));
@@ -618,8 +619,15 @@ export class SisService {
     if (!rows.length) throw new ApiError(400, "VALIDATION_FAILED", "Section does not belong to the selected grade.");
   }
 
-  private async findEnrollmentForAttendance(workspaceId: string, studentId: string, academicYear: string, gradeId: string, sectionId: string) {
-    const rows = await this.database.db.select().from(enrollments).where(and(eq(enrollments.workspaceId, workspaceId), eq(enrollments.studentId, studentId), eq(enrollments.academicYear, academicYear), eq(enrollments.gradeId, gradeId), eq(enrollments.sectionId, sectionId), eq(enrollments.status, "active"))).limit(1);
+  private async findEnrollmentForAttendance(workspaceId: string, studentId: string, academicYearName: string, academicYearId: string, gradeId: string, sectionId: string) {
+    const rows = await this.database.db.select().from(enrollments).where(and(
+      eq(enrollments.workspaceId, workspaceId),
+      eq(enrollments.studentId, studentId),
+      or(eq(enrollments.academicYear, academicYearName), eq(enrollments.academicYear, academicYearId)),
+      eq(enrollments.gradeId, gradeId),
+      eq(enrollments.sectionId, sectionId),
+      eq(enrollments.status, "active")
+    )).limit(1);
     if (!rows.length) throw new ApiError(400, "VALIDATION_FAILED", "Student does not have an active enrollment for this attendance session.");
     return rows[0];
   }

@@ -70,6 +70,9 @@ describeDatabase('DB-7 examination assessment and results persistence', () => {
 
     await expect(exams.enterMark(orgA.tenant, { sourceType: 'examination', sourceId: exam.id, examinationSubjectId: examSubject.id, studentId: fixtureB.students[0].id, obtainedMarks: 80, enteredBy: fixtureA.staff.id })).rejects.toMatchObject({ statusCode: 404 });
 
+    // Reject marks exceeding maximum marks (100)
+    await expect(exams.enterMark(orgA.tenant, { sourceType: 'examination', sourceId: exam.id, examinationSubjectId: examSubject.id, studentId: fixtureA.students[0].id, obtainedMarks: 105, enteredBy: fixtureA.staff.id })).rejects.toMatchObject({ statusCode: 400 });
+
     for (const student of fixtureA.students) await exams.enterMark(orgA.tenant, { sourceType: 'examination', sourceId: exam.id, examinationSubjectId: examSubject.id, studentId: student.id, obtainedMarks: 80, enteredBy: fixtureA.staff.id });
     await exams.publishResults(orgA.tenant, exam.id, fixtureA.grade.id, fixtureA.section.id, fixtureA.staff.id);
     await expect(exams.enterMark(orgA.tenant, { sourceType: 'examination', sourceId: exam.id, examinationSubjectId: examSubject.id, studentId: fixtureA.students[0].id, obtainedMarks: 81, enteredBy: fixtureA.staff.id })).rejects.toMatchObject({ statusCode: 400 });

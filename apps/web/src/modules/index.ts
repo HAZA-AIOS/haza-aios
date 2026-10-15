@@ -37,6 +37,9 @@ const platformCatalog: ModuleContract[] = [
       { path: "/workspace/education/timetable/config", component: "ScheduleConfigPage" as any },
       { path: "/workspace/education/timetable/class", component: "ClassTimetablePage" as any },
       { path: "/workspace/education/timetable/teacher", component: "TeacherTimetablePage" as any },
+      { path: "/workspace/education/attendance", component: "AttendanceOverviewPage" as any },
+      { path: "/workspace/education/attendance/mark", component: "MarkAttendancePage" as any },
+      { path: "/workspace/education/attendance/history", component: "AttendanceHistoryPage" as any },
       { path: "/workspace/education/examinations", component: "ExaminationsPage" as any },
       { path: "/workspace/education/examinations/assessments", component: "AssessmentsPage" as any },
       { path: "/workspace/education/examinations/marks", component: "MarksEntryPage" as any },
@@ -101,12 +104,20 @@ const platformCatalog: ModuleContract[] = [
         order: 5
       },
       {
+        id: "nav-education-attendance",
+        label: "Attendance",
+        route: "/workspace/education/attendance",
+        icon: "📋",
+        requiredPermission: "module.education.manage",
+        order: 6
+      },
+      {
         id: "nav-education-examinations",
         label: "Exams & Results",
         route: "/workspace/education/examinations",
         icon: "🧾",
         requiredPermission: "module.education.manage",
-        order: 6
+        order: 7
       },
       {
         id: "nav-education-finance",

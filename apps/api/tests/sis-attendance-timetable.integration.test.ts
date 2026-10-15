@@ -78,6 +78,44 @@ describeDatabase("DB-6 attendance and timetable persistence", () => {
     await expect(service.saveAttendanceRecords(orgA.tenant, session.id, [{ studentId: fixtureB.student.id, status: "present" }], fixtureA.staff.id)).rejects.toMatchObject({ cause: { statusCode: 400 } });
   });
 
+  it("prevents duplicate attendance sessions and updates records in bulk", async () => {
+    const { tenant } = await createSisTenant(database, "attendance-dup");
+    const service = new SisService(database);
+    const fixture = await createClassFixture(service, tenant);
+
+    const first = await service.createAttendanceSession(tenant, {
+      academicYearId: fixture.year.id,
+      date: "2026-03-01",
+      gradeId: fixture.grade.id,
+      sectionId: fixture.section.id,
+      sessionType: "daily",
+      status: "draft",
+    });
+
+    const second = await service.createAttendanceSession(tenant, {
+      academicYearId: fixture.year.id,
+      date: "2026-03-01",
+      gradeId: fixture.grade.id,
+      sectionId: fixture.section.id,
+      sessionType: "daily",
+      status: "draft",
+    });
+
+    expect(second.id).toBe(first.id);
+
+    // Save initial record as present
+    await service.saveAttendanceRecords(tenant, first.id, [{ studentId: fixture.student.id, status: "present", note: "Init" }], fixture.staff.id);
+
+    // Update existing record to late
+    const updated = await service.saveAttendanceRecords(tenant, first.id, [{ studentId: fixture.student.id, status: "late", note: "Bus delay" }], fixture.staff.id);
+    expect(updated[0]).toMatchObject({ status: "late", note: "Bus delay" });
+
+    // History filtering
+    const history = await service.getStudentAttendanceHistory(tenant, fixture.student.id, fixture.year.id);
+    expect(history.length).toBeGreaterThanOrEqual(1);
+    expect(history[0].record.status).toBe("late");
+  });
+
   it("persists timetable data and rejects teacher/class/room conflicts", async () => {
     const { tenant } = await createSisTenant(database, "timetable");
     const service = new SisService(database);

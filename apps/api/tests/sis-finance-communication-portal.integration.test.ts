@@ -8,6 +8,7 @@ import { loadConfig, type ApiConfig } from '../src/config/env.js';
 import { createDatabaseClient, type DatabaseClient } from '../src/database/client.js';
 import { AuthService } from '../src/modules/auth/services/auth.service.js';
 import { SisCommunicationService } from '../src/modules/education/sis-communication.service.js';
+import { SisExaminationService } from '../src/modules/education/sis-examination.service.js';
 import { SisFinanceService } from '../src/modules/education/sis-finance.service.js';
 import { SisPortalService } from '../src/modules/education/sis-portal.service.js';
 import { SisService } from '../src/modules/education/sis.service.js';
@@ -82,6 +83,130 @@ describeDatabase('DB-8 finance communication and portal persistence', () => {
 
     await expect(finance.recordPayment(orgA.tenant, { invoiceId: invoice.id, amountCents: 25001, paymentDate: '2026-09-05', paymentMethod: 'cash', receivedBy: 'Cashier' }, actor)).rejects.toMatchObject({ cause: { statusCode: 400 } });
     expect(await finance.listInvoices(orgB.tenant, new URLSearchParams())).toHaveLength(0);
+  });
+
+  it('enforces backend security for parent-child relationships and student self-access', async () => {
+    const { tenant } = await createSisTenant(database, 'portal-sec');
+    const sis = new SisService(database);
+    const portal = new SisPortalService(database);
+    const exam = new SisExaminationService(database);
+    const fixture = await createClassFixture(sis, tenant);
+    const actor = { userId: 'admin', role: 'Owner' };
+
+    // Create a second student in same tenant (not linked to parent)
+    const suffix = randomUUID().slice(0, 6);
+    const student2 = await sis.createStudent(tenant, {
+      admissionNumber: 'ADM-SEC-' + suffix,
+      firstName: 'Other',
+      lastName: 'Student',
+      dateOfBirth: '2016-01-01',
+      gender: 'female',
+      admissionDate: '2026-01-15',
+      status: 'active',
+      portalAccessEnabled: true,
+      guardians: [],
+    });
+
+    // 1. Admin account linking with real user accounts
+    const authService = new AuthService(database);
+    const parentAuth = await authService.register({
+      firstName: 'Parent',
+      lastName: 'User',
+      email: 'parent-' + suffix + '@example.com',
+      password: 'password123',
+      organizationName: 'Parent ' + suffix,
+      organizationType: 'School',
+      industry: 'Education',
+      country: 'United States',
+    });
+    const studentAuth = await authService.register({
+      firstName: 'Student',
+      lastName: 'User',
+      email: 'student-' + suffix + '@example.com',
+      password: 'password123',
+      organizationName: 'Student ' + suffix,
+      organizationType: 'School',
+      industry: 'Education',
+      country: 'United States',
+    });
+    const parentUserId = parentAuth.user.id;
+    const studentUserId = studentAuth.user.id;
+
+    await portal.linkGuardianUser(tenant, fixture.student.id, fixture.student.guardians[0].id, {
+      userId: parentUserId,
+      portalAccessEnabled: true,
+      authorizedForPortal: true,
+    });
+    await portal.linkStudentUser(tenant, fixture.student.id, {
+      userId: studentUserId,
+      portalAccessEnabled: true,
+    });
+
+    // 2. Examination with published vs draft
+    const publishedExam = await exam.createExamination(tenant, {
+      name: 'Mid Term Final',
+      academicYearId: fixture.year.id,
+      type: 'mid_term',
+      startDate: '2026-09-01',
+      endDate: '2026-09-10',
+      status: 'completed',
+    }, actor);
+    const examSubject = await exam.addExaminationSubject(tenant, {
+      examinationId: publishedExam.id,
+      gradeId: fixture.grade.id,
+      sectionId: fixture.section.id,
+      subjectId: fixture.subject.id,
+      maximumMarks: 100,
+      passingMarks: 40,
+      status: 'completed',
+    }, actor);
+    await exam.bulkEnterMarks(tenant, [
+      { sourceType: 'examination', sourceId: publishedExam.id, examinationSubjectId: examSubject.id, studentId: fixture.student.id, obtainedMarks: 95, enteredBy: 'admin' },
+    ], actor);
+    await exam.publishResults(tenant, publishedExam.id, fixture.grade.id, fixture.section.id, 'admin');
+
+    // Create draft exam (should NOT be exposed in portal)
+    await exam.createExamination(tenant, {
+      name: 'Draft Hidden Exam',
+      academicYearId: fixture.year.id,
+      type: 'monthly_test',
+      startDate: '2026-10-01',
+      endDate: '2026-10-05',
+      status: 'completed',
+    }, actor);
+
+    // 3. Parent portal access
+    const parentDash = await portal.getParentDashboard(tenant, parentUserId, fixture.student.id);
+    expect(parentDash.linkedStudents.length).toBeGreaterThanOrEqual(1);
+    expect(parentDash.selectedStudent?.student.id).toBe(fixture.student.id);
+    expect(parentDash.selectedStudent?.results.some((r) => r.sourceName === 'Mid Term Final')).toBe(true);
+    expect(parentDash.selectedStudent?.results.some((r) => r.sourceName === 'Draft Hidden Exam')).toBe(false);
+
+    // 4. Parent rejection for unrelated student (IDOR protection)
+    await expect(portal.getParentDashboard(tenant, parentUserId, student2.id)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+
+    // 5. Student self-access
+    const studentDash = await portal.getStudentDashboard(tenant, studentUserId, fixture.student.id);
+    expect(studentDash.student.id).toBe(fixture.student.id);
+    expect(studentDash.results.some((r) => r.sourceName === 'Mid Term Final')).toBe(true);
+    expect(studentDash.results.some((r) => r.sourceName === 'Draft Hidden Exam')).toBe(false);
+
+    // 6. Student rejection for another student ID (IDOR protection)
+    await expect(portal.getStudentDashboard(tenant, studentUserId, student2.id)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+
+    // 7. Student fee visibility policy enforcement
+    await portal.savePolicy(tenant, { studentFinanceVisible: false });
+    const restrictedDash = await portal.getStudentDashboard(tenant, studentUserId);
+    expect(restrictedDash.finance.visible).toBe(false);
+
+    // 8. Unauthenticated/unlinked student rejection
+    await expect(portal.getStudentDashboard(tenant, 'random-unlinked-user')).rejects.toMatchObject({
+      statusCode: 403,
+    });
   });
 });
 

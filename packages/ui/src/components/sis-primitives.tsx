@@ -422,3 +422,138 @@ export function CommunicationStatCard({
   );
 }
 
+/* ─────────────────── Result Status Badge ─────────────────── */
+
+export interface ResultStatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  status: "passed" | "failed" | "review" | string;
+}
+
+const resultStatusStyles: Record<string, string> = {
+  passed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  failed: "bg-red-500/10 text-red-400 border-red-500/20",
+  review: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+};
+
+export const ResultStatusBadge = React.forwardRef<HTMLSpanElement, ResultStatusBadgeProps>(
+  ({ status, className, ...props }, ref) => {
+    const key = String(status).toLowerCase();
+    const isPassed = key === "passed" || key === "pass";
+    const isFailed = key === "failed" || key === "fail";
+    const mapped = isPassed ? "passed" : isFailed ? "failed" : "review";
+    const label = isPassed ? "Passed" : isFailed ? "Failed" : "Review";
+
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+          resultStatusStyles[mapped] || resultStatusStyles.review,
+          className
+        )}
+        {...props}
+      >
+        {label}
+      </span>
+    );
+  }
+);
+ResultStatusBadge.displayName = "ResultStatusBadge";
+
+/* ─────────────────── Invoice Status Badge ─────────────────── */
+
+export interface InvoiceStatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  status: "paid" | "partially_paid" | "issued" | "overdue" | "draft" | "voided" | "cancelled" | string;
+}
+
+const invoiceStatusStyles: Record<string, string> = {
+  paid: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  partially_paid: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  issued: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+  overdue: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+  draft: "bg-slate-500/10 text-slate-400 border-slate-500/20",
+  voided: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+  cancelled: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+};
+
+export const InvoiceStatusBadge = React.forwardRef<HTMLSpanElement, InvoiceStatusBadgeProps>(
+  ({ status, className, ...props }, ref) => {
+    const key = String(status).toLowerCase();
+    const formatted = key.replace(/_/g, " ");
+
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+          invoiceStatusStyles[key] || invoiceStatusStyles.draft,
+          className
+        )}
+        {...props}
+      >
+        {formatted}
+      </span>
+    );
+  }
+);
+InvoiceStatusBadge.displayName = "InvoiceStatusBadge";
+
+/* ─────────────────── Portal Child Selector Card ─────────────────── */
+
+export interface PortalChildSelectorCardProps {
+  student: {
+    id: string;
+    displayName: string;
+    admissionNumber: string;
+    gradeName?: string;
+    sectionName?: string;
+    status: string;
+    photoUrl?: string;
+  };
+  isSelected: boolean;
+  onSelect: () => void;
+  className?: string;
+}
+
+export function PortalChildSelectorCard({
+  student,
+  isSelected,
+  onSelect,
+  className,
+}: PortalChildSelectorCardProps) {
+  const classText = [student.gradeName, student.sectionName].filter(Boolean).join(" - ") || "Enrolled";
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "flex items-center gap-3 rounded-xl border p-3 text-left transition-all duration-200 cursor-pointer min-w-[200px]",
+        isSelected
+          ? "border-red-500/50 bg-red-500/10 shadow-sm shadow-red-500/10"
+          : "border-white/5 bg-[#0f141f] hover:border-white/20 hover:bg-slate-900/40",
+        className
+      )}
+    >
+      <div
+        className={cn(
+          "flex size-10 shrink-0 items-center justify-center rounded-lg font-bold text-sm",
+          isSelected ? "bg-red-500 text-white" : "bg-slate-800 text-slate-300 border border-white/5"
+        )}
+      >
+        {student.displayName.charAt(0) || "S"}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-white">{student.displayName}</p>
+        <p className="truncate text-xs text-slate-400">{classText}</p>
+        <p className="truncate text-[10px] text-slate-500">#{student.admissionNumber}</p>
+      </div>
+      <span
+        className={cn(
+          "size-2 rounded-full shrink-0",
+          student.status === "active" ? "bg-emerald-400" : "bg-slate-500"
+        )}
+      />
+    </button>
+  );
+}
+

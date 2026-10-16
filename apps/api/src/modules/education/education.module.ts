@@ -623,6 +623,27 @@ export const educationModule: BackendModule = {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 201, { request: await new SisPortalService(database).submitRequest(tenant, payload.actor as Record<string, unknown> ?? {}, payload.input as Record<string, unknown> ?? {}) });
     }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/portal/parent-dashboard", async handler(request, response, { database, routeParams, url }) {
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      sendJson(response, 200, { dashboard: await new SisPortalService(database).getParentDashboard(tenant, auth.user.id, url.searchParams.get("studentId") ?? undefined) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/portal/student-dashboard", async handler(request, response, { database, routeParams, url }) {
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      sendJson(response, 200, { dashboard: await new SisPortalService(database).getStudentDashboard(tenant, auth.user.id, url.searchParams.get("studentId") ?? undefined) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/portal/students/:studentId/link-user", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.studentId, "studentId");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { student: await new SisPortalService(database).linkStudentUser(tenant, routeParams.studentId, body(request)) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/portal/students/:studentId/guardians/:guardianId/link-user", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.studentId, "studentId");
+      assertUuid(routeParams.guardianId, "guardianId");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { student: await new SisPortalService(database).linkGuardianUser(tenant, routeParams.studentId, routeParams.guardianId, body(request)) });
+    }});
 
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/analytics/overview", async handler(request, response, { database, routeParams, url }) {
       const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");

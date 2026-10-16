@@ -377,4 +377,90 @@ describe("Epic 10I: Parent & Student Portal", () => {
     expect(after?.guardians[0].phone).toBe(before?.guardians[0].phone);
     expect(await PortalService.getUpdateRequests(actor)).toHaveLength(1);
   });
+
+  it("supports notification read and mark-all-read actions for portal actor", async () => {
+    const { student } = await seedPortalContext("org-portal-notif");
+    const actor = { organizationId: "org-portal-notif", userId: "parent-user", role: "parent" as const };
+    const dashboard = await PortalService.getParentDashboard(actor);
+    const notifications = dashboard.selectedStudent?.communication.notifications || [];
+    expect(notifications.length).toBeGreaterThan(0);
+    expect(notifications[0].isRead).toBe(false);
+
+    // Mark as read
+    const recipient = { kind: "guardian" as const, id: "guardian-parent" };
+    await CommunicationService.markNotificationRead("org-portal-notif", notifications[0].id, recipient);
+
+    const updatedDashboard = await PortalService.getParentDashboard(actor);
+    const updatedNotifications = updatedDashboard.selectedStudent?.communication.notifications || [];
+    const readItem = updatedNotifications.find((n) => n.id === notifications[0].id);
+    expect(readItem?.isRead).toBe(true);
+  });
+
+  it("handles multiple linked children and allows switching the selected student", async () => {
+    const { student, year, grade, section } = await seedPortalContext("org-portal-multichild");
+    // Link second student to same parent
+    const child2 = await StudentService.createStudent({
+      organizationId: "org-portal-multichild",
+      firstName: "Bilal",
+      lastName: "Khan",
+      dateOfBirth: "2016-09-01",
+      gender: "male",
+      admissionDate: "2026-08-01",
+      status: "active",
+      guardians: [{
+        id: "guardian-parent-child2",
+        userId: "parent-user",
+        firstName: "Sara",
+        lastName: "Khan",
+        relationship: "mother",
+        email: "sara@example.com",
+        phone: "555-1000",
+        isEmergencyContact: true,
+        isPrimaryContact: true,
+        portalAccessEnabled: true,
+      }],
+    });
+    await EnrollmentService.enrollStudent({
+      organizationId: "org-portal-multichild",
+      studentId: child2.id,
+      academicYear: year.name,
+      gradeId: grade.id,
+      sectionId: section.id,
+      enrollmentDate: "2026-08-01",
+      status: "active",
+    });
+
+    const actor = { organizationId: "org-portal-multichild", userId: "parent-user", role: "parent" as const };
+    const dash = await PortalService.getParentDashboard(actor);
+    expect(dash.linkedStudents).toHaveLength(2);
+
+    // Switch selected student to child2
+    const dashChild2 = await PortalService.getParentDashboard(actor, child2.id);
+    expect(dashChild2.selectedStudent?.student.id).toBe(child2.id);
+    expect(dashChild2.selectedStudent?.student.displayName).toBe("Bilal Khan");
+
+    // Switch to first student
+    const dashChild1 = await PortalService.getParentDashboard(actor, student.id);
+    expect(dashChild1.selectedStudent?.student.id).toBe(student.id);
+    expect(dashChild1.selectedStudent?.student.displayName).toBe("Aisha Khan");
+  });
+
+  it("retrieves read-only attendance history and timetable schedule", async () => {
+    const { student } = await seedPortalContext("org-portal-att-tt");
+    const actor = { organizationId: "org-portal-att-tt", userId: "student-user", role: "student" as const };
+    const dashboard = await PortalService.getStudentDashboard(actor);
+
+    // Attendance
+    expect(dashboard.attendance.present).toBe(1);
+    expect(dashboard.attendanceHistory).toHaveLength(1);
+    expect(dashboard.attendanceHistory[0].record.status).toBe("present");
+    expect(dashboard.attendanceHistory[0].session.date).toBe("2026-08-17");
+
+    // Timetable
+    expect(dashboard.timetable).toHaveLength(1);
+    expect(dashboard.timetable[0].subjectName).toBe("Mathematics");
+    expect(dashboard.timetable[0].periodName).toBe("Period 1");
+    expect(dashboard.timetable[0].teacherName).toContain("Nadia Rahman");
+    expect(dashboard.timetable[0].roomId).toBe("R-101");
+  });
 });

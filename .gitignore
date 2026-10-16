@@ -43,6 +43,8 @@ htmlcov/
 tmp/
 temp/
 scratch/
+clean_tree.txt
+repo_structure.txt
 
 # Docker
 docker-data/

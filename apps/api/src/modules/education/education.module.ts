@@ -487,6 +487,11 @@ export const educationModule: BackendModule = {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { templates: await new SisCommunicationService(database).listTemplates(tenant) });
     }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/templates/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { template: await new SisCommunicationService(database).getTemplate(tenant, routeParams.id) });
+    }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/templates", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
       sendJson(response, 201, { template: await new SisCommunicationService(database).createTemplate(tenant, body(request), actor(request)) });
@@ -496,13 +501,48 @@ export const educationModule: BackendModule = {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
       sendJson(response, 200, { template: await new SisCommunicationService(database).updateTemplate(tenant, routeParams.id, body(request), actor(request)) });
     }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/announcements", async handler(request, response, { database, routeParams }) {
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/communication/templates/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisCommunicationService(database).deleteTemplate(tenant, routeParams.id, actor(request)));
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/announcements", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { announcements: await new SisCommunicationService(database).listAnnouncements(tenant) });
+      const recipientKind = url.searchParams.get("recipientKind") ?? undefined;
+      const recipientId = url.searchParams.get("recipientId") ?? undefined;
+      const announcements = await new SisCommunicationService(database).listAnnouncements(tenant, {
+        status: url.searchParams.get("status") ?? undefined,
+        category: url.searchParams.get("category") ?? undefined,
+        priority: url.searchParams.get("priority") ?? undefined,
+        campusId: url.searchParams.get("campusId") ?? undefined,
+        search: url.searchParams.get("search") ?? undefined,
+        recipient: recipientKind && recipientId ? {
+          kind: recipientKind,
+          id: recipientId,
+          gradeId: url.searchParams.get("gradeId") ?? undefined,
+          sectionId: url.searchParams.get("sectionId") ?? undefined,
+        } : undefined,
+      });
+      sendJson(response, 200, { announcements });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { announcement: await new SisCommunicationService(database).getAnnouncement(tenant, routeParams.id) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/announcements", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
       sendJson(response, 201, { announcement: await new SisCommunicationService(database).createAnnouncement(tenant, body(request), actor(request)) });
+    }});
+    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { announcement: await new SisCommunicationService(database).updateAnnouncement(tenant, routeParams.id, body(request), actor(request)) });
+    }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisCommunicationService(database).deleteAnnouncement(tenant, routeParams.id, actor(request)));
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id/publish", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -526,6 +566,12 @@ export const educationModule: BackendModule = {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
       const recipient = url.searchParams.get("kind") && url.searchParams.get("id") ? { kind: String(url.searchParams.get("kind")), id: String(url.searchParams.get("id")) } : undefined;
       sendJson(response, 200, { notifications: await new SisCommunicationService(database).listNotifications(tenant, recipient) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/notifications/:id", async handler(request, response, { database, routeParams, url }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      const recipient = url.searchParams.get("kind") && url.searchParams.get("id") ? { kind: String(url.searchParams.get("kind")), id: String(url.searchParams.get("id")) } : undefined;
+      sendJson(response, 200, { notification: await new SisCommunicationService(database).getNotification(tenant, routeParams.id, recipient) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/notifications", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
@@ -747,92 +793,6 @@ export const educationModule: BackendModule = {
       const tenant = await new SisService(database).getTenant(routeParams.organizationId);
       sendJson(response, 200, { rows: await new SisFinanceService(database).gradeSummary(tenant, url.searchParams) });
     }});
-    // Communication Routes
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/audience/resolve", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const reqBody = body(request);
-      sendJson(response, 200, { recipients: await new SisCommunicationService(database).resolveAudience(tenant, reqBody.audience as Record<string, unknown>, reqBody.actor as any) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/templates", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const reqBody = body(request);
-      sendJson(response, 201, { template: await new SisCommunicationService(database).createTemplate(tenant, reqBody, reqBody.actor as any) });
-    }});
-    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/communication/templates/:id", async handler(request, response, { database, routeParams }) {
-      assertUuid(routeParams.id, "id");
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const reqBody = body(request);
-      sendJson(response, 200, { template: await new SisCommunicationService(database).updateTemplate(tenant, routeParams.id, reqBody, reqBody.actor as any) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/templates", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      sendJson(response, 200, { templates: await new SisCommunicationService(database).listTemplates(tenant) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/announcements", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const reqBody = body(request);
-      sendJson(response, 201, { announcement: await new SisCommunicationService(database).createAnnouncement(tenant, reqBody, reqBody.actor as any) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id/publish", async handler(request, response, { database, routeParams }) {
-      assertUuid(routeParams.id, "id");
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const reqBody = body(request);
-      sendJson(response, 200, { announcement: await new SisCommunicationService(database).publishAnnouncement(tenant, routeParams.id, reqBody.actor as any) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id/archive", async handler(request, response, { database, routeParams }) {
-      assertUuid(routeParams.id, "id");
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const reqBody = body(request);
-      sendJson(response, 200, { announcement: await new SisCommunicationService(database).archiveAnnouncement(tenant, routeParams.id, reqBody.actor as any) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/announcements", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      sendJson(response, 200, { announcements: await new SisCommunicationService(database).listAnnouncements(tenant) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/messages", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const reqBody = body(request);
-      sendJson(response, 201, { message: await new SisCommunicationService(database).sendCommunication(tenant, reqBody, reqBody.actor as any) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/messages", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      sendJson(response, 200, { messages: await new SisCommunicationService(database).listMessages(tenant) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/notifications", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const reqBody = body(request);
-      sendJson(response, 201, { notification: await new SisCommunicationService(database).createNotification(tenant, reqBody) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/notifications", async handler(request, response, { database, routeParams, url }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const kind = url.searchParams.get("kind");
-      const id = url.searchParams.get("id");
-      sendJson(response, 200, { notifications: await new SisCommunicationService(database).listNotifications(tenant, kind && id ? { kind, id } : undefined) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/notifications/:id/read", async handler(request, response, { database, routeParams }) {
-      assertUuid(routeParams.id, "id");
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const reqBody = body(request);
-      sendJson(response, 200, { notification: await new SisCommunicationService(database).markRead(tenant, routeParams.id, reqBody.recipient as any) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/notifications/read-all", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const reqBody = body(request);
-      sendJson(response, 200, { count: await new SisCommunicationService(database).markAllRead(tenant, reqBody.recipient as any) });
-    }});
   },
 };
+

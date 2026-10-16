@@ -706,7 +706,9 @@ export interface Announcement {
   organizationId: string;
   title: string;
   content: string;
-  authorId: string;
+  authorId?: string;
+  category?: string;
+  campusId?: string;
   audience: CommunicationAudience;
   priority: CommunicationPriority;
   publishAt?: string;
@@ -802,7 +804,9 @@ export interface NotificationPreference {
 }
 
 export interface CommunicationSummary {
+  totalAnnouncements?: number;
   publishedAnnouncements: number;
+  scheduledAnnouncements?: number;
   communicationsSent: number;
   pendingDeliveries: number;
   failedDeliveries: number;

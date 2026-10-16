@@ -229,3 +229,196 @@ export function GradebookStatCard({
     </div>
   );
 }
+
+/* ─────────────────── Announcement Priority Badge ─────────────────── */
+
+export type AnnouncementPriority = "normal" | "important" | "urgent";
+
+export interface AnnouncementPriorityBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  priority: AnnouncementPriority | string;
+}
+
+const priorityStyles: Record<string, string> = {
+  normal: "bg-slate-500/10 text-slate-300 border-slate-500/20",
+  important: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  urgent: "bg-red-500/10 text-red-400 border-red-500/20 animate-pulse",
+};
+
+export const AnnouncementPriorityBadge = React.forwardRef<HTMLSpanElement, AnnouncementPriorityBadgeProps>(
+  ({ priority, className, ...props }, ref) => {
+    const key = String(priority).toLowerCase();
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+          priorityStyles[key] || priorityStyles.normal,
+          className
+        )}
+        {...props}
+      >
+        {key}
+      </span>
+    );
+  }
+);
+AnnouncementPriorityBadge.displayName = "AnnouncementPriorityBadge";
+
+/* ─────────────────── Announcement Status Badge ─────────────────── */
+
+export type AnnouncementStatusType = "draft" | "published" | "scheduled" | "archived";
+
+export interface AnnouncementStatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  status: AnnouncementStatusType | string;
+}
+
+const announcementStatusStyles: Record<string, string> = {
+  draft: "bg-slate-500/10 text-slate-400 border-slate-500/20",
+  published: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  scheduled: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  archived: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+};
+
+export const AnnouncementStatusBadge = React.forwardRef<HTMLSpanElement, AnnouncementStatusBadgeProps>(
+  ({ status, className, ...props }, ref) => {
+    const key = String(status).toLowerCase();
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+          announcementStatusStyles[key] || announcementStatusStyles.draft,
+          className
+        )}
+        {...props}
+      >
+        {key}
+      </span>
+    );
+  }
+);
+AnnouncementStatusBadge.displayName = "AnnouncementStatusBadge";
+
+/* ─────────────────── Delivery Status Badge ─────────────────── */
+
+export type DeliveryStatusType = "pending" | "queued" | "sent" | "delivered" | "failed";
+
+export interface DeliveryStatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  status: DeliveryStatusType | string;
+}
+
+const deliveryStatusStyles: Record<string, string> = {
+  pending: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  queued: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  sent: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+  delivered: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  failed: "bg-red-500/10 text-red-400 border-red-500/20",
+};
+
+export const DeliveryStatusBadge = React.forwardRef<HTMLSpanElement, DeliveryStatusBadgeProps>(
+  ({ status, className, ...props }, ref) => {
+    const key = String(status).toLowerCase();
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+          deliveryStatusStyles[key] || deliveryStatusStyles.pending,
+          className
+        )}
+        {...props}
+      >
+        {key}
+      </span>
+    );
+  }
+);
+DeliveryStatusBadge.displayName = "DeliveryStatusBadge";
+
+/* ─────────────────── Audience Type Badge ─────────────────── */
+
+export interface AudienceTypeBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  type: string;
+}
+
+const audienceLabels: Record<string, string> = {
+  organization: "Whole School",
+  all_students: "All Students",
+  all_guardians: "All Guardians",
+  all_teachers: "All Teachers",
+  all_staff: "All Staff",
+  class: "Class",
+  section: "Section",
+  selected_students: "Selected Students",
+  selected_guardians: "Selected Guardians",
+  selected_staff: "Selected Staff",
+  selected_users: "Selected Users",
+};
+
+export const AudienceTypeBadge = React.forwardRef<HTMLSpanElement, AudienceTypeBadgeProps>(
+  ({ type, className, ...props }, ref) => {
+    const label = audienceLabels[type] || type;
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center rounded-md border border-white/10 bg-slate-800/80 px-2 py-0.5 text-xs font-medium text-slate-300",
+          className
+        )}
+        {...props}
+      >
+        {label}
+      </span>
+    );
+  }
+);
+AudienceTypeBadge.displayName = "AudienceTypeBadge";
+
+/* ─────────────────── Communication Stat Card ─────────────────── */
+
+export interface CommunicationStatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  subtext?: string;
+  variant?: "default" | "emerald" | "amber" | "blue" | "red" | "purple";
+  className?: string;
+}
+
+const statCardVariants: Record<string, { iconBg: string; textCol: string }> = {
+  default: { iconBg: "bg-slate-800 text-slate-300", textCol: "text-white" },
+  emerald: { iconBg: "bg-emerald-500/10 text-emerald-400", textCol: "text-emerald-400" },
+  amber: { iconBg: "bg-amber-500/10 text-amber-400", textCol: "text-amber-400" },
+  blue: { iconBg: "bg-blue-500/10 text-blue-400", textCol: "text-blue-400" },
+  red: { iconBg: "bg-red-500/10 text-red-400", textCol: "text-red-400" },
+  purple: { iconBg: "bg-purple-500/10 text-purple-400", textCol: "text-purple-400" },
+};
+
+export function CommunicationStatCard({
+  icon,
+  label,
+  value,
+  subtext,
+  variant = "default",
+  className,
+}: CommunicationStatCardProps) {
+  const styles = statCardVariants[variant] || statCardVariants.default;
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/5 bg-[#0f141f] p-5 flex items-center justify-between gap-4 transition-all duration-200 hover:border-white/10",
+        className
+      )}
+    >
+      <div className="space-y-1">
+        <p className="text-xs font-medium uppercase tracking-wider text-slate-400">{label}</p>
+        <p className={cn("text-2xl font-bold tracking-tight", styles.textCol)}>{value}</p>
+        {subtext && <p className="text-xs text-slate-500">{subtext}</p>}
+      </div>
+      <div className={cn("size-12 rounded-xl flex items-center justify-center shrink-0", styles.iconBg)}>
+        {icon}
+      </div>
+    </div>
+  );
+}
+

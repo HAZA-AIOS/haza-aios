@@ -31,15 +31,37 @@ export class CommunicationServiceClass {
     return { subject: render(template.subject), content: render(template.content) };
   }
   async createTemplate(organizationId: string, data: Omit<CommunicationTemplate, "id" | "organizationId" | "createdAt" | "updatedAt">, actor?: ActorContext): Promise<CommunicationTemplate> { return (await sisRequest<{ template: CommunicationTemplate }>(organizationId, "/communication/templates", { method: "POST", ...jsonBody(withActor(data, actor)) })).template; }
+  async getTemplate(organizationId: string, id: string): Promise<CommunicationTemplate> { return (await sisRequest<{ template: CommunicationTemplate }>(organizationId, `/communication/templates/${id}`)).template; }
   async updateTemplate(organizationId: string, id: string, updates: Partial<CommunicationTemplate>, actor?: ActorContext): Promise<CommunicationTemplate> { return (await sisRequest<{ template: CommunicationTemplate }>(organizationId, `/communication/templates/${id}`, { method: "PATCH", ...jsonBody(withActor(updates, actor)) })).template; }
+  async deleteTemplate(organizationId: string, id: string, actor?: ActorContext): Promise<{ success: boolean }> { return sisRequest<{ success: boolean }>(organizationId, `/communication/templates/${id}`, { method: "DELETE", ...jsonBody(withActor({}, actor)) }); }
   async getTemplates(organizationId: string): Promise<CommunicationTemplate[]> { return (await sisRequest<{ templates: CommunicationTemplate[] }>(organizationId, "/communication/templates")).templates; }
   async createAnnouncement(organizationId: string, data: Omit<Announcement, "id" | "organizationId" | "recipientCount" | "createdAt" | "updatedAt" | "publishedAt">, actor?: ActorContext): Promise<Announcement> { return (await sisRequest<{ announcement: Announcement }>(organizationId, "/communication/announcements", { method: "POST", ...jsonBody(withActor(data, actor)) })).announcement; }
+  async getAnnouncement(organizationId: string, id: string): Promise<Announcement> { return (await sisRequest<{ announcement: Announcement }>(organizationId, `/communication/announcements/${id}`)).announcement; }
+  async updateAnnouncement(organizationId: string, id: string, updates: Partial<Announcement>, actor?: ActorContext): Promise<Announcement> { return (await sisRequest<{ announcement: Announcement }>(organizationId, `/communication/announcements/${id}`, { method: "PATCH", ...jsonBody(withActor(updates, actor)) })).announcement; }
+  async deleteAnnouncement(organizationId: string, id: string, actor?: ActorContext): Promise<{ success: boolean }> { return sisRequest<{ success: boolean }>(organizationId, `/communication/announcements/${id}`, { method: "DELETE", ...jsonBody(withActor({}, actor)) }); }
   async publishAnnouncement(organizationId: string, id: string, actor?: ActorContext): Promise<Announcement> { return (await sisRequest<{ announcement: Announcement }>(organizationId, `/communication/announcements/${id}/publish`, { method: "POST", ...jsonBody({ actor }) })).announcement; }
   async archiveAnnouncement(organizationId: string, id: string, actor?: ActorContext): Promise<Announcement> { return (await sisRequest<{ announcement: Announcement }>(organizationId, `/communication/announcements/${id}/archive`, { method: "POST", ...jsonBody({ actor }) })).announcement; }
-  async getAnnouncements(organizationId: string): Promise<Announcement[]> { return (await sisRequest<{ announcements: Announcement[] }>(organizationId, "/communication/announcements")).announcements; }
+  async getAnnouncements(organizationId: string, filters?: { status?: string; category?: string; priority?: string; campusId?: string; search?: string; recipientKind?: string; recipientId?: string; gradeId?: string; sectionId?: string }): Promise<Announcement[]> {
+    const params = new URLSearchParams();
+    if (filters?.status) params.set("status", filters.status);
+    if (filters?.category) params.set("category", filters.category);
+    if (filters?.priority) params.set("priority", filters.priority);
+    if (filters?.campusId) params.set("campusId", filters.campusId);
+    if (filters?.search) params.set("search", filters.search);
+    if (filters?.recipientKind) params.set("recipientKind", filters.recipientKind);
+    if (filters?.recipientId) params.set("recipientId", filters.recipientId);
+    if (filters?.gradeId) params.set("gradeId", filters.gradeId);
+    if (filters?.sectionId) params.set("sectionId", filters.sectionId);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return (await sisRequest<{ announcements: Announcement[] }>(organizationId, `/communication/announcements${qs}`)).announcements;
+  }
   async sendCommunication(organizationId: string, input: SendCommunicationInput, actor?: ActorContext): Promise<CommunicationMessage> { return (await sisRequest<{ message: CommunicationMessage }>(organizationId, "/communication/messages", { method: "POST", ...jsonBody(withActor(input, actor)) })).message; }
   async getCommunications(organizationId: string): Promise<CommunicationMessage[]> { return (await sisRequest<{ messages: CommunicationMessage[] }>(organizationId, "/communication/messages")).messages; }
   async createNotification(organizationId: string, data: Omit<SisNotification, "id" | "organizationId" | "isRead" | "createdAt" | "readAt">): Promise<SisNotification> { return (await sisRequest<{ notification: SisNotification }>(organizationId, "/communication/notifications", { method: "POST", ...jsonBody(data) })).notification; }
+  async getNotification(organizationId: string, id: string, recipient?: { kind: RecipientKind; id: string }): Promise<SisNotification> {
+    const qs = recipient ? `?kind=${encodeURIComponent(recipient.kind)}&id=${encodeURIComponent(recipient.id)}` : "";
+    return (await sisRequest<{ notification: SisNotification }>(organizationId, `/communication/notifications/${id}${qs}`)).notification;
+  }
   async getNotifications(organizationId: string, recipient?: { kind: RecipientKind; id: string }): Promise<SisNotification[]> { const qs = recipient ? `?kind=${encodeURIComponent(recipient.kind)}&id=${encodeURIComponent(recipient.id)}` : ""; return (await sisRequest<{ notifications: SisNotification[] }>(organizationId, `/communication/notifications${qs}`)).notifications; }
   async getUnreadCount(organizationId: string, recipient: { kind: RecipientKind; id: string }): Promise<number> { return (await this.getNotifications(organizationId, recipient)).filter((notification) => !notification.isRead).length; }
   async markNotificationRead(organizationId: string, id: string, recipient?: { kind: RecipientKind; id: string }): Promise<SisNotification> { return (await sisRequest<{ notification: SisNotification }>(organizationId, `/communication/notifications/${id}/read`, { method: "POST", ...jsonBody({ recipient }) })).notification; }

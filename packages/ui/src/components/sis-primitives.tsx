@@ -557,3 +557,80 @@ export function PortalChildSelectorCard({
   );
 }
 
+/* ─────────────────── Payment Method Badge ─────────────────── */
+
+export type FeePaymentMethodType = "cash" | "bank_transfer" | "card" | "online" | "cheque" | "other";
+
+export interface PaymentMethodBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  method: FeePaymentMethodType | string;
+}
+
+const paymentMethodStyles: Record<string, string> = {
+  cash: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  bank_transfer: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  card: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+  online: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+  cheque: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  other: "bg-slate-500/10 text-slate-300 border-slate-500/20",
+};
+
+const paymentMethodLabels: Record<string, string> = {
+  cash: "Cash",
+  bank_transfer: "Bank Transfer",
+  card: "Card",
+  online: "Online",
+  cheque: "Cheque",
+  other: "Other",
+};
+
+export const PaymentMethodBadge = React.forwardRef<HTMLSpanElement, PaymentMethodBadgeProps>(
+  ({ method, className, ...props }, ref) => {
+    const key = String(method).toLowerCase();
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+          paymentMethodStyles[key] || paymentMethodStyles.other,
+          className
+        )}
+        {...props}
+      >
+        {paymentMethodLabels[key] || method}
+      </span>
+    );
+  }
+);
+PaymentMethodBadge.displayName = "PaymentMethodBadge";
+
+/* ─────────────────── Payment Status Badge ─────────────────── */
+
+export interface PaymentStatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  status: "recorded" | "voided" | string;
+}
+
+const paymentStatusStyles: Record<string, string> = {
+  recorded: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  voided: "bg-red-500/10 text-red-400 border-red-500/20 line-through",
+};
+
+export const PaymentStatusBadge = React.forwardRef<HTMLSpanElement, PaymentStatusBadgeProps>(
+  ({ status, className, ...props }, ref) => {
+    const key = String(status).toLowerCase();
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+          paymentStatusStyles[key] || "bg-slate-500/10 text-slate-400 border-slate-500/20",
+          className
+        )}
+        {...props}
+      >
+        {key}
+      </span>
+    );
+  }
+);
+PaymentStatusBadge.displayName = "PaymentStatusBadge";
+

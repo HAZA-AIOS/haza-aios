@@ -19,6 +19,7 @@ const platformCatalog: ModuleContract[] = [
     status: "available",
     enabled: true,
     routes: [
+      { path: "/workspace/education/admissions", component: "AdmissionsPage" as any },
       { path: "/workspace/education/students", component: "StudentDirectoryPage" as any },
       { path: "/workspace/education/students/new", component: "StudentAdmissionPage" as any },
       { path: "/workspace/education/students/:id", component: "StudentProfilePage" as any },
@@ -64,12 +65,20 @@ const platformCatalog: ModuleContract[] = [
     ],
     navigation: [
       {
+        id: "nav-education-admissions",
+        label: "Admissions",
+        route: "/workspace/education/admissions",
+        icon: "📝",
+        requiredPermission: "module.education.view",
+        order: 1
+      },
+      {
         id: "nav-education-students",
         label: "Students",
         route: "/workspace/education/students",
         icon: "👨‍🎓",
         requiredPermission: "module.education.view",
-        order: 1
+        order: 2
       },
       {
         id: "nav-education-staff",

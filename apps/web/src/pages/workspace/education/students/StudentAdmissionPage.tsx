@@ -147,6 +147,20 @@ export const StudentAdmissionPage: React.FC = () => {
           </div>
         </div>
 
+        <div className="bg-blue-950/40 border border-blue-500/20 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <GraduationCap className="w-5 h-5 text-blue-400 shrink-0" />
+            <p className="text-sm text-blue-200">
+              Need multi-stage lead tracking, diagnostic assessments, committee reviews, and fee package assignment? Use the full Admissions Suite.
+            </p>
+          </div>
+          <Link to="/workspace/education/admissions">
+            <Button type="button" size="sm" variant="outline" className="border-blue-500/40 text-blue-300 hover:bg-blue-500/20 whitespace-nowrap">
+              Go to Admissions Suite
+            </Button>
+          </Link>
+        </div>
+
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-md flex items-start gap-3">
             <ShieldAlert className="w-5 h-5 shrink-0" />

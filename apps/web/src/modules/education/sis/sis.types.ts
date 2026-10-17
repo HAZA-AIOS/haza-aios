@@ -1160,3 +1160,264 @@ export interface SisHealthOverview {
   dataQuality: SisDataQualityIssue[];
   modules: SisModuleCompletion[];
 }
+
+// --- ADMISSIONS & ENROLLMENT (EPIC 10K) ---
+
+export type AdmissionEnquiryStatus =
+  | "new"
+  | "contacted"
+  | "visit_scheduled"
+  | "under_review"
+  | "converted"
+  | "closed";
+
+export type AdmissionApplicationStatus =
+  | "draft"
+  | "submitted"
+  | "under_review"
+  | "assessment"
+  | "approved"
+  | "rejected"
+  | "waitlisted"
+  | "enrolled"
+  | "withdrawn";
+
+export type AdmissionAssessmentType =
+  | "written_test"
+  | "interview"
+  | "interaction"
+  | "document_verification"
+  | "diagnostic"
+  | "other";
+
+export type AssessmentOutcome =
+  | "passed"
+  | "failed"
+  | "conditional_pass"
+  | "exempted"
+  | "pending";
+
+export interface AdmissionDocument {
+  id: string;
+  type: string;
+  title: string;
+  fileUrl: string;
+  fileName?: string;
+  fileSize?: number;
+  uploadedAt: string;
+  verified?: boolean;
+}
+
+export interface AdmissionEnquiry {
+  id: string;
+  organizationId: string;
+  referenceNumber: string;
+  studentName: string;
+  guardianName: string;
+  phone: string;
+  email?: string;
+  desiredGradeId: string;
+  desiredGradeName?: string;
+  preferredCampus?: string;
+  previousSchool?: string;
+  dateOfBirth?: string;
+  gender?: Gender;
+  address?: string;
+  source: string;
+  enquiryDate: string;
+  followUpDate?: string;
+  assignedStaffId?: string;
+  assignedStaffName?: string;
+  status: AdmissionEnquiryStatus;
+  notes?: string;
+  convertedApplicationId?: string;
+  convertedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdmissionApplication {
+  id: string;
+  organizationId: string;
+  applicationNumber: string;
+  enquiryId?: string;
+  enquiryReference?: string;
+  desiredGradeId: string;
+  desiredGradeName?: string;
+  desiredSectionId?: string;
+  campus: string;
+  academicYear: string;
+  admissionCategory: string;
+  status: AdmissionApplicationStatus;
+  submissionDate?: string;
+  student: {
+    firstName: string;
+    middleName?: string;
+    lastName: string;
+    dateOfBirth: string;
+    gender: Gender;
+    email?: string;
+    phone?: string;
+    address?: string;
+    photoUrl?: string;
+    previousSchool?: string;
+    previousGrade?: string;
+    previousAcademicPercentage?: number;
+    specialNeedsNotes?: string;
+  };
+  guardians: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    relationship: "father" | "mother" | "guardian" | "other";
+    email: string;
+    phone: string;
+    address?: string;
+    occupation?: string;
+    employer?: string;
+    isPrimaryContact: boolean;
+    isEmergencyContact: boolean;
+  }>;
+  documents: AdmissionDocument[];
+  decision?: {
+    status: "approved" | "rejected" | "waitlisted" | "under_review" | "assessment";
+    decisionDate: string;
+    reviewerUserId: string;
+    reviewerName: string;
+    remarks?: string;
+    rejectionReason?: string;
+    waitlistRank?: number;
+  };
+  feePackage?: {
+    feeStructureIds: string[];
+    discountIds?: string[];
+    admissionFeeCents?: number;
+    totalTuitionCents?: number;
+    reviewedBy?: string;
+    reviewedAt?: string;
+  };
+  enrolledStudentId?: string;
+  enrolledEnrollmentId?: string;
+  enrolledAt?: string;
+  withdrawalReason?: string;
+  withdrawnAt?: string;
+  auditTrail?: Array<{
+    action: string;
+    actorUserId?: string;
+    actorRole?: string;
+    timestamp: string;
+    details?: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdmissionAssessment {
+  id: string;
+  organizationId: string;
+  applicationId: string;
+  subject: string;
+  assessmentType: AdmissionAssessmentType;
+  assessmentDate: string;
+  assessorStaffId: string;
+  assessorName?: string;
+  maximumMarks: number;
+  obtainedMarks: number;
+  passingMarks: number;
+  outcome: AssessmentOutcome;
+  remarks?: string;
+  supportingRecords?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdmissionsDashboardSummary {
+  totalEnquiries: number;
+  pendingApplications: number;
+  applicationsUnderAssessment: number;
+  approvedApplications: number;
+  rejectedApplications: number;
+  waitlistedApplications: number;
+  enrolledStudents: number;
+  conversionRatePercentage: number;
+  recentActivity: Array<{
+    id: string;
+    type: "enquiry" | "application" | "assessment" | "decision" | "enrollment";
+    title: string;
+    description: string;
+    timestamp: string;
+    reference?: string;
+  }>;
+}
+
+export interface AdmissionPrintDocument {
+  organizationId: string;
+  applicationNumber: string;
+  status: string;
+  academicYear: string;
+  campus: string;
+  gradeName: string;
+  submissionDate: string;
+  student: {
+    fullName: string;
+    firstName: string;
+    lastName: string;
+    dateOfBirth: string;
+    gender: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    previousSchool?: string;
+    photoUrl?: string;
+  };
+  guardians: Array<{
+    fullName: string;
+    relationship: string;
+    email: string;
+    phone: string;
+    occupation?: string;
+  }>;
+  assessments: Array<{
+    subject: string;
+    type: string;
+    marks: string;
+    outcome: string;
+    date: string;
+  }>;
+  decision?: {
+    status: string;
+    decisionDate: string;
+    reviewerName: string;
+    remarks?: string;
+  } | null;
+  feePackage?: {
+    feeStructureIds: string[];
+    admissionFeeCents?: number;
+    totalTuitionCents?: number;
+  } | null;
+  generatedAt: string;
+}
+
+export interface AdmissionsReport {
+  title: string;
+  rowCount?: number;
+  rows?: Array<Record<string, unknown>>;
+  totalApplications?: number;
+  enrolled?: number;
+  approved?: number;
+  rejected?: number;
+  pending?: number;
+  conversionRate?: string;
+  campuses?: Array<{
+    campus: string;
+    totalApplications: number;
+    enrolledStudents: number;
+    conversionRate: string;
+  }>;
+  grades?: Array<{
+    name: string;
+    total: number;
+    enrolled: number;
+  }>;
+}
+

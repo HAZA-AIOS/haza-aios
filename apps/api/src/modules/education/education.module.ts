@@ -8,6 +8,7 @@ import { SisExaminationService } from "./sis-examination.service.js";
 import { SisFinanceService } from "./sis-finance.service.js";
 import { SisPortalService } from "./sis-portal.service.js";
 import { SisService } from "./sis.service.js";
+import { SisAdmissionsService } from "./sis-admissions.service.js";
 
 async function readTenant(request: Parameters<AuthService["requireOrganizationPermission"]>[0], database: ConstructorParameters<typeof SisService>[0], organizationId: string, permission: "workspace.read" | "workspace.manage") {
   const tenantContext = createTenantContext(organizationId);
@@ -850,6 +851,299 @@ export const educationModule: BackendModule = {
       const tenant = await new SisService(database).getTenant(routeParams.organizationId);
       sendJson(response, 200, { rows: await new SisFinanceService(database).gradeSummary(tenant, url.searchParams) });
     }});
+
+    /* ─────────────────────────────────────────────────────────────
+     * ADMISSIONS & ENROLLMENT (EPIC 10K)
+     * ───────────────────────────────────────────────────────────── */
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/admissions/dashboard", async handler(request, response, { database, routeParams, url }) {
+      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const filters = {
+        academicYear: url.searchParams.get("academicYear") ?? undefined,
+        campus: url.searchParams.get("campus") ?? undefined,
+        gradeId: url.searchParams.get("gradeId") ?? undefined,
+      };
+      sendJson(response, 200, { dashboard: await new SisAdmissionsService(database).getDashboard(tenant, filters) });
+    }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/admissions/enquiries", async handler(request, response, { database, routeParams, url }) {
+      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const filters = {
+        status: url.searchParams.get("status") ?? undefined,
+        search: url.searchParams.get("search") ?? undefined,
+        gradeId: url.searchParams.get("gradeId") ?? undefined,
+        campus: url.searchParams.get("campus") ?? undefined,
+      };
+      sendJson(response, 200, { enquiries: await new SisAdmissionsService(database).listEnquiries(tenant, filters) });
+    }});
+
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/admissions/enquiries", async handler(request, response, { database, routeParams }) {
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      sendJson(response, 201, {
+        enquiry: await new SisAdmissionsService(database).createEnquiry(tenant, body(request), {
+          userId: auth.user.id,
+          role: membership?.role ?? "Staff",
+        }),
+      });
+    }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/admissions/enquiries/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      sendJson(response, 200, { enquiry: await new SisAdmissionsService(database).getEnquiry(tenant, routeParams.id) });
+    }});
+
+    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/admissions/enquiries/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      sendJson(response, 200, {
+        enquiry: await new SisAdmissionsService(database).updateEnquiry(tenant, routeParams.id, body(request), {
+          userId: auth.user.id,
+          role: membership?.role ?? "Staff",
+        }),
+      });
+    }});
+
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/admissions/enquiries/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      await new SisAdmissionsService(database).deleteEnquiry(tenant, routeParams.id, {
+        userId: auth.user.id,
+        role: membership?.role ?? "Staff",
+      });
+      sendJson(response, 200, { success: true });
+    }});
+
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/admissions/enquiries/:id/convert", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      sendJson(response, 201, {
+        application: await new SisAdmissionsService(database).convertEnquiryToApplication(tenant, routeParams.id, {
+          userId: auth.user.id,
+          role: membership?.role ?? "Staff",
+        }),
+      });
+    }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/admissions/applications", async handler(request, response, { database, routeParams, url }) {
+      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const filters = {
+        status: url.searchParams.get("status") ?? undefined,
+        search: url.searchParams.get("search") ?? undefined,
+        gradeId: url.searchParams.get("gradeId") ?? undefined,
+        academicYear: url.searchParams.get("academicYear") ?? undefined,
+        campus: url.searchParams.get("campus") ?? undefined,
+      };
+      sendJson(response, 200, { applications: await new SisAdmissionsService(database).listApplications(tenant, filters) });
+    }});
+
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/admissions/applications", async handler(request, response, { database, routeParams }) {
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      sendJson(response, 201, {
+        application: await new SisAdmissionsService(database).createApplication(tenant, body(request), {
+          userId: auth.user.id,
+          role: membership?.role ?? "Staff",
+        }),
+      });
+    }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/admissions/applications/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      sendJson(response, 200, { application: await new SisAdmissionsService(database).getApplication(tenant, routeParams.id) });
+    }});
+
+    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/admissions/applications/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      sendJson(response, 200, {
+        application: await new SisAdmissionsService(database).updateApplication(tenant, routeParams.id, body(request), {
+          userId: auth.user.id,
+          role: membership?.role ?? "Staff",
+        }),
+      });
+    }});
+
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/admissions/applications/:id/submit", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      sendJson(response, 200, {
+        application: await new SisAdmissionsService(database).submitApplication(tenant, routeParams.id, {
+          userId: auth.user.id,
+          role: membership?.role ?? "Staff",
+        }),
+      });
+    }});
+
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/admissions/applications/:id/withdraw", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      const reqBody = body(request);
+      sendJson(response, 200, {
+        application: await new SisAdmissionsService(database).withdrawApplication(tenant, routeParams.id, reqBody.reason as string | undefined, {
+          userId: auth.user.id,
+          role: membership?.role ?? "Staff",
+        }),
+      });
+    }});
+
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/admissions/applications/:id/decision", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      const reqBody = body(request);
+      sendJson(response, 200, {
+        application: await new SisAdmissionsService(database).recordDecision(
+          tenant,
+          routeParams.id,
+          reqBody as {
+            status: "approved" | "rejected" | "waitlisted" | "under_review" | "assessment";
+            remarks?: string;
+            rejectionReason?: string;
+            waitlistRank?: number;
+          },
+          {
+            userId: auth.user.id,
+            role: membership?.role ?? "Admin",
+          }
+        ),
+      });
+    }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/admissions/assessments", async handler(request, response, { database, routeParams, url }) {
+      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      sendJson(response, 200, {
+        assessments: await new SisAdmissionsService(database).listAssessments(tenant, url.searchParams.get("applicationId") ?? undefined),
+      });
+    }});
+
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/admissions/assessments", async handler(request, response, { database, routeParams }) {
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      sendJson(response, 201, {
+        assessment: await new SisAdmissionsService(database).createAssessment(tenant, body(request), {
+          userId: auth.user.id,
+          role: membership?.role ?? "Staff",
+        }),
+      });
+    }});
+
+    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/admissions/assessments/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      sendJson(response, 200, {
+        assessment: await new SisAdmissionsService(database).updateAssessment(tenant, routeParams.id, body(request), {
+          userId: auth.user.id,
+          role: membership?.role ?? "Staff",
+        }),
+      });
+    }});
+
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/admissions/assessments/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      await new SisAdmissionsService(database).deleteAssessment(tenant, routeParams.id, {
+        userId: auth.user.id,
+        role: membership?.role ?? "Staff",
+      });
+      sendJson(response, 200, { success: true });
+    }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/admissions/applications/:id/fee-preview", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      sendJson(response, 200, await new SisAdmissionsService(database).getFeePackagePreview(tenant, routeParams.id));
+    }});
+
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/admissions/applications/:id/assign-fees", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      const reqBody = body(request);
+      sendJson(response, 200, {
+        application: await new SisAdmissionsService(database).assignFeePackage(
+          tenant,
+          routeParams.id,
+          reqBody as { feeStructureIds: string[]; discountIds?: string[]; admissionFeeCents?: number },
+          {
+            userId: auth.user.id,
+            role: membership?.role ?? "Admin",
+          }
+        ),
+      });
+    }});
+
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/admissions/applications/:id/convert-enrollment", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
+      const reqBody = body(request);
+      const result = await new SisAdmissionsService(database).convertApplicationToEnrollment(
+        tenant,
+        routeParams.id,
+        reqBody as {
+          academicYear: string;
+          gradeId: string;
+          sectionId: string;
+          admissionDate?: string;
+          reuseExistingStudentId?: string;
+        },
+        {
+          userId: auth.user.id,
+          role: membership?.role ?? "Admin",
+        }
+      );
+      sendJson(response, 201, result);
+    }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/admissions/applications/:id/print", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      sendJson(response, 200, { document: await new SisAdmissionsService(database).getApplicationPrintData(tenant, routeParams.id) });
+    }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/admissions/reports", async handler(request, response, { database, routeParams, url }) {
+      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
+      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const reportType = (url.searchParams.get("type") || "conversion_summary") as "enquiry_register" | "application_register" | "conversion_summary" | "campus_summary" | "grade_summary";
+      const filters = {
+        academicYear: url.searchParams.get("academicYear") ?? undefined,
+        campus: url.searchParams.get("campus") ?? undefined,
+      };
+      sendJson(response, 200, { report: await new SisAdmissionsService(database).getReport(tenant, reportType, filters) });
+    }});
   },
 };
+
 

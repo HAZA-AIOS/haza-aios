@@ -720,3 +720,167 @@ export const NotificationCategoryBadge = React.forwardRef<HTMLSpanElement, Notif
 );
 NotificationCategoryBadge.displayName = "NotificationCategoryBadge";
 
+/* ─────────────────── Admission Status Badge ─────────────────── */
+
+export type AdmissionApplicationStatusType =
+  | "draft"
+  | "submitted"
+  | "under_review"
+  | "assessment"
+  | "approved"
+  | "rejected"
+  | "waitlisted"
+  | "enrolled"
+  | "withdrawn";
+
+export interface AdmissionStatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  status: AdmissionApplicationStatusType | string;
+}
+
+const admissionStatusStyles: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  draft: { bg: "bg-slate-500/10", text: "text-slate-400", border: "border-slate-500/20", label: "Draft" },
+  submitted: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20", label: "Submitted" },
+  under_review: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", label: "Under Review" },
+  assessment: { bg: "bg-indigo-500/10", text: "text-indigo-400", border: "border-indigo-500/20", label: "Assessment" },
+  approved: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", label: "Approved" },
+  rejected: { bg: "bg-rose-500/10", text: "text-rose-400", border: "border-rose-500/20", label: "Rejected" },
+  waitlisted: { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20", label: "Waitlisted" },
+  enrolled: { bg: "bg-teal-500/10", text: "text-teal-300", border: "border-teal-500/20", label: "Enrolled" },
+  withdrawn: { bg: "bg-zinc-500/10", text: "text-zinc-400", border: "border-zinc-500/20", label: "Withdrawn" },
+};
+
+export const AdmissionStatusBadge = React.forwardRef<HTMLSpanElement, AdmissionStatusBadgeProps>(
+  ({ status, className, ...props }, ref) => {
+    const key = String(status).toLowerCase();
+    const style = admissionStatusStyles[key] || {
+      bg: "bg-slate-500/10",
+      text: "text-slate-400",
+      border: "border-slate-500/20",
+      label: status,
+    };
+
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase",
+          style.bg,
+          style.text,
+          style.border,
+          className
+        )}
+        {...props}
+      >
+        <span className={cn("size-1.5 rounded-full", style.bg.replace("/10", "/80"))} />
+        {style.label}
+      </span>
+    );
+  }
+);
+AdmissionStatusBadge.displayName = "AdmissionStatusBadge";
+
+/* ─────────────────── Enquiry Status Badge ─────────────────── */
+
+export type AdmissionEnquiryStatusType =
+  | "new"
+  | "contacted"
+  | "visit_scheduled"
+  | "under_review"
+  | "converted"
+  | "closed";
+
+export interface EnquiryStatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  status: AdmissionEnquiryStatusType | string;
+}
+
+const enquiryStatusStyles: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  new: { bg: "bg-cyan-500/10", text: "text-cyan-400", border: "border-cyan-500/20", label: "New Enquiry" },
+  contacted: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20", label: "Contacted" },
+  visit_scheduled: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", label: "Visit Scheduled" },
+  under_review: { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20", label: "Under Review" },
+  converted: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", label: "Converted" },
+  closed: { bg: "bg-slate-500/10", text: "text-slate-400", border: "border-slate-500/20", label: "Closed" },
+};
+
+export const EnquiryStatusBadge = React.forwardRef<HTMLSpanElement, EnquiryStatusBadgeProps>(
+  ({ status, className, ...props }, ref) => {
+    const key = String(status).toLowerCase();
+    const style = enquiryStatusStyles[key] || {
+      bg: "bg-slate-500/10",
+      text: "text-slate-400",
+      border: "border-slate-500/20",
+      label: status,
+    };
+
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase",
+          style.bg,
+          style.text,
+          style.border,
+          className
+        )}
+        {...props}
+      >
+        <span className={cn("size-1.5 rounded-full", style.bg.replace("/10", "/80"))} />
+        {style.label}
+      </span>
+    );
+  }
+);
+EnquiryStatusBadge.displayName = "EnquiryStatusBadge";
+
+/* ─────────────────── Assessment Outcome Badge ─────────────────── */
+
+export type AssessmentOutcomeType =
+  | "passed"
+  | "failed"
+  | "conditional_pass"
+  | "exempted"
+  | "pending";
+
+export interface AssessmentOutcomeBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  outcome: AssessmentOutcomeType | string;
+}
+
+const assessmentOutcomeStyles: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  passed: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", label: "Passed" },
+  failed: { bg: "bg-rose-500/10", text: "text-rose-400", border: "border-rose-500/20", label: "Failed" },
+  conditional_pass: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", label: "Conditional Pass" },
+  exempted: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20", label: "Exempted" },
+  pending: { bg: "bg-slate-500/10", text: "text-slate-400", border: "border-slate-500/20", label: "Pending" },
+};
+
+export const AssessmentOutcomeBadge = React.forwardRef<HTMLSpanElement, AssessmentOutcomeBadgeProps>(
+  ({ outcome, className, ...props }, ref) => {
+    const key = String(outcome).toLowerCase();
+    const style = assessmentOutcomeStyles[key] || {
+      bg: "bg-slate-500/10",
+      text: "text-slate-400",
+      border: "border-slate-500/20",
+      label: outcome,
+    };
+
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase",
+          style.bg,
+          style.text,
+          style.border,
+          className
+        )}
+        {...props}
+      >
+        <span className={cn("size-1.5 rounded-full", style.bg.replace("/10", "/80"))} />
+        {style.label}
+      </span>
+    );
+  }
+);
+AssessmentOutcomeBadge.displayName = "AssessmentOutcomeBadge";
+
+

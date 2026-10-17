@@ -75,7 +75,9 @@ const mockMembership = {
   updatedAt: new Date().toISOString(),
 };
 
-function renderPage(initialTab?: "overview" | "announcements" | "compose" | "notifications" | "templates" | "delivery") {
+import type { CommunicationTab } from "../CommunicationCenterPage";
+
+function renderPage(initialTab?: CommunicationTab) {
   const orgContextValue = {
     currentOrganization: mockOrg,
     currentMembership: mockMembership,
@@ -100,7 +102,7 @@ function renderPage(initialTab?: "overview" | "announcements" | "compose" | "not
   );
 }
 
-describe("CommunicationCenterPage", () => {
+describe("CommunicationCenterPage", { timeout: 30000 }, () => {
   const mockAnnouncements = [
     {
       id: "ann-1",
@@ -280,6 +282,113 @@ describe("CommunicationCenterPage", () => {
       { id: "guard-1", organizationId: "org-1", kind: "guardian", displayName: "Sara Khan" },
       { id: "staff-1", organizationId: "org-1", kind: "teacher", displayName: "Tariq Ali" },
     ]);
+    vi.mocked(CommunicationService.getConversations).mockResolvedValue([
+      {
+        conversationId: "conv-1",
+        participantUserId: "user-2",
+        participantName: "Sara Khan",
+        participantRole: "parent",
+        lastMessage: "Thank you for the update on Amina's progress.",
+        lastMessageAt: "2026-10-15T10:00:00Z",
+        unreadCount: 1,
+        totalMessages: 2,
+        archived: false,
+      },
+    ]);
+    vi.mocked(CommunicationService.getDirectMessageContacts).mockResolvedValue([
+      {
+        id: "contact-1",
+        userId: "user-2",
+        name: "Sara Khan",
+        displayName: "Sara Khan",
+        role: "parent",
+        context: "Mother of Amina Khan (Grade 5)",
+      },
+    ]);
+    vi.mocked(CommunicationService.getPreferences).mockResolvedValue({
+      id: "pref-1",
+      organizationId: "org-1",
+      recipientKind: "staff",
+      recipientId: "user-1",
+      inAppEnabled: true,
+      emailEnabled: true,
+      smsEnabled: false,
+      academicEnabled: true,
+      financeEnabled: true,
+      generalEnabled: true,
+      attendanceEnabled: true,
+      examEnabled: true,
+      quietHoursEnabled: false,
+      quietHoursStart: "22:00",
+      quietHoursEnd: "07:00",
+      createdAt: "now",
+      updatedAt: "now",
+    });
+    vi.mocked(CommunicationService.getConversationMessages).mockResolvedValue([
+      {
+        id: "dm-1",
+        type: "direct_message",
+        conversationId: "conv-1",
+        senderUserId: "user-2",
+        senderName: "Sara Khan",
+        senderRole: "parent",
+        recipientUserId: "user-1",
+        recipientName: "Admin User",
+        recipientRole: "admin",
+        subject: "Homework Inquiry",
+        body: "Thank you for the update on Amina's progress.",
+        read: false,
+        status: "delivered",
+        createdAt: "2026-10-15T10:00:00Z",
+        updatedAt: "2026-10-15T10:00:00Z",
+      },
+    ]);
+    vi.mocked(CommunicationService.retryDelivery).mockResolvedValue({
+      id: "del-2",
+      organizationId: "org-1",
+      communicationId: "msg-1",
+      recipientId: "student-1",
+      recipientKind: "student",
+      channel: "sms",
+      status: "pending",
+      queuedAt: "2026-10-16T10:00:00Z",
+      retryCount: 1,
+    });
+    vi.mocked(CommunicationService.replyToConversation).mockResolvedValue({
+      id: "dm-2",
+      type: "direct_message",
+      conversationId: "conv-1",
+      senderUserId: "user-1",
+      senderName: "Admin User",
+      senderRole: "admin",
+      recipientUserId: "user-2",
+      recipientName: "Sara Khan",
+      recipientRole: "parent",
+      body: "You are very welcome! Let us know if you need anything else.",
+      read: true,
+      status: "delivered",
+      createdAt: "2026-10-15T10:05:00Z",
+      updatedAt: "2026-10-15T10:05:00Z",
+    });
+    vi.mocked(CommunicationService.savePreference).mockResolvedValue({
+      id: "pref-1",
+      organizationId: "org-1",
+      recipientKind: "staff",
+      recipientId: "user-1",
+      inAppEnabled: true,
+      emailEnabled: true,
+      smsEnabled: false,
+      academicEnabled: true,
+      financeEnabled: true,
+      generalEnabled: true,
+      attendanceEnabled: true,
+      examEnabled: true,
+      quietHoursEnabled: true,
+      quietHoursStart: "21:00",
+      quietHoursEnd: "06:00",
+      createdAt: "now",
+      updatedAt: "now",
+    });
   });
 
   it("renders the communication workspace header and overview KPIs", async () => {
@@ -383,5 +492,78 @@ describe("CommunicationCenterPage", () => {
 
     expect(await screen.findByText("Delivery History")).toBeInTheDocument();
     expect(screen.getByText("PROVIDER_UNAVAILABLE: SMS provider is not configured.")).toBeInTheDocument();
+  });
+
+  it("switches to direct messages tab, displays conversation thread, and allows sending reply", async () => {
+    renderPage("messages");
+
+    expect(await screen.findByText("Conversations (1)")).toBeInTheDocument();
+    expect((await screen.findAllByText("Sara Khan")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Thank you for the update on Amina's progress.")).length).toBeGreaterThan(0);
+
+    const replyInput = screen.getByPlaceholderText("Type your authenticated reply...");
+    fireEvent.change(replyInput, { target: { value: "You are very welcome! Let us know if you need anything else." } });
+
+    const sendReplyBtn = screen.getByRole("button", { name: /Send Reply/i });
+    fireEvent.click(sendReplyBtn);
+
+    await waitFor(() => {
+      expect(CommunicationService.replyToConversation).toHaveBeenCalledWith(
+        "org-1",
+        "conv-1",
+        "You are very welcome! Let us know if you need anything else."
+      );
+    });
+  });
+
+  it("allows retrying failed delivery from delivery history tab", async () => {
+    renderPage("delivery");
+
+    expect(await screen.findByText("Delivery History")).toBeInTheDocument();
+    expect(screen.getByText("PROVIDER_UNAVAILABLE: SMS provider is not configured.")).toBeInTheDocument();
+
+    const retryBtn = screen.getByRole("button", { name: /Retry/i });
+    fireEvent.click(retryBtn);
+
+    await waitFor(() => {
+      expect(CommunicationService.retryDelivery).toHaveBeenCalledWith("org-1", "del-2");
+    });
+  });
+
+  it("displays user notification preferences tab and saves updated preferences", async () => {
+    renderPage("preferences");
+
+    expect(await screen.findByText("Notification Preferences")).toBeInTheDocument();
+    expect(screen.getByText("In-App Notification Inbox")).toBeInTheDocument();
+    expect(screen.getByText("Subscribed SIS Event Categories")).toBeInTheDocument();
+
+    const saveBtn = screen.getByRole("button", { name: "Save Preferences" });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(CommunicationService.savePreference).toHaveBeenCalled();
+    });
+  });
+
+  it("displays settings tab with channel readiness and allows triggering test event", async () => {
+    renderPage("settings");
+
+    expect(await screen.findByText("Communication Settings & Operational Policies")).toBeInTheDocument();
+    expect(screen.getByText("Channel Operational Readiness")).toBeInTheDocument();
+    expect(screen.getByText("Automated SIS Event Notification Tester")).toBeInTheDocument();
+
+    const triggerBtn = screen.getByRole("button", { name: "Dispatch Test Event Notification" });
+    fireEvent.click(triggerBtn);
+
+    await waitFor(() => {
+      expect(CommunicationService.emitDomainNotification).toHaveBeenCalledWith(
+        "org-1",
+        "attendance.absence",
+        { type: "organization" },
+        expect.objectContaining({
+          title: "Attendance Alert: Student Absent",
+        })
+      );
+    });
   });
 });

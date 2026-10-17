@@ -780,12 +780,66 @@ export interface DeliveryAttempt {
   recipientKind: RecipientKind;
   channel: CommunicationChannel;
   status: DeliveryStatus;
+  attemptNumber?: number;
+  providerReference?: string;
+  safeErrorCode?: string;
+  safeErrorMessage?: string;
   queuedAt: string;
   sentAt?: string;
   deliveredAt?: string;
   failedAt?: string;
   errorCategory?: string;
   retryCount: number;
+}
+
+export interface DirectMessageContact {
+  id: string;
+  userId: string;
+  name: string;
+  displayName?: string;
+  role: string;
+  email?: string;
+  subtext?: string;
+  context?: string;
+}
+
+export interface DirectMessageConversation {
+  id?: string;
+  conversationId: string;
+  participantUserId: string;
+  participantName: string;
+  recipientName?: string;
+  participantRole: string;
+  recipientRole?: string;
+  subject?: string;
+  lastMessage: string;
+  lastMessageSnippet?: string;
+  lastMessageAt: string;
+  unreadCount: number;
+  totalMessages: number;
+  archived?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DirectMessageItem {
+  id: string;
+  type: "direct_message";
+  conversationId: string;
+  senderUserId: string;
+  senderName: string;
+  senderRole: string;
+  recipientUserId: string;
+  recipientName: string;
+  recipientRole: string;
+  subject?: string;
+  body: string;
+  attachments?: unknown[];
+  read: boolean;
+  status: string;
+  sentAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface NotificationPreference {
@@ -799,18 +853,53 @@ export interface NotificationPreference {
   academicEnabled: boolean;
   financeEnabled: boolean;
   generalEnabled: boolean;
-  createdAt: string;
-  updatedAt: string;
+  examEnabled?: boolean;
+  attendanceEnabled?: boolean;
+  quietHoursEnabled?: boolean;
+  quietHoursStart?: string;
+  quietHoursEnd?: string;
+  channels?: {
+    in_app: boolean;
+    email: boolean;
+    sms: boolean;
+  };
+  categories?: {
+    attendance: boolean;
+    fees: boolean;
+    examinations: boolean;
+    academics: boolean;
+    announcements: boolean;
+  };
+  quietHours?: {
+    enabled: boolean;
+    start?: string;
+    end?: string;
+  };
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CommunicationSummary {
   totalAnnouncements?: number;
   publishedAnnouncements: number;
   scheduledAnnouncements?: number;
+  draftAnnouncements?: number;
+  totalMessages?: number;
   communicationsSent: number;
+  messagesSentToday?: number;
+  scheduledMessages?: number;
+  draftMessages?: number;
+  deliveredMessages?: number;
   pendingDeliveries: number;
   failedDeliveries: number;
   unreadNotifications: number;
+  channelBreakdown?: {
+    in_app: number;
+    email: number;
+    sms: number;
+  };
+  recentActivity?: DeliveryAttempt[];
+  failedQueue?: DeliveryAttempt[];
 }
 
 // --- PARENT & STUDENT PORTAL ---

@@ -18,7 +18,11 @@ import type {
   CommunicationPriority,
   CommunicationTemplate,
   DeliveryAttempt,
+  DirectMessageContact,
+  DirectMessageConversation,
+  DirectMessageItem,
   Grade,
+  NotificationPreference,
   ResolvedRecipient,
   Section,
   SisNotification,
@@ -36,9 +40,11 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CommunicationChannelBadge,
   CommunicationStatCard,
   DeliveryStatusBadge,
   Input,
+  NotificationCategoryBadge,
   Select,
   Textarea,
 } from "@haza-aios/ui";
@@ -59,17 +65,34 @@ import {
   Layers,
   Mail,
   Megaphone,
+  MessageSquare,
+  Moon,
   PenSquare,
   Plus,
   Radio,
+  RefreshCw,
   Search,
   Send,
+  Settings,
+  ShieldAlert,
+  SlidersHorizontal,
   Trash2,
   Users,
+  Volume2,
   X,
 } from "lucide-react";
 
-export type CommunicationTab = "overview" | "announcements" | "compose" | "notifications" | "templates" | "delivery";
+export type CommunicationTab =
+  | "overview"
+  | "announcements"
+  | "messages"
+  | "bulk"
+  | "compose"
+  | "notifications"
+  | "templates"
+  | "delivery"
+  | "preferences"
+  | "settings";
 
 interface CommunicationCenterPageProps {
   initialTab?: CommunicationTab;
@@ -219,6 +242,39 @@ export function CommunicationCenterPage({ initialTab = "overview" }: Communicati
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>("all");
   const [deliverySearch, setDeliverySearch] = useState("");
 
+  // Direct Messaging State
+  const [conversations, setConversations] = useState<DirectMessageConversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [conversationMessages, setConversationMessages] = useState<DirectMessageItem[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [contacts, setContacts] = useState<DirectMessageContact[]>([]);
+  const [isNewDmModalOpen, setIsNewDmModalOpen] = useState(false);
+  const [newDmRecipientId, setNewDmRecipientId] = useState("");
+  const [newDmSubject, setNewDmSubject] = useState("");
+  const [newDmBody, setNewDmBody] = useState("");
+  const [replyBody, setReplyBody] = useState("");
+  const [messageSearch, setMessageSearch] = useState("");
+
+  // Notification Preferences State
+  const [preferences, setPreferences] = useState<NotificationPreference | null>(null);
+  const [prefForm, setPrefForm] = useState({
+    inAppEnabled: true,
+    emailEnabled: true,
+    smsEnabled: false,
+    attendanceAlerts: true,
+    feeReminders: true,
+    examResults: true,
+    academicNotices: true,
+    generalAnnouncements: true,
+    quietHoursEnabled: false,
+    quietHoursStart: "22:00",
+    quietHoursEnd: "07:00",
+  });
+
+  // Settings & SIS Domain Event Testing State
+  const [testEventType, setTestEventType] = useState<string>("attendance.absence");
+  const [isTriggeringTestEvent, setIsTriggeringTestEvent] = useState(false);
+
   useEffect(() => {
     void loadData();
   }, [currentOrganization]);
@@ -226,6 +282,12 @@ export function CommunicationCenterPage({ initialTab = "overview" }: Communicati
   useEffect(() => {
     void resolveTargetAudience();
   }, [currentOrganization, audience]);
+
+  useEffect(() => {
+    if (activeConversationId && currentOrganization) {
+      void loadConversationMessages(activeConversationId);
+    }
+  }, [activeConversationId, currentOrganization]);
 
   async function loadData() {
     if (!currentOrganization) return;
@@ -245,6 +307,9 @@ export function CommunicationCenterPage({ initialTab = "overview" }: Communicati
         templateData,
         deliveryData,
         summaryData,
+        conversationData,
+        contactData,
+        preferenceData,
       ] = await Promise.all([
         AcademicService.getAcademicYears(orgId).catch(() => []),
         AcademicService.getGrades(orgId).catch(() => []),
@@ -265,40 +330,265 @@ export function CommunicationCenterPage({ initialTab = "overview" }: Communicati
           failedDeliveries: 0,
           unreadNotifications: 0,
         })),
+        CommunicationService.getConversations(orgId).catch(() => []),
+        CommunicationService.getDirectMessageContacts(orgId).catch(() => []),
+        CommunicationService.getPreferences(orgId).catch(() => null),
       ]);
 
-      setAcademicYears(yearsData);
-      setGrades(gradesData);
-      setSections(sectionsData);
-      setStudents(studentsData);
-      setStaff(staffData);
-      setAnnouncements(announcementData);
-      setCommunications(communicationData);
-      setNotifications(notificationData);
-      setTemplates(templateData);
-      setDeliveries(deliveryData);
+      const safeYears = yearsData || [];
+      const safeGrades = gradesData || [];
+      const safeSections = sectionsData || [];
+      const safeStudents = studentsData || [];
+      const safeStaff = staffData || [];
+      const safeAnnouncements = announcementData || [];
+      const safeComms = communicationData || [];
+      const safeNotifs = notificationData || [];
+      const safeTemplates = templateData || [];
+      const safeDeliveries = deliveryData || [];
+      const safeConvs = conversationData || [];
+      const safeContacts = contactData || [];
+
+      setAcademicYears(safeYears);
+      setGrades(safeGrades);
+      setSections(safeSections);
+      setStudents(safeStudents);
+      setStaff(safeStaff);
+      setAnnouncements(safeAnnouncements);
+      setCommunications(safeComms);
+      setNotifications(safeNotifs);
+      setTemplates(safeTemplates);
+      setDeliveries(safeDeliveries);
+      setConversations(safeConvs);
+      setContacts(safeContacts);
+
+      if (safeConvs.length > 0 && !activeConversationId) {
+        setActiveConversationId(safeConvs[0].conversationId || safeConvs[0].id || null);
+      }
+      if (preferenceData) {
+        setPreferences(preferenceData);
+        setPrefForm({
+          inAppEnabled: preferenceData.channels?.in_app ?? preferenceData.inAppEnabled ?? true,
+          emailEnabled: preferenceData.channels?.email ?? preferenceData.emailEnabled ?? true,
+          smsEnabled: preferenceData.channels?.sms ?? preferenceData.smsEnabled ?? false,
+          attendanceAlerts: preferenceData.categories?.attendance ?? preferenceData.attendanceEnabled ?? true,
+          feeReminders: preferenceData.categories?.fees ?? preferenceData.financeEnabled ?? true,
+          examResults: preferenceData.categories?.examinations ?? preferenceData.examEnabled ?? true,
+          academicNotices: preferenceData.categories?.academics ?? preferenceData.academicEnabled ?? true,
+          generalAnnouncements: preferenceData.categories?.announcements ?? preferenceData.generalEnabled ?? true,
+          quietHoursEnabled: preferenceData.quietHours?.enabled ?? preferenceData.quietHoursEnabled ?? false,
+          quietHoursStart: preferenceData.quietHours?.start ?? preferenceData.quietHoursStart ?? "22:00",
+          quietHoursEnd: preferenceData.quietHours?.end ?? preferenceData.quietHoursEnd ?? "07:00",
+        });
+      }
 
       setSummary({
-        totalAnnouncements: summaryData.totalAnnouncements ?? announcementData.length,
-        publishedAnnouncements: summaryData.publishedAnnouncements ?? announcementData.filter((a) => a.status === "published").length,
-        scheduledAnnouncements: summaryData.scheduledAnnouncements ?? announcementData.filter((a) => a.status === "scheduled").length,
-        communicationsSent: summaryData.communicationsSent ?? communicationData.filter((c) => c.status === "sent").length,
-        pendingDeliveries: summaryData.pendingDeliveries ?? deliveryData.filter((d) => d.status === "pending" || d.status === "queued").length,
-        failedDeliveries: summaryData.failedDeliveries ?? deliveryData.filter((d) => d.status === "failed").length,
-        unreadNotifications: summaryData.unreadNotifications ?? notificationData.filter((n) => !n.isRead).length,
+        totalAnnouncements: summaryData?.totalAnnouncements ?? safeAnnouncements.length,
+        publishedAnnouncements: summaryData?.publishedAnnouncements ?? safeAnnouncements.filter((a) => a.status === "published").length,
+        scheduledAnnouncements: summaryData?.scheduledAnnouncements ?? safeAnnouncements.filter((a) => a.status === "scheduled").length,
+        communicationsSent: summaryData?.communicationsSent ?? safeComms.filter((c) => c.status === "sent").length,
+        pendingDeliveries: summaryData?.pendingDeliveries ?? safeDeliveries.filter((d) => d.status === "pending" || d.status === "queued").length,
+        failedDeliveries: summaryData?.failedDeliveries ?? safeDeliveries.filter((d) => d.status === "failed").length,
+        unreadNotifications: summaryData?.unreadNotifications ?? safeNotifs.filter((n) => !n.isRead).length,
       });
 
-      const activeYear = yearsData.find((year) => year.status === "active") || yearsData[0];
+      const activeYear = safeYears.find((year) => year.status === "active") || safeYears[0];
       setAudience((current) => ({
         ...current,
         academicYear: current.academicYear || activeYear?.name,
-        gradeId: current.gradeId || gradesData[0]?.id,
-        sectionId: current.sectionId || sectionsData[0]?.id,
+        gradeId: current.gradeId || safeGrades[0]?.id,
+        sectionId: current.sectionId || safeSections[0]?.id,
       }));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to load communication workspace.");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function loadConversationMessages(convId: string) {
+    if (!currentOrganization) return;
+    setIsLoadingMessages(true);
+    try {
+      const msgs = await CommunicationService.getConversationMessages(currentOrganization.id, convId);
+      setConversationMessages(msgs);
+    } catch {
+      setConversationMessages([]);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }
+
+  // --- DIRECT MESSAGING HANDLERS ---
+  async function handleSendNewDirectMessage() {
+    if (!currentOrganization) return;
+    if (!newDmRecipientId || !newDmBody.trim()) {
+      setActionError("Please select a recipient and enter a message.");
+      return;
+    }
+    setIsSubmitting(true);
+    setActionError(null);
+    try {
+      const selectedContact = contacts.find((c) => c.userId === newDmRecipientId);
+      await CommunicationService.sendDirectMessage(currentOrganization.id, {
+        recipientUserId: newDmRecipientId,
+        subject: newDmSubject.trim() || undefined,
+        body: newDmBody.trim(),
+      });
+      setActionSuccess(`Message sent to ${selectedContact?.displayName || "recipient"}.`);
+      setIsNewDmModalOpen(false);
+      setNewDmRecipientId("");
+      setNewDmSubject("");
+      setNewDmBody("");
+      const updatedConvs = await CommunicationService.getConversations(currentOrganization.id);
+      setConversations(updatedConvs);
+      if (updatedConvs[0]) {
+        setActiveConversationId(updatedConvs[0].conversationId || updatedConvs[0].id || null);
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to send message.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleSendReply() {
+    if (!currentOrganization || !activeConversationId) return;
+    if (!replyBody.trim()) return;
+    setIsSubmitting(true);
+    setActionError(null);
+    try {
+      const sentMsg = await CommunicationService.replyToConversation(currentOrganization.id, activeConversationId, replyBody.trim());
+      setConversationMessages((prev) => [...prev, sentMsg]);
+      setReplyBody("");
+      setActionSuccess("Reply sent.");
+      const updatedConvs = await CommunicationService.getConversations(currentOrganization.id);
+      setConversations(updatedConvs);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to send reply.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleArchiveConversation(convId: string) {
+    if (!currentOrganization) return;
+    try {
+      await CommunicationService.archiveConversation(currentOrganization.id, convId);
+      setActionSuccess("Conversation archived.");
+      const updatedConvs = await CommunicationService.getConversations(currentOrganization.id);
+      setConversations(updatedConvs);
+      if (activeConversationId === convId) {
+        setActiveConversationId(updatedConvs[0]?.id || null);
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to archive conversation.");
+    }
+  }
+
+  // --- DELIVERY RETRY HANDLER ---
+  async function handleRetryDelivery(deliveryId: string) {
+    if (!currentOrganization) return;
+    setIsSubmitting(true);
+    setActionError(null);
+    try {
+      const retried = await CommunicationService.retryDelivery(currentOrganization.id, deliveryId);
+      setActionSuccess(`Delivery retry initiated. Current status: ${retried.status}.`);
+      const updatedDeliveries = await CommunicationService.getDeliveryHistory(currentOrganization.id);
+      setDeliveries(updatedDeliveries);
+      const updatedSummary = await CommunicationService.getSummary(currentOrganization.id);
+      setSummary((prev) => ({
+        ...prev,
+        failedDeliveries: updatedSummary.failedDeliveries,
+        pendingDeliveries: updatedSummary.pendingDeliveries,
+      }));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to retry delivery.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  // --- PREFERENCES HANDLER ---
+  async function handleSavePreferences() {
+    if (!currentOrganization) return;
+    setIsSubmitting(true);
+    setActionError(null);
+    try {
+      const updated = await CommunicationService.savePreference(currentOrganization.id, {
+        channels: {
+          in_app: prefForm.inAppEnabled,
+          email: prefForm.emailEnabled,
+          sms: prefForm.smsEnabled,
+        },
+        categories: {
+          attendance: prefForm.attendanceAlerts,
+          fees: prefForm.feeReminders,
+          examinations: prefForm.examResults,
+          academics: prefForm.academicNotices,
+          announcements: prefForm.generalAnnouncements,
+        },
+        quietHours: {
+          enabled: prefForm.quietHoursEnabled,
+          start: prefForm.quietHoursStart,
+          end: prefForm.quietHoursEnd,
+        },
+      });
+      setPreferences(updated);
+      setActionSuccess("Notification preferences saved successfully.");
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to save preferences.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  // --- SETTINGS / TEST EVENT HANDLER ---
+  async function handleTriggerTestEvent() {
+    if (!currentOrganization) return;
+    setIsTriggeringTestEvent(true);
+    setActionError(null);
+    try {
+      let eventTitle = "Automated SIS Notice";
+      let eventMsg = "Automated event generated by SIS workflow.";
+      let eventCat = "general";
+      let actionRoute = "/workspace/education";
+
+      if (testEventType === "attendance.absence") {
+        eventTitle = "Attendance Alert: Student Absent";
+        eventMsg = "Student Amina Khan was marked absent during morning roll call.";
+        eventCat = "attendance";
+        actionRoute = "/workspace/education/attendance";
+      } else if (testEventType === "fee.invoice_issued") {
+        eventTitle = "Fee Invoice Issued";
+        eventMsg = "Term 1 Tuition Invoice #INV-2026-004 has been posted and is ready for payment.";
+        eventCat = "fees";
+        actionRoute = "/workspace/education/finance";
+      } else if (testEventType === "exam.results_published") {
+        eventTitle = "Examination Results Published";
+        eventMsg = "Mid-Term Examination results have been certified and published.";
+        eventCat = "examinations";
+        actionRoute = "/workspace/education/examinations";
+      }
+
+      await CommunicationService.emitDomainNotification(
+        currentOrganization.id,
+        testEventType,
+        { type: "organization" },
+        {
+          title: eventTitle,
+          message: eventMsg,
+          priority: "important",
+          relatedResourceType: eventCat,
+          actionPath: actionRoute,
+        }
+      );
+
+      setActionSuccess(`Test domain event [${testEventType}] dispatched. In-app notifications generated.`);
+      await loadData();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to dispatch test domain notification.");
+    } finally {
+      setIsTriggeringTestEvent(false);
     }
   }
 
@@ -800,18 +1090,24 @@ export function CommunicationCenterPage({ initialTab = "overview" }: Communicati
 
         {/* Navigation Tabs */}
         <div className="flex border-b border-white/5 pb-2 overflow-x-auto gap-2">
-          {(
-            [
-              { id: "overview", label: "Overview", icon: Layers },
-              { id: "announcements", label: "Announcements", icon: Megaphone, count: announcements.length },
-              { id: "compose", label: "Targeted Messaging", icon: PenSquare },
-              { id: "notifications", label: "Notification Inbox", icon: Inbox, count: summary.unreadNotifications },
-              { id: "templates", label: "Templates", icon: Clock, count: templates.length },
-              { id: "delivery", label: "Delivery History", icon: Mail, count: deliveries.length },
-            ] as const
-          ).map((tab) => {
+          {[
+            { id: "overview", label: "Overview", icon: Layers },
+            { id: "announcements", label: "Announcements", icon: Megaphone, count: announcements.length },
+            {
+              id: "messages",
+              label: "Direct Messages",
+              icon: MessageSquare,
+              count: conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0),
+            },
+            { id: "bulk", label: "Bulk Messaging", icon: PenSquare },
+            { id: "notifications", label: "Notification Inbox", icon: Inbox, count: summary.unreadNotifications },
+            { id: "templates", label: "Templates", icon: Clock, count: templates.length },
+            { id: "delivery", label: "Delivery History", icon: Mail, count: deliveries.length },
+            { id: "preferences", label: "Preferences", icon: SlidersHorizontal },
+            { id: "settings", label: "Settings", icon: Settings },
+          ].map((tab) => {
             const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+            const isActive = tab.id === "bulk" ? activeTab === "bulk" || activeTab === "compose" : activeTab === tab.id;
             return (
               <button
                 key={tab.id}
@@ -827,7 +1123,8 @@ export function CommunicationCenterPage({ initialTab = "overview" }: Communicati
                 {"count" in tab && typeof tab.count === "number" && tab.count > 0 && (
                   <span
                     className={`ml-1 text-xs px-2 py-0.5 rounded-full ${
-                      tab.id === "notifications" && summary.unreadNotifications > 0
+                      (tab.id === "notifications" && summary.unreadNotifications > 0) ||
+                      (tab.id === "messages" && (tab.count || 0) > 0)
                         ? "bg-amber-500/20 text-amber-300 font-bold"
                         : "bg-slate-800 text-slate-300"
                     }`}
@@ -1008,6 +1305,56 @@ export function CommunicationCenterPage({ initialTab = "overview" }: Communicati
                     </CardContent>
                   </Card>
                 </div>
+
+                {/* Failed Delivery Queue & Fast Recovery */}
+                {deliveries.some((d) => d.status === "failed") && (
+                  <Card className="bg-[#0f141f] border-red-500/20">
+                    <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-red-500/10">
+                      <CardTitle className="text-sm font-semibold text-red-300 flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-red-400" />
+                        Failed Delivery Queue & Fast Recovery
+                      </CardTitle>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setActiveTab("delivery")}
+                        className="text-xs text-red-400 hover:text-red-300 p-0 h-auto"
+                      >
+                        All failed records ({deliveries.filter((d) => d.status === "failed").length}) →
+                      </Button>
+                    </CardHeader>
+                    <CardContent className="pt-3 divide-y divide-white/5">
+                      {deliveries
+                        .filter((d) => d.status === "failed")
+                        .slice(0, 3)
+                        .map((failItem) => (
+                          <div key={failItem.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                            <div className="space-y-0.5 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono uppercase font-semibold text-white px-1.5 py-0.2 rounded bg-slate-800 text-[10px]">
+                                  {failItem.channel}
+                                </span>
+                                <span className="text-slate-300 font-mono">{failItem.recipientId}</span>
+                              </div>
+                              <p className="text-red-400 truncate text-[11px]">
+                                {failItem.errorCategory || "Provider delivery failed"}
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleRetryDelivery(failItem.id)}
+                              disabled={isSubmitting}
+                              className="h-7 text-xs border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-medium shrink-0"
+                            >
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              Retry
+                            </Button>
+                          </div>
+                        ))}
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             )}
 
@@ -1240,8 +1587,267 @@ export function CommunicationCenterPage({ initialTab = "overview" }: Communicati
               </div>
             )}
 
-            {/* ==================== TAB 3: TARGETED MESSAGING COMPOSER ==================== */}
-            {activeTab === "compose" && (
+            {/* ==================== TAB 3: DIRECT MESSAGING ==================== */}
+            {activeTab === "messages" && (
+              <div className="space-y-4">
+                {/* Top action bar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <Input
+                      placeholder="Search conversations by subject or recipient..."
+                      value={messageSearch}
+                      onChange={(e) => setMessageSearch(e.target.value)}
+                      className="pl-9 bg-slate-900 border-white/10 text-white"
+                    />
+                  </div>
+                  <Button
+                    onClick={() => {
+                      setIsNewDmModalOpen(true);
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white shrink-0"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    New Message
+                  </Button>
+                </div>
+
+                <div className="grid gap-6 lg:grid-cols-3 min-h-[500px]">
+                  {/* Left Column: Conversation List */}
+                  <Card className="bg-[#0f141f] border-white/5 lg:col-span-1 flex flex-col">
+                    <CardHeader className="py-3 px-4 border-b border-white/5">
+                      <CardTitle className="text-sm font-semibold text-white flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-emerald-400" />
+                          Conversations ({conversations.length})
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => void loadData()}
+                          className="h-6 w-6 p-0 text-slate-400 hover:text-white"
+                          title="Refresh conversations"
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                        </Button>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0 flex-1 overflow-y-auto divide-y divide-white/5 max-h-[580px]">
+                      {conversations.length === 0 ? (
+                        <div className="p-8 text-center text-slate-500 space-y-2">
+                          <MessageSquare className="h-8 w-8 mx-auto text-slate-600" />
+                          <p className="text-sm font-medium text-slate-400">No conversations</p>
+                          <p className="text-xs text-slate-500">
+                            Start a direct message with linked parents, teachers, or staff.
+                          </p>
+                        </div>
+                      ) : (
+                        conversations
+                          .filter((c) => {
+                            if (!messageSearch.trim()) return true;
+                            const q = messageSearch.toLowerCase();
+                            const sub = (c.subject || c.participantName || "").toLowerCase();
+                            const rec = (c.recipientName || c.participantName || "").toLowerCase();
+                            const snip = (c.lastMessageSnippet || c.lastMessage || "").toLowerCase();
+                            return sub.includes(q) || rec.includes(q) || snip.includes(q);
+                          })
+                          .map((conv) => {
+                            const convKey = conv.conversationId || conv.id || "";
+                            const isSelected = convKey === activeConversationId;
+                            const partName = conv.recipientName || conv.participantName || "Conversation";
+                            const partRole = conv.recipientRole || conv.participantRole;
+                            const msgSnippet = conv.lastMessageSnippet || conv.lastMessage || "No messages yet";
+                            const msgDate = (conv.lastMessageAt || conv.updatedAt || conv.createdAt || "").split("T")[0];
+
+                            return (
+                              <div
+                                key={convKey}
+                                onClick={() => setActiveConversationId(convKey)}
+                                className={`p-4 cursor-pointer transition-colors relative ${
+                                  isSelected
+                                    ? "bg-slate-800/80 border-l-2 border-emerald-400"
+                                    : "hover:bg-slate-800/40"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1 space-y-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-semibold text-sm text-white truncate">
+                                        {partName}
+                                      </span>
+                                      {partRole && (
+                                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-white/10 uppercase font-mono">
+                                          {partRole}
+                                        </span>
+                                      )}
+                                      {conv.unreadCount > 0 && (
+                                        <span className="bg-emerald-500 text-black text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                                          {conv.unreadCount} new
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-slate-300 font-medium truncate">
+                                      {conv.subject || "Direct Message"}
+                                    </p>
+                                    <p className="text-xs text-slate-400 line-clamp-1">
+                                      {msgSnippet}
+                                    </p>
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1 shrink-0">
+                                    <span className="text-[10px] text-slate-500">
+                                      {msgDate}
+                                    </span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        void handleArchiveConversation(convKey);
+                                      }}
+                                      className="h-6 w-6 p-0 text-slate-500 hover:text-slate-300"
+                                      title="Archive conversation"
+                                    >
+                                      <Archive className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Right Column: Active Thread & Reply Box */}
+                  <Card className="bg-[#0f141f] border-white/5 lg:col-span-2 flex flex-col">
+                    {activeConversationId ? (
+                      (() => {
+                        const activeConv = conversations.find((c) => (c.conversationId || c.id) === activeConversationId);
+                        const activeName = activeConv?.recipientName || activeConv?.participantName || "Conversation Thread";
+                        const activeRole = activeConv?.recipientRole || activeConv?.participantRole;
+                        const activeSubject = activeConv?.subject || "General inquiry";
+                        return (
+                          <>
+                            {/* Thread Header */}
+                            <CardHeader className="py-3 px-5 border-b border-white/5 flex flex-row items-center justify-between">
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <h3 className="font-semibold text-white text-base">
+                                    {activeName}
+                                  </h3>
+                                  {activeRole && (
+                                    <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-emerald-400 border border-emerald-500/20 font-mono">
+                                      {activeRole}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-slate-400">
+                                  Subject: <span className="text-slate-200">{activeSubject}</span>
+                                </p>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void handleArchiveConversation(activeConversationId)}
+                                className="border-white/10 text-slate-400 hover:text-white h-7 text-xs"
+                              >
+                                <Archive className="h-3.5 w-3.5 mr-1" />
+                                Archive
+                              </Button>
+                            </CardHeader>
+
+                            {/* Thread Messages */}
+                            <CardContent className="p-4 flex-1 overflow-y-auto space-y-3 max-h-[420px] min-h-[300px]">
+                              {isLoadingMessages ? (
+                                <div className="py-12 text-center text-slate-500 text-xs">
+                                  <div className="animate-spin size-5 border-2 border-emerald-500 border-t-transparent rounded-full mx-auto mb-2" />
+                                  Loading messages...
+                                </div>
+                              ) : conversationMessages.length === 0 ? (
+                                <div className="py-12 text-center text-slate-500 text-xs">
+                                  No messages in this conversation.
+                                </div>
+                              ) : (
+                                conversationMessages.map((msg) => {
+                                  const isMe =
+                                    msg.senderUserId === "user-1" ||
+                                    msg.senderUserId === "system" ||
+                                    msg.senderRole === "admin";
+                                  const msgDate = (msg.sentAt || msg.createdAt || "").split("T")[0];
+                                  return (
+                                    <div
+                                      key={msg.id}
+                                      className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
+                                    >
+                                      <div className="flex items-center gap-2 pb-1 text-[11px] text-slate-400">
+                                        <span className="font-medium text-slate-300">
+                                          {isMe ? "You" : msg.senderName || msg.senderRole || "Participant"}
+                                        </span>
+                                        <span>•</span>
+                                        <span>{msgDate}</span>
+                                      </div>
+                                      <div
+                                        className={`rounded-2xl px-4 py-2.5 max-w-lg text-sm leading-relaxed whitespace-pre-wrap ${
+                                          isMe
+                                            ? "bg-emerald-600 text-white rounded-tr-none"
+                                            : "bg-slate-800 text-slate-200 rounded-tl-none border border-white/5"
+                                        }`}
+                                      >
+                                        {msg.body}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </CardContent>
+
+                            {/* Reply Input Bar */}
+                            <div className="p-4 border-t border-white/5 bg-slate-900/40 rounded-b-xl space-y-3">
+                              <Textarea
+                                placeholder="Type your authenticated reply..."
+                                value={replyBody}
+                                onChange={(e) => setReplyBody(e.target.value)}
+                                className="min-h-20 bg-slate-950 border-white/10 text-white text-sm"
+                              />
+                              <div className="flex justify-between items-center">
+                                <span className="text-[11px] text-slate-500">
+                                  Messages are scoped and logged to school audit history.
+                                </span>
+                                <Button
+                                  onClick={handleSendReply}
+                                  disabled={isSubmitting || !replyBody.trim()}
+                                  className="bg-emerald-600 hover:bg-emerald-500 text-white h-8 px-4 text-xs font-medium"
+                                >
+                                  {isSubmitting ? (
+                                    "Sending..."
+                                  ) : (
+                                    <>
+                                      <Send className="mr-1.5 h-3.5 w-3.5" />
+                                      Send Reply
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()
+                    ) : (
+                      <div className="p-16 text-center text-slate-500 space-y-2 m-auto">
+                        <Inbox className="h-10 w-10 mx-auto text-slate-600" />
+                        <h4 className="text-base font-medium text-slate-300">No conversation selected</h4>
+                        <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                          Choose a thread from the conversation list on the left, or compose a new direct message.
+                        </p>
+                      </div>
+                    )}
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {/* ==================== TAB 4: BULK & TARGETED MESSAGING COMPOSER ==================== */}
+            {(activeTab === "compose" || activeTab === "bulk") && (
               <div className="grid gap-6 lg:grid-cols-3">
                 {/* Message Composition Form */}
                 <div className="lg:col-span-2 space-y-4">
@@ -1842,6 +2448,7 @@ export function CommunicationCenterPage({ initialTab = "overview" }: Communicati
                               <th className="px-4 py-3.5 font-semibold">Status</th>
                               <th className="px-4 py-3.5 font-semibold">Dispatched Date</th>
                               <th className="px-6 py-3.5 font-semibold">Provider / Failure Detail</th>
+                              <th className="px-6 py-3.5 font-semibold text-right">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-white/5">
@@ -1873,12 +2480,355 @@ export function CommunicationCenterPage({ initialTab = "overview" }: Communicati
                                     <span className="text-emerald-400">In-app inbox delivered</span>
                                   )}
                                 </td>
+                                <td className="px-6 py-4 text-right">
+                                  {item.status === "failed" ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleRetryDelivery(item.id)}
+                                      disabled={isSubmitting}
+                                      className="h-7 text-xs border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-medium"
+                                    >
+                                      <RefreshCw className="h-3 w-3 mr-1" />
+                                      Retry
+                                    </Button>
+                                  ) : (
+                                    <span className="text-xs text-slate-500">—</span>
+                                  )}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
                     )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* ==================== TAB 8: USER NOTIFICATION PREFERENCES ==================== */}
+            {activeTab === "preferences" && (
+              <div className="space-y-6 max-w-4xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Notification Preferences</h3>
+                    <p className="text-xs text-slate-400">
+                      Configure delivery channels, quiet hours, and subscribed notification categories.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleSavePreferences}
+                    disabled={isSubmitting}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
+                  >
+                    {isSubmitting ? "Saving..." : "Save Preferences"}
+                  </Button>
+                </div>
+
+                {/* Delivery Channels Configuration */}
+                <Card className="bg-[#0f141f] border-white/5">
+                  <CardHeader className="pb-3 border-b border-white/5">
+                    <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+                      <Radio className="h-4 w-4 text-emerald-400" />
+                      Delivery Channels
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-3">
+                    <label className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-slate-900/60 cursor-pointer">
+                      <div>
+                        <div className="text-sm font-medium text-white flex items-center gap-2">
+                          <Inbox className="h-4 w-4 text-emerald-400" />
+                          In-App Notification Inbox
+                        </div>
+                        <p className="text-xs text-slate-400">Receive persistent alerts within the web portal header badge and inbox.</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={prefForm.inAppEnabled}
+                        onChange={(e) => setPrefForm({ ...prefForm, inAppEnabled: e.target.checked })}
+                        className="rounded border-white/20 bg-slate-800 text-emerald-500 focus:ring-emerald-500 h-4 w-4"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-slate-900/60 cursor-pointer">
+                      <div>
+                        <div className="text-sm font-medium text-white flex items-center gap-2">
+                          <Mail className="h-4 w-4 text-blue-400" />
+                          Email Delivery
+                        </div>
+                        <p className="text-xs text-slate-400">Receive important announcements and fee statements via registered email address.</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={prefForm.emailEnabled}
+                        onChange={(e) => setPrefForm({ ...prefForm, emailEnabled: e.target.checked })}
+                        className="rounded border-white/20 bg-slate-800 text-blue-500 focus:ring-blue-500 h-4 w-4"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-slate-900/40 opacity-60 cursor-not-allowed">
+                      <div>
+                        <div className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-slate-500" />
+                          SMS Text Alerts
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">Disabled</span>
+                        </div>
+                        <p className="text-xs text-slate-500">Requires configured SMS gateway provider.</p>
+                      </div>
+                      <input type="checkbox" disabled checked={false} className="rounded border-white/10 bg-slate-800 h-4 w-4" />
+                    </label>
+                  </CardContent>
+                </Card>
+
+                {/* Categories */}
+                <Card className="bg-[#0f141f] border-white/5">
+                  <CardHeader className="pb-3 border-b border-white/5">
+                    <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+                      <SlidersHorizontal className="h-4 w-4 text-purple-400" />
+                      Subscribed SIS Event Categories
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-3">
+                    <label className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-slate-900/60 cursor-pointer">
+                      <div>
+                        <span className="text-sm font-medium text-white">Attendance Alerts</span>
+                        <p className="text-xs text-slate-400">Immediate notices when a student is recorded absent or late.</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={prefForm.attendanceAlerts}
+                        onChange={(e) => setPrefForm({ ...prefForm, attendanceAlerts: e.target.checked })}
+                        className="rounded border-white/20 bg-slate-800 text-emerald-500 focus:ring-emerald-500 h-4 w-4"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-slate-900/60 cursor-pointer">
+                      <div>
+                        <span className="text-sm font-medium text-white">Fees & Billing Reminders</span>
+                        <p className="text-xs text-slate-400">Invoice issuance, payment confirmation receipts, and upcoming due dates.</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={prefForm.feeReminders}
+                        onChange={(e) => setPrefForm({ ...prefForm, feeReminders: e.target.checked })}
+                        className="rounded border-white/20 bg-slate-800 text-emerald-500 focus:ring-emerald-500 h-4 w-4"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-slate-900/60 cursor-pointer">
+                      <div>
+                        <span className="text-sm font-medium text-white">Examinations & Results</span>
+                        <p className="text-xs text-slate-400">Exam schedules, certified grade reports, and academic result publications.</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={prefForm.examResults}
+                        onChange={(e) => setPrefForm({ ...prefForm, examResults: e.target.checked })}
+                        className="rounded border-white/20 bg-slate-800 text-emerald-500 focus:ring-emerald-500 h-4 w-4"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-slate-900/60 cursor-pointer">
+                      <div>
+                        <span className="text-sm font-medium text-white">Academic Notices</span>
+                        <p className="text-xs text-slate-400">Timetable shifts, room assignments, and course updates.</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={prefForm.academicNotices}
+                        onChange={(e) => setPrefForm({ ...prefForm, academicNotices: e.target.checked })}
+                        className="rounded border-white/20 bg-slate-800 text-emerald-500 focus:ring-emerald-500 h-4 w-4"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-slate-900/60 cursor-pointer">
+                      <div>
+                        <span className="text-sm font-medium text-white">General Announcements</span>
+                        <p className="text-xs text-slate-400">Campus circulars, school event invitations, and general parent notices.</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={prefForm.generalAnnouncements}
+                        onChange={(e) => setPrefForm({ ...prefForm, generalAnnouncements: e.target.checked })}
+                        className="rounded border-white/20 bg-slate-800 text-emerald-500 focus:ring-emerald-500 h-4 w-4"
+                      />
+                    </label>
+                  </CardContent>
+                </Card>
+
+                {/* Quiet Hours */}
+                <Card className="bg-[#0f141f] border-white/5">
+                  <CardHeader className="pb-3 border-b border-white/5">
+                    <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+                      <Moon className="h-4 w-4 text-amber-400" />
+                      Quiet Hours Policy
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-4">
+                    <label className="flex items-center justify-between p-3 rounded-xl border border-white/5 bg-slate-900/60 cursor-pointer">
+                      <div>
+                        <span className="text-sm font-medium text-white">Enable Quiet Hours</span>
+                        <p className="text-xs text-slate-400">Suppress non-urgent notifications during nighttime hours.</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={prefForm.quietHoursEnabled}
+                        onChange={(e) => setPrefForm({ ...prefForm, quietHoursEnabled: e.target.checked })}
+                        className="rounded border-white/20 bg-slate-800 text-emerald-500 focus:ring-emerald-500 h-4 w-4"
+                      />
+                    </label>
+
+                    {prefForm.quietHoursEnabled && (
+                      <div className="grid gap-3 sm:grid-cols-2 p-3 rounded-xl border border-white/5 bg-slate-900/40">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-slate-300">Quiet Period Start</label>
+                          <Input
+                            type="time"
+                            value={prefForm.quietHoursStart}
+                            onChange={(e) => setPrefForm({ ...prefForm, quietHoursStart: e.target.value })}
+                            className="bg-slate-950 border-white/10 text-white text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-slate-300">Quiet Period End</label>
+                          <Input
+                            type="time"
+                            value={prefForm.quietHoursEnd}
+                            onChange={(e) => setPrefForm({ ...prefForm, quietHoursEnd: e.target.value })}
+                            className="bg-slate-950 border-white/10 text-white text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">
+                      <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>Emergency Override:</strong> Severe weather school closures, critical safety alerts, and official campus emergencies bypass quiet hours automatically.
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* ==================== TAB 9: SETTINGS & GOVERNANCE ==================== */}
+            {activeTab === "settings" && (
+              <div className="space-y-6 max-w-4xl">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Communication Settings & Operational Policies</h3>
+                  <p className="text-xs text-slate-400">
+                    Delivery infrastructure health, rate limiting policies, and automated event trigger testing.
+                  </p>
+                </div>
+
+                {/* Infrastructure readiness */}
+                <Card className="bg-[#0f141f] border-white/5">
+                  <CardHeader className="pb-3 border-b border-white/5">
+                    <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+                      <Radio className="h-4 w-4 text-emerald-400" />
+                      Channel Operational Readiness
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4 divide-y divide-white/5">
+                    <div className="py-3 flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium text-white flex items-center gap-2">
+                          <Inbox className="h-4 w-4 text-emerald-400" />
+                          In-App Notification Center
+                        </div>
+                        <p className="text-xs text-slate-400">Database-backed persistent in-app delivery with real-time badges.</p>
+                      </div>
+                      <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold border border-emerald-500/30">
+                        Operational
+                      </span>
+                    </div>
+
+                    <div className="py-3 flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium text-white flex items-center gap-2">
+                          <Mail className="h-4 w-4 text-blue-400" />
+                          Email Delivery Transport
+                        </div>
+                        <p className="text-xs text-slate-400">Active mock transport in non-production. Zero risk of test leakage.</p>
+                      </div>
+                      <span className="text-xs px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 font-semibold border border-blue-500/30">
+                        Staging Mock Active
+                      </span>
+                    </div>
+
+                    <div className="py-3 flex items-center justify-between opacity-60">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                          <MessageSquare className="h-4 w-4 text-slate-500" />
+                          SMS Text Provider
+                        </div>
+                        <p className="text-xs text-slate-500">Unconfigured per security baseline. No unverified third-party keys.</p>
+                      </div>
+                      <span className="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 font-medium border border-white/10">
+                        Unconfigured
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Delivery Governance */}
+                <Card className="bg-[#0f141f] border-white/5">
+                  <CardHeader className="pb-3 border-b border-white/5">
+                    <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+                      <ShieldAlert className="h-4 w-4 text-purple-400" />
+                      Delivery Controls & Anti-Spam Safeguards
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-3 text-xs text-slate-300">
+                    <div className="flex justify-between items-center p-3 rounded-xl border border-white/5 bg-slate-900/60">
+                      <span>Campaign Batch Rate Limit</span>
+                      <span className="font-mono text-emerald-400 font-semibold">500 recipients / batch</span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 rounded-xl border border-white/5 bg-slate-900/60">
+                      <span>Deduplication Window</span>
+                      <span className="font-mono text-emerald-400 font-semibold">10 minutes (Idempotency Key)</span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 rounded-xl border border-white/5 bg-slate-900/60">
+                      <span>Access Isolation Scope</span>
+                      <span className="font-mono text-emerald-400 font-semibold">Tenant + Campus + Linked Record</span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Automated SIS Domain Event Tester */}
+                <Card className="bg-[#0f141f] border-white/5">
+                  <CardHeader className="pb-3 border-b border-white/5">
+                    <CardTitle className="text-sm font-semibold text-white flex items-center gap-2">
+                      <RefreshCw className="h-4 w-4 text-emerald-400" />
+                      Automated SIS Event Notification Tester
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-4">
+                    <p className="text-xs text-slate-400">
+                      Simulate domain event publication to test automatic in-app notification routing and delivery history generation.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                      <Select
+                        value={testEventType}
+                        onChange={(e) => setTestEventType(e.target.value)}
+                        className="bg-slate-900 border-white/10 text-white text-xs flex-1"
+                      >
+                        <option value="attendance.absence">Attendance: Student Marked Absent</option>
+                        <option value="fee.invoice_issued">Fees & Billing: Invoice Issued</option>
+                        <option value="exam.results_published">Examinations: Results Published</option>
+                      </Select>
+
+                      <Button
+                        onClick={handleTriggerTestEvent}
+                        disabled={isTriggeringTestEvent}
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs shrink-0 font-medium"
+                      >
+                        {isTriggeringTestEvent ? "Dispatching..." : "Dispatch Test Event Notification"}
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -2230,6 +3180,74 @@ export function CommunicationCenterPage({ initialTab = "overview" }: Communicati
                 </Button>
                 <Button onClick={handleSaveTemplate} disabled={isSubmitting} className="bg-emerald-600 hover:bg-emerald-500 text-white">
                   {isSubmitting ? "Saving..." : editingTemplateId ? "Update Template" : "Create Template"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 5. New Direct Message Modal */}
+        {isNewDmModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#0f141f] border border-white/10 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+              <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-emerald-400" />
+                  New Direct Message
+                </h3>
+                <button onClick={() => setIsNewDmModalOpen(false)} className="text-slate-400 hover:text-white">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-300">Recipient *</label>
+                  <Select
+                    value={newDmRecipientId}
+                    onChange={(e) => setNewDmRecipientId(e.target.value)}
+                    className="bg-slate-900 border-white/10 text-white text-xs"
+                  >
+                    <option value="">Select a permitted contact...</option>
+                    {contacts.map((c) => (
+                      <option key={c.userId} value={c.userId}>
+                        {c.displayName || c.name} ({c.role}{c.context || c.subtext ? ` — ${c.context || c.subtext}` : ""})
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-300">Subject (Optional)</label>
+                  <Input
+                    placeholder="e.g. Question regarding homework"
+                    value={newDmSubject}
+                    onChange={(e) => setNewDmSubject(e.target.value)}
+                    className="bg-slate-900 border-white/10 text-white text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-300">Message Body *</label>
+                  <Textarea
+                    placeholder="Write your direct message..."
+                    value={newDmBody}
+                    onChange={(e) => setNewDmBody(e.target.value)}
+                    className="min-h-32 bg-slate-900 border-white/10 text-white text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-white/5">
+                <Button variant="ghost" onClick={() => setIsNewDmModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSendNewDirectMessage}
+                  disabled={isSubmitting || !newDmRecipientId || !newDmBody.trim()}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium"
+                >
+                  {isSubmitting ? "Sending..." : "Send Message"}
                 </Button>
               </div>
             </div>

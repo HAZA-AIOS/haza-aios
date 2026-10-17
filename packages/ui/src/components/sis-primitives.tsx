@@ -634,3 +634,89 @@ export const PaymentStatusBadge = React.forwardRef<HTMLSpanElement, PaymentStatu
 );
 PaymentStatusBadge.displayName = "PaymentStatusBadge";
 
+/* ─────────────────── Communication Channel Badge ─────────────────── */
+
+export interface CommunicationChannelBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  channel: "in_app" | "email" | "sms" | string;
+}
+
+const channelStyles: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  in_app: { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20", label: "In-App" },
+  email: { bg: "bg-sky-500/10", text: "text-sky-400", border: "border-sky-500/20", label: "Email" },
+  sms: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20", label: "SMS" },
+};
+
+export const CommunicationChannelBadge = React.forwardRef<HTMLSpanElement, CommunicationChannelBadgeProps>(
+  ({ channel, className, ...props }, ref) => {
+    const key = String(channel).toLowerCase();
+    const style = channelStyles[key] || {
+      bg: "bg-slate-500/10",
+      text: "text-slate-400",
+      border: "border-slate-500/20",
+      label: channel,
+    };
+
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium tracking-wide uppercase",
+          style.bg,
+          style.text,
+          style.border,
+          className
+        )}
+        {...props}
+      >
+        <span className={cn("size-1.5 rounded-full", style.bg.replace("/10", "/80"))} />
+        {style.label}
+      </span>
+    );
+  }
+);
+CommunicationChannelBadge.displayName = "CommunicationChannelBadge";
+
+/* ─────────────────── Notification Category Badge ─────────────────── */
+
+export interface NotificationCategoryBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  category: string;
+}
+
+const notificationCategoryStyles: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  attendance: { bg: "bg-rose-500/10", text: "text-rose-400", border: "border-rose-500/20", label: "Attendance" },
+  fee: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", label: "Fees & Finance" },
+  finance: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20", label: "Fees & Finance" },
+  exam: { bg: "bg-cyan-500/10", text: "text-cyan-400", border: "border-cyan-500/20", label: "Examinations" },
+  examination: { bg: "bg-cyan-500/10", text: "text-cyan-400", border: "border-cyan-500/20", label: "Examinations" },
+  announcement: { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20", label: "Announcement" },
+  academic: { bg: "bg-indigo-500/10", text: "text-indigo-400", border: "border-indigo-500/20", label: "Academics" },
+  direct_message: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20", label: "Direct Message" },
+  message: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20", label: "Message" },
+  general: { bg: "bg-slate-500/10", text: "text-slate-300", border: "border-slate-500/20", label: "General" },
+};
+
+export const NotificationCategoryBadge = React.forwardRef<HTMLSpanElement, NotificationCategoryBadgeProps>(
+  ({ category, className, ...props }, ref) => {
+    const raw = String(category).toLowerCase();
+    const key = Object.keys(notificationCategoryStyles).find((k) => raw.includes(k)) || "general";
+    const style = notificationCategoryStyles[key];
+
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase",
+          style.bg,
+          style.text,
+          style.border,
+          className
+        )}
+        {...props}
+      >
+        {style.label}
+      </span>
+    );
+  }
+);
+NotificationCategoryBadge.displayName = "NotificationCategoryBadge";
+

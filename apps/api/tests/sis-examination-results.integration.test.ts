@@ -77,6 +77,126 @@ describeDatabase('DB-7 examination assessment and results persistence', () => {
     await exams.publishResults(orgA.tenant, exam.id, fixtureA.grade.id, fixtureA.section.id, fixtureA.staff.id);
     await expect(exams.enterMark(orgA.tenant, { sourceType: 'examination', sourceId: exam.id, examinationSubjectId: examSubject.id, studentId: fixtureA.students[0].id, obtainedMarks: 81, enteredBy: fixtureA.staff.id })).rejects.toMatchObject({ statusCode: 400 });
   });
+
+  it('handles absent/exempt marks, authoritative ranking, approval workflow, corrections, cards and reports', async () => {
+    const { tenant } = await createSisTenant(database, 'exam-full');
+    const sis = new SisService(database);
+    const exams = new SisExaminationService(database);
+    const fixture = await createClassFixture(sis, tenant);
+
+    const exam = await exams.createExamination(tenant, {
+      name: 'Term 1 Exam ' + randomUUID().slice(0, 4),
+      academicYearId: fixture.year.id,
+      type: 'mid_term',
+      startDate: '2026-10-01',
+      endDate: '2026-10-15',
+      status: 'scheduled',
+    });
+
+    const subject2 = await sis.createSubject(tenant, { name: 'Science ' + randomUUID().slice(0, 4), code: 'SCI', status: 'active', displayOrder: 2 });
+    await sis.createTeachingAssignment(tenant, { staffId: fixture.staff.id, academicYear: fixture.year.name, gradeId: fixture.grade.id, sectionId: fixture.section.id, subjectId: subject2.id, isActive: true });
+
+    const examSub1 = await exams.addExaminationSubject(tenant, { examinationId: exam.id, gradeId: fixture.grade.id, sectionId: fixture.section.id, subjectId: fixture.subject.id, maximumMarks: 100, passingMarks: 40, status: 'scheduled' });
+    const examSub2 = await exams.addExaminationSubject(tenant, { examinationId: exam.id, gradeId: fixture.grade.id, sectionId: fixture.section.id, subjectId: subject2.id, maximumMarks: 100, passingMarks: 40, status: 'scheduled' });
+
+    // Missing marks report detects all missing marks initially
+    const initialMissing = await exams.getMissingMarksReport(tenant, exam.id, fixture.grade.id, fixture.section.id);
+    expect(initialMissing.length).toBe(4); // 2 students x 2 subjects
+
+    // Student 0: Math = 95, Science = Exempt
+    await exams.enterMark(tenant, { sourceType: 'examination', sourceId: exam.id, examinationSubjectId: examSub1.id, studentId: fixture.students[0].id, obtainedMarks: 95, enteredBy: fixture.staff.id });
+    await exams.enterMark(tenant, { sourceType: 'examination', sourceId: exam.id, examinationSubjectId: examSub2.id, studentId: fixture.students[0].id, isExempt: true, enteredBy: fixture.staff.id });
+
+    // Student 1: Math = 80, Science = Absent
+    await exams.enterMark(tenant, { sourceType: 'examination', sourceId: exam.id, examinationSubjectId: examSub1.id, studentId: fixture.students[1].id, obtainedMarks: 80, enteredBy: fixture.staff.id });
+    await exams.enterMark(tenant, { sourceType: 'examination', sourceId: exam.id, examinationSubjectId: examSub2.id, studentId: fixture.students[1].id, isAbsent: true, enteredBy: fixture.staff.id });
+
+    // Missing marks report is now empty
+    const updatedMissing = await exams.getMissingMarksReport(tenant, exam.id, fixture.grade.id, fixture.section.id);
+    expect(updatedMissing).toHaveLength(0);
+
+    // Calculate class results with positions and rankings
+    const calculated = await exams.calculateClassResults(tenant, exam.id, fixture.grade.id, fixture.section.id);
+    expect(calculated).toHaveLength(2);
+
+    const s0 = calculated.find((s) => s.studentId === fixture.students[0].id)!;
+    const s1 = calculated.find((s) => s.studentId === fixture.students[1].id)!;
+
+    // Student 0: Science was exempt, so percentage is 95% from Math (exempt excluded from total max marks), position 1st
+    expect(s0.percentage).toBe(95);
+    expect(s0.position).toBe(1);
+    expect(s0.rankLabel).toBe('1st');
+    expect(s0.passed).toBe(true);
+
+    // Student 1: Science was absent, so passed = false
+    expect(s1.position).toBe(2);
+    expect(s1.passed).toBe(false);
+
+    // Controlled Workflow: Teacher submits for review
+    const teacherId = fixture.staff.id;
+    const submitted = await exams.submitForReview(tenant, exam.id, fixture.grade.id, fixture.section.id, { userId: teacherId, role: 'Teacher' });
+    expect(submitted.status).toBe('in_progress');
+
+    // Reviewer: Separation of duties rejects self-review by the same teacher
+    await expect(
+      exams.reviewResults(tenant, exam.id, fixture.grade.id, fixture.section.id, { userId: teacherId, role: 'Teacher' }, 'approved')
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    // Principal / Admin approves
+    const adminReviewerId = randomUUID();
+    const approved = await exams.reviewResults(tenant, exam.id, fixture.grade.id, fixture.section.id, { userId: adminReviewerId, role: 'Admin' }, 'approved', 'Class performed well');
+    expect(approved.status).toBe('completed');
+
+    // Publish results
+    const published = await exams.publishResults(tenant, exam.id, fixture.grade.id, fixture.section.id, adminReviewerId);
+    expect(published.status).toBe('published');
+
+    // Idempotent publishing returns the same published record
+    const repub = await exams.publishResults(tenant, exam.id, fixture.grade.id, fixture.section.id, adminReviewerId);
+    expect(repub.id).toBe(published.id);
+
+    // Correction request: Student 1 Math mark was wrongly entered as 80, should be 88
+    const correction = await exams.requestResultCorrection(tenant, {
+      examinationId: exam.id,
+      gradeId: fixture.grade.id,
+      sectionId: fixture.section.id,
+      studentId: fixture.students[1].id,
+      subjectId: fixture.subject.id,
+      newMarks: 88,
+      reason: 'Recounting error in Question 4',
+      requestedBy: teacherId,
+    });
+    expect(correction.status).toBe('pending');
+    expect(correction.oldMarks).toBe(80);
+    expect(correction.newMarks).toBe(88);
+
+    // Review and approve correction
+    const reviewedCorrection = await exams.reviewResultCorrection(tenant, correction.id, { userId: adminReviewerId, role: 'Admin' }, 'approved', 'Recount verified');
+    expect(reviewedCorrection.status).toBe('approved');
+
+    // Check that recalculated results reflect the updated mark
+    const postCorrectionPub = (await exams.listResultPublications(tenant, exam.id))[0];
+    const updatedS1 = postCorrectionPub.results.find((s) => s.studentId === fixture.students[1].id)!;
+    const updatedMath = updatedS1.subjects.find((sub) => sub.subjectId === fixture.subject.id)!;
+    expect(updatedMath.obtainedMarks).toBe(88);
+
+    // Printable Result Card
+    const card = await exams.getResultCard(tenant, exam.id, fixture.students[0].id);
+    expect(card.student).toBeDefined();
+    expect(card.school).toBeDefined();
+    expect(card.result).toBeDefined();
+    expect((card.result as { percentage: number }).percentage).toBe(95);
+
+    // Batch Result Cards
+    const batchCards = await exams.getBatchResultCards(tenant, exam.id, fixture.grade.id, fixture.section.id);
+    expect(batchCards).toHaveLength(2);
+
+    // Examination Result Register Report
+    const register = await exams.getExamResultRegister(tenant, exam.id, fixture.grade.id, fixture.section.id);
+    expect(register.subjects).toHaveLength(2);
+    expect(register.students).toHaveLength(2);
+    expect(register.summary.totalEnrolled).toBe(2);
+  });
 });
 
 async function createSisTenant(database: DatabaseClient, label: string) {

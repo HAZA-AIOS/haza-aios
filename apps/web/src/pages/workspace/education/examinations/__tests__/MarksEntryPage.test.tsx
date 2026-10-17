@@ -124,6 +124,8 @@ describe("MarksEntryPage / Gradebook Integration", () => {
       { id: "rule-3", organizationId: "org-1", grade: "F", minPercentage: 0, maxPercentage: 59.99, gradePoint: 0.0, createdAt: "now", updatedAt: "now" },
     ]);
     vi.mocked(ExaminationService.getMarks).mockResolvedValue([]);
+    vi.mocked(ExaminationService.getResultPublications).mockResolvedValue([]);
+    vi.mocked(ExaminationService.getResultCorrections).mockResolvedValue([]);
     vi.mocked(EnrollmentService.getEnrollments).mockResolvedValue([
       { id: "enr-1", organizationId: "org-1", studentId: "student-1", academicYear: "2026-2027", gradeId: "grade-1", sectionId: "section-1", enrollmentDate: "2026-01-15", status: "active", createdAt: "now", updatedAt: "now" },
     ]);

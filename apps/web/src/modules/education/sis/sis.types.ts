@@ -393,6 +393,7 @@ export interface GradingRule {
 
 export interface SubjectResult {
   subjectId: string;
+  subjectName?: string;
   maximumMarks: number;
   obtainedMarks: number;
   percentage: number;
@@ -400,16 +401,24 @@ export interface SubjectResult {
   gradePoint?: number;
   passed: boolean;
   remarks?: string;
+  isAbsent?: boolean;
+  isExempt?: boolean;
 }
 
 export interface StudentResult {
   studentId: string;
+  studentName?: string;
+  admissionNumber?: string;
   maximumMarks: number;
   obtainedMarks: number;
   percentage: number;
   grade?: string;
   gradePoint?: number;
   passed: boolean;
+  position?: number;
+  rankLabel?: string;
+  totalStudents?: number;
+  remarks?: string;
   subjects: SubjectResult[];
 }
 
@@ -437,6 +446,107 @@ export interface SubjectPerformance {
   lowest: number;
   passRate: number;
   gradeDistribution: Record<string, number>;
+}
+
+export interface StudentResultCard {
+  school: {
+    name: string;
+    legalName?: string;
+    logoUrl?: string;
+    address?: string;
+    email?: string;
+    phone?: string;
+    website?: string;
+  };
+  examination: {
+    id: string;
+    name: string;
+    academicYear: string;
+    type?: string;
+    startDate: string;
+    endDate: string;
+  };
+  student: {
+    id: string;
+    name: string;
+    admissionNumber: string;
+    gender?: string;
+    dateOfBirth?: string;
+    gradeName: string;
+    sectionName: string;
+  };
+  result: StudentResult;
+  signatories: {
+    classTeacher: string;
+    examinationController: string;
+    principal: string;
+  };
+  issuedAt: string;
+}
+
+export interface ResultCorrectionRequest {
+  id: string;
+  status: "pending" | "approved" | "rejected";
+  examinationId: string;
+  gradeId: string;
+  sectionId: string;
+  studentId: string;
+  subjectId: string;
+  oldMarks: number;
+  newMarks: number;
+  reason: string;
+  requestedBy: string;
+  requestedAt: string;
+  reviewerComments?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  revisedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ExaminationResultRegister {
+  examination: { id: string; name: string; type: string; academicYear: string };
+  grade: { id?: string; name: string };
+  section: { id?: string; name: string };
+  subjects: Array<{ id: string; name: string; code?: string; maximumMarks: number; passingMarks: number }>;
+  students: Array<{
+    studentId: string;
+    name: string;
+    admissionNumber: string;
+    subjectMarks: Record<string, { obtainedMarks: number; percentage: number; grade?: string; passed: boolean; isAbsent?: boolean; isExempt?: boolean }>;
+    totalMaximum: number;
+    totalObtained: number;
+    percentage: number;
+    grade?: string;
+    passed: boolean;
+    position?: number;
+    rankLabel?: string;
+  }>;
+  summary: {
+    totalEnrolled: number;
+    totalAppeared: number;
+    totalPassed: number;
+    totalFailed: number;
+    passPercentage: number;
+    averagePercentage: number;
+    highestPercentage: number;
+    lowestPercentage: number;
+  };
+}
+
+export interface MissingMarksReportItem {
+  examinationId: string;
+  examinationName: string;
+  gradeId: string;
+  gradeName: string;
+  sectionId?: string;
+  sectionName?: string;
+  subjectId: string;
+  subjectName: string;
+  studentId: string;
+  studentName: string;
+  admissionNumber: string;
 }
 
 // --- FEES, BILLING & FINANCIAL MANAGEMENT ---

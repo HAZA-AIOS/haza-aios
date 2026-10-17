@@ -269,6 +269,16 @@ export const educationModule: BackendModule = {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
       sendJson(response, 200, { examination: await new SisExaminationService(database).updateExamination(tenant, routeParams.id, body(request)) });
     }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/examinations/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisExaminationService(database).deleteExamination(tenant, routeParams.id));
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/examinations/:id/archive", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { examination: await new SisExaminationService(database).archiveExamination(tenant, routeParams.id) });
+    }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/examination-subjects", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { subjects: await new SisExaminationService(database).listExaminationSubjects(tenant, url.searchParams.get("examinationId") ?? undefined) });
@@ -276,6 +286,16 @@ export const educationModule: BackendModule = {
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/examination-subjects", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
       sendJson(response, 201, { subject: await new SisExaminationService(database).addExaminationSubject(tenant, body(request)) });
+    }});
+    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/examination-subjects/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { subject: await new SisExaminationService(database).updateExaminationSubject(tenant, routeParams.id, body(request)) });
+    }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/examination-subjects/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisExaminationService(database).deleteExaminationSubject(tenant, routeParams.id));
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/assessments", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
@@ -311,6 +331,16 @@ export const educationModule: BackendModule = {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { results: await new SisExaminationService(database).calculateClassResults(tenant, String(url.searchParams.get("examinationId") ?? ""), String(url.searchParams.get("gradeId") ?? ""), String(url.searchParams.get("sectionId") ?? "")) });
     }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/results/submit-review", async handler(request, response, { database, routeParams }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      const payload = body(request);
+      sendJson(response, 200, { publication: await new SisExaminationService(database).submitForReview(tenant, String(payload.examinationId), String(payload.gradeId), String(payload.sectionId), { userId: String(payload.userId ?? "teacher"), role: typeof payload.role === "string" ? payload.role : undefined }) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/results/review", async handler(request, response, { database, routeParams }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      const payload = body(request);
+      sendJson(response, 200, { publication: await new SisExaminationService(database).reviewResults(tenant, String(payload.examinationId), String(payload.gradeId), String(payload.sectionId), { userId: String(payload.userId ?? "reviewer"), role: typeof payload.role === "string" ? payload.role : "Admin" }, payload.decision === "rejected" ? "rejected" : "approved", typeof payload.comments === "string" ? payload.comments : undefined) });
+    }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/results/publications", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { publications: await new SisExaminationService(database).listResultPublications(tenant, url.searchParams.get("examinationId") ?? undefined) });
@@ -328,6 +358,41 @@ export const educationModule: BackendModule = {
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/results/performance", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { performance: await new SisExaminationService(database).getSubjectPerformance(tenant, String(url.searchParams.get("examinationId") ?? ""), String(url.searchParams.get("gradeId") ?? ""), String(url.searchParams.get("sectionId") ?? ""), String(url.searchParams.get("subjectId") ?? "")) });
+    }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/results/corrections", async handler(request, response, { database, routeParams, url }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { corrections: await new SisExaminationService(database).listResultCorrections(tenant, url.searchParams.get("examinationId") ?? undefined) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/results/corrections", async handler(request, response, { database, routeParams }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      const payload = body(request);
+      sendJson(response, 201, { correction: await new SisExaminationService(database).requestResultCorrection(tenant, { examinationId: String(payload.examinationId), gradeId: String(payload.gradeId), sectionId: String(payload.sectionId), studentId: String(payload.studentId), subjectId: String(payload.subjectId), newMarks: Number(payload.newMarks), reason: String(payload.reason ?? ""), requestedBy: String(payload.requestedBy ?? "teacher") }) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/results/corrections/:id/review", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      const payload = body(request);
+      sendJson(response, 200, { correction: await new SisExaminationService(database).reviewResultCorrection(tenant, routeParams.id, { userId: String(payload.userId ?? "reviewer"), role: typeof payload.role === "string" ? payload.role : "Admin" }, payload.decision === "rejected" ? "rejected" : "approved", typeof payload.comments === "string" ? payload.comments : undefined) });
+    }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/results/cards/:studentId", async handler(request, response, { database, routeParams, url }) {
+      assertUuid(routeParams.studentId, "studentId");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { card: await new SisExaminationService(database).getResultCard(tenant, String(url.searchParams.get("examinationId") ?? ""), routeParams.studentId) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/results/cards-batch", async handler(request, response, { database, routeParams, url }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { cards: await new SisExaminationService(database).getBatchResultCards(tenant, String(url.searchParams.get("examinationId") ?? ""), String(url.searchParams.get("gradeId") ?? ""), String(url.searchParams.get("sectionId") ?? "")) });
+    }});
+
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/results/reports/register", async handler(request, response, { database, routeParams, url }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { register: await new SisExaminationService(database).getExamResultRegister(tenant, String(url.searchParams.get("examinationId") ?? ""), String(url.searchParams.get("gradeId") ?? ""), String(url.searchParams.get("sectionId") ?? "")) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/results/reports/missing-marks", async handler(request, response, { database, routeParams, url }) {
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { missingMarks: await new SisExaminationService(database).getMissingMarksReport(tenant, String(url.searchParams.get("examinationId") ?? ""), url.searchParams.get("gradeId") ?? undefined, url.searchParams.get("sectionId") ?? undefined) });
     }});
 
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/timetable/schedules/:academicYearId", async handler(request, response, { database, routeParams }) {

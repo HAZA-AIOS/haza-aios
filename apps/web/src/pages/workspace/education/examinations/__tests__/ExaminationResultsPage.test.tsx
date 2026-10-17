@@ -1,0 +1,281 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import React from "react";
+import { AuthContext } from "@/auth/AuthProvider";
+import { OrgContext } from "@/org/OrgContext";
+import { ExaminationResultsPage } from "../ExaminationResultsPage";
+import { AcademicService } from "@/modules/education/sis/academic.service";
+import { ExaminationService } from "@/modules/education/sis/examination.service";
+import { EnrollmentService } from "@/modules/education/sis/enrollment.service";
+import { StudentService } from "@/modules/education/sis/student.service";
+import { StaffService } from "@/modules/education/sis/staff.service";
+
+vi.mock("@/modules/education/sis/academic.service");
+vi.mock("@/modules/education/sis/examination.service");
+vi.mock("@/modules/education/sis/enrollment.service");
+vi.mock("@/modules/education/sis/student.service");
+vi.mock("@/modules/education/sis/staff.service");
+
+const mockUser = {
+  id: "user-admin-1",
+  firstName: "Headmaster",
+  lastName: "Admin",
+  displayName: "Headmaster Admin",
+  email: "admin@test.edu",
+  emailVerified: true,
+  status: "active" as const,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+const mockAuthContextValue = {
+  status: "authenticated" as const,
+  user: mockUser,
+  session: null,
+  error: null,
+  login: async () => {},
+  register: async () => {},
+  logout: async () => {},
+  forgotPassword: async () => {},
+  resetPassword: async () => {},
+  verifyEmail: async () => {},
+  clearError: () => {},
+};
+
+const mockOrg = {
+  id: "org-1",
+  name: "Oakridge International",
+  legalName: "Oakridge International Ltd",
+  slug: "oakridge",
+  industry: "Education",
+  organizationType: "School",
+  email: "office@oakridge.edu",
+  country: "United States",
+  timezone: "America/New_York",
+  currency: "USD",
+  status: "active" as const,
+  ownerId: "user-admin-1",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+const mockMembership = {
+  id: "membership-admin-1",
+  organizationId: "org-1",
+  userId: "user-admin-1",
+  role: "Admin" as const,
+  status: "active" as const,
+  joinedAt: new Date().toISOString(),
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+function renderPage(initialTab?: "examinations" | "assessments" | "marks" | "results" | "corrections" | "cards" | "reports") {
+  const orgContextValue = {
+    currentOrganization: mockOrg,
+    currentMembership: mockMembership,
+    organizations: [mockOrg],
+    isLoading: false,
+    error: null,
+    createOrg: async () => ({ organization: {} as never, membership: {} as never }),
+    switchOrg: async () => {},
+    refresh: async () => {},
+  };
+
+  return render(
+    React.createElement(
+      AuthContext.Provider,
+      { value: mockAuthContextValue },
+      React.createElement(
+        OrgContext.Provider,
+        { value: orgContextValue },
+        React.createElement(ExaminationResultsPage, { initialTab })
+      )
+    )
+  );
+}
+
+describe("Epic 10L: Examination & Result Management Enhancement", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    vi.mocked(AcademicService.getAcademicYears).mockResolvedValue([
+      { id: "year-1", organizationId: "org-1", name: "2026-2027", startDate: "2026-01-01", endDate: "2026-12-31", status: "active", createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(AcademicService.getGrades).mockResolvedValue([
+      { id: "grade-1", organizationId: "org-1", name: "Grade 10", level: 10, order: 10, status: "active", createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(AcademicService.getSections).mockResolvedValue([
+      { id: "section-1", organizationId: "org-1", gradeId: "grade-1", name: "Section A", capacity: 30, status: "active", createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(AcademicService.getSubjects).mockResolvedValue([
+      { id: "subject-1", organizationId: "org-1", name: "Mathematics", code: "MATH", status: "active", displayOrder: 1, createdAt: "now", updatedAt: "now" },
+      { id: "subject-2", organizationId: "org-1", name: "English Language", code: "ENG", status: "active", displayOrder: 2, createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(StudentService.getStudents).mockResolvedValue([
+      { id: "student-1", organizationId: "org-1", admissionNumber: "ADM-101", firstName: "Brian", lastName: "May", dateOfBirth: "2010-02-15", gender: "male", admissionDate: "2026-01-15", status: "active", guardians: [], createdAt: "now", updatedAt: "now" },
+      { id: "student-2", organizationId: "org-1", admissionNumber: "ADM-102", firstName: "Freddie", lastName: "Mercury", dateOfBirth: "2010-04-10", gender: "male", admissionDate: "2026-01-15", status: "active", guardians: [], createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(StaffService.getStaffList).mockResolvedValue([]);
+    vi.mocked(ExaminationService.getExaminations).mockResolvedValue([
+      { id: "exam-1", organizationId: "org-1", name: "Final Term Examinations 2026", academicYearId: "year-1", type: "final", startDate: "2026-06-01", endDate: "2026-06-15", status: "scheduled", createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(ExaminationService.getExaminationSubjects).mockResolvedValue([
+      { id: "exam-subj-1", organizationId: "org-1", examinationId: "exam-1", gradeId: "grade-1", sectionId: "section-1", subjectId: "subject-1", maximumMarks: 100, passingMarks: 40, weightage: 100, status: "scheduled", createdAt: "now", updatedAt: "now" },
+      { id: "exam-subj-2", organizationId: "org-1", examinationId: "exam-1", gradeId: "grade-1", sectionId: "section-1", subjectId: "subject-2", maximumMarks: 100, passingMarks: 40, weightage: 100, status: "scheduled", createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(ExaminationService.getAssessments).mockResolvedValue([]);
+    vi.mocked(ExaminationService.getGradingRules).mockResolvedValue([
+      { id: "rule-1", organizationId: "org-1", grade: "A*", minPercentage: 90, maxPercentage: 100, gradePoint: 4.0, createdAt: "now", updatedAt: "now" },
+      { id: "rule-2", organizationId: "org-1", grade: "A", minPercentage: 80, maxPercentage: 89.99, gradePoint: 3.7, createdAt: "now", updatedAt: "now" },
+      { id: "rule-3", organizationId: "org-1", grade: "B", minPercentage: 70, maxPercentage: 79.99, gradePoint: 3.0, createdAt: "now", updatedAt: "now" },
+      { id: "rule-4", organizationId: "org-1", grade: "F", minPercentage: 0, maxPercentage: 39.99, gradePoint: 0.0, createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(ExaminationService.getMarks).mockResolvedValue([]);
+    vi.mocked(EnrollmentService.getEnrollments).mockResolvedValue([
+      { id: "enr-1", organizationId: "org-1", studentId: "student-1", academicYear: "2026-2027", gradeId: "grade-1", sectionId: "section-1", enrollmentDate: "2026-01-15", status: "active", createdAt: "now", updatedAt: "now" },
+      { id: "enr-2", organizationId: "org-1", studentId: "student-2", academicYear: "2026-2027", gradeId: "grade-1", sectionId: "section-1", enrollmentDate: "2026-01-15", status: "active", createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(ExaminationService.getResultPublications).mockResolvedValue([
+      {
+        id: "pub-1",
+        organizationId: "org-1",
+        examinationId: "exam-1",
+        gradeId: "grade-1",
+        sectionId: "section-1",
+        status: "in_progress",
+        publishedAt: "2026-06-20T10:00:00Z",
+        results: [
+          {
+            studentId: "student-2",
+            studentName: "Freddie Mercury",
+            admissionNumber: "ADM-102",
+            maximumMarks: 200,
+            obtainedMarks: 190,
+            percentage: 95,
+            grade: "A*",
+            passed: true,
+            position: 1,
+            rankLabel: "1st",
+            totalStudents: 2,
+            subjects: [
+              { subjectId: "subject-1", subjectName: "Mathematics", maximumMarks: 100, obtainedMarks: 95, percentage: 95, grade: "A*", passed: true },
+              { subjectId: "subject-2", subjectName: "English Language", maximumMarks: 100, obtainedMarks: 95, percentage: 95, grade: "A*", passed: true },
+            ],
+          },
+          {
+            studentId: "student-1",
+            studentName: "Brian May",
+            admissionNumber: "ADM-101",
+            maximumMarks: 200,
+            obtainedMarks: 165,
+            percentage: 82.5,
+            grade: "A",
+            passed: true,
+            position: 2,
+            rankLabel: "2nd",
+            totalStudents: 2,
+            subjects: [
+              { subjectId: "subject-1", subjectName: "Mathematics", maximumMarks: 100, obtainedMarks: 85, percentage: 85, grade: "A", passed: true },
+              { subjectId: "subject-2", subjectName: "English Language", maximumMarks: 100, obtainedMarks: 80, percentage: 80, grade: "A", passed: true },
+            ],
+          },
+        ],
+        createdAt: "now",
+        updatedAt: "now",
+      },
+    ]);
+    vi.mocked(ExaminationService.getResultCorrections).mockResolvedValue([
+      {
+        id: "corr-1",
+        examinationId: "exam-1",
+        gradeId: "grade-1",
+        sectionId: "section-1",
+        studentId: "student-1",
+        subjectId: "subject-1",
+        oldMarks: 85,
+        newMarks: 92,
+        reason: "Score recount verified on exam paper Q3",
+        status: "pending",
+        requestedBy: "teacher-1",
+        requestedAt: "2026-06-21T09:00:00Z",
+        createdAt: "2026-06-21T09:00:00Z",
+        updatedAt: "2026-06-21T09:00:00Z",
+      },
+    ]);
+  });
+
+  it("renders all 7 tabs including result cards, corrections, and reports", async () => {
+    renderPage("examinations");
+    expect(await screen.findByText("Examinations & Schedule")).toBeDefined();
+    expect(await screen.findByText("Assessments")).toBeDefined();
+    expect(await screen.findByText("Gradebook & Marks")).toBeDefined();
+    expect(await screen.findByText("Calculation & Approval")).toBeDefined();
+    expect(await screen.findByText("Result Corrections")).toBeDefined();
+    expect(await screen.findByText("Printable Result Cards")).toBeDefined();
+    expect(await screen.findByText("Reports & Registers")).toBeDefined();
+  });
+
+  it("displays Results tab with class positions and approval actions", async () => {
+    vi.mocked(ExaminationService.calculateClassResults).mockResolvedValue([
+      {
+        studentId: "student-2",
+        studentName: "Freddie Mercury",
+        admissionNumber: "ADM-102",
+        maximumMarks: 200,
+        obtainedMarks: 190,
+        percentage: 95,
+        grade: "A*",
+        passed: true,
+        position: 1,
+        rankLabel: "1st",
+        totalStudents: 2,
+        subjects: [],
+      },
+      {
+        studentId: "student-1",
+        studentName: "Brian May",
+        admissionNumber: "ADM-101",
+        maximumMarks: 200,
+        obtainedMarks: 165,
+        percentage: 82.5,
+        grade: "A",
+        passed: true,
+        position: 2,
+        rankLabel: "2nd",
+        totalStudents: 2,
+        subjects: [],
+      },
+    ]);
+
+    renderPage("results");
+    expect(await screen.findByText("Result Calculation & Controlled Approval")).toBeDefined();
+    expect(await screen.findByText("Calculate Results")).toBeDefined();
+    expect(await screen.findByText("Approve Results")).toBeDefined();
+    expect(await screen.findByText("Reject / Request Corrections")).toBeDefined();
+  });
+
+  it("renders Published Result Corrections tab and lists pending requests", async () => {
+    renderPage("corrections");
+    expect(await screen.findByText("Controlled Result Corrections")).toBeDefined();
+    expect(await screen.findByText("Score recount verified on exam paper Q3")).toBeDefined();
+    expect(await screen.findByText("Approve")).toBeDefined();
+    expect(await screen.findByText("Reject")).toBeDefined();
+    expect(await screen.findByText("Request Result Correction")).toBeDefined();
+  });
+
+  it("renders Result Cards tab with Single and Batch printing controls", async () => {
+    renderPage("cards");
+    expect(await screen.findByText("Printable Student Result Cards (A4)")).toBeDefined();
+    expect(await screen.findByText("Print Result Card(s)")).toBeDefined();
+    expect(await screen.findByText("Generate Result Card Preview")).toBeDefined();
+  });
+
+  it("renders Reports tab with Result Register, Missing Marks, and Report generation", async () => {
+    renderPage("reports");
+    expect(await screen.findByText("Examination Performance Reports")).toBeDefined();
+    expect(await screen.findByText("Full Result Register")).toBeDefined();
+    expect(await screen.findByText("Missing Marks Report")).toBeDefined();
+    expect(await screen.findByText("Generate Report")).toBeDefined();
+  });
+});

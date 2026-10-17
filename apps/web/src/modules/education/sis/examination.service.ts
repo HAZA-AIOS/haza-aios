@@ -2,12 +2,16 @@ import { jsonBody, sisRequest } from './sis-api';
 import type {
   Assessment,
   Examination,
+  ExaminationResultRegister,
   ExaminationSubject,
   GradingRule,
   MarkRecord,
   MarkSourceType,
+  MissingMarksReportItem,
+  ResultCorrectionRequest,
   ResultPublication,
   StudentResult,
+  StudentResultCard,
   SubjectPerformance,
 } from './sis.types';
 
@@ -17,14 +21,17 @@ interface ActorContext {
   role: ActorRole;
 }
 
-interface MarkInput {
+export interface MarkInput {
   sourceType: MarkSourceType;
   sourceId: string;
   examinationSubjectId?: string;
   studentId: string;
-  obtainedMarks: number;
+  obtainedMarks?: number;
   remarks?: string;
   enteredBy: string;
+  isAbsent?: boolean;
+  isExempt?: boolean;
+  status?: string;
 }
 
 type MarkFilters = Partial<Pick<MarkRecord, 'sourceType' | 'sourceId' | 'studentId' | 'gradeId' | 'sectionId' | 'subjectId'>>;
@@ -65,6 +72,16 @@ export class ExaminationServiceClass {
     return response.examination;
   }
 
+  async archiveExamination(organizationId: string, id: string): Promise<Examination> {
+    const response = await sisRequest<{ examination: Examination }>(organizationId, `/examinations/${id}/archive`, { method: 'POST' });
+    return response.examination;
+  }
+
+  async deleteExamination(organizationId: string, id: string): Promise<{ success: boolean; id: string }> {
+    const response = await sisRequest<{ success: boolean; id: string }>(organizationId, `/examinations/${id}`, { method: 'DELETE' });
+    return response;
+  }
+
   async getExaminationSubjects(organizationId: string, examinationId?: string): Promise<ExaminationSubject[]> {
     const response = await sisRequest<{ subjects: ExaminationSubject[] }>(organizationId, '/examination-subjects' + query({ examinationId }));
     return response.subjects;
@@ -78,6 +95,20 @@ export class ExaminationServiceClass {
     void _actor;
     const response = await sisRequest<{ subject: ExaminationSubject }>(organizationId, '/examination-subjects', { method: 'POST', ...jsonBody(data) });
     return response.subject;
+  }
+
+  async updateExaminationSubject(
+    organizationId: string,
+    id: string,
+    data: Partial<ExaminationSubject>,
+  ): Promise<ExaminationSubject> {
+    const response = await sisRequest<{ subject: ExaminationSubject }>(organizationId, `/examination-subjects/${id}`, { method: 'PATCH', ...jsonBody(data) });
+    return response.subject;
+  }
+
+  async deleteExaminationSubject(organizationId: string, id: string): Promise<{ success: boolean; id: string }> {
+    const response = await sisRequest<{ success: boolean; id: string }>(organizationId, `/examination-subjects/${id}`, { method: 'DELETE' });
+    return response;
   }
 
   async getAssessments(organizationId: string): Promise<Assessment[]> {
@@ -142,6 +173,36 @@ export class ExaminationServiceClass {
     return response.results;
   }
 
+  async submitForReview(
+    organizationId: string,
+    examinationId: string,
+    gradeId: string,
+    sectionId: string,
+    actor?: ActorContext,
+  ): Promise<ResultPublication> {
+    const response = await sisRequest<{ publication: ResultPublication }>(organizationId, '/results/submit-review', {
+      method: 'POST',
+      ...jsonBody({ examinationId, gradeId, sectionId, userId: actor?.userId, role: actor?.role }),
+    });
+    return response.publication;
+  }
+
+  async reviewResults(
+    organizationId: string,
+    examinationId: string,
+    gradeId: string,
+    sectionId: string,
+    decision: 'approved' | 'rejected',
+    comments?: string,
+    actor?: ActorContext,
+  ): Promise<ResultPublication> {
+    const response = await sisRequest<{ publication: ResultPublication }>(organizationId, '/results/review', {
+      method: 'POST',
+      ...jsonBody({ examinationId, gradeId, sectionId, decision, comments, userId: actor?.userId, role: actor?.role }),
+    });
+    return response.publication;
+  }
+
   async publishResults(
     organizationId: string,
     examinationId: string,
@@ -149,7 +210,10 @@ export class ExaminationServiceClass {
     sectionId: string,
     actor?: ActorContext,
   ): Promise<ResultPublication> {
-    const response = await sisRequest<{ publication: ResultPublication }>(organizationId, '/results/publish', { method: 'POST', ...jsonBody({ examinationId, gradeId, sectionId, publishedBy: actor?.userId || 'system' }) });
+    const response = await sisRequest<{ publication: ResultPublication }>(organizationId, '/results/publish', {
+      method: 'POST',
+      ...jsonBody({ examinationId, gradeId, sectionId, publishedBy: actor?.userId || 'system' }),
+    });
     return response.publication;
   }
 
@@ -172,6 +236,80 @@ export class ExaminationServiceClass {
   ): Promise<SubjectPerformance | null> {
     const response = await sisRequest<{ performance: SubjectPerformance | null }>(organizationId, '/results/performance' + query({ examinationId, gradeId, sectionId, subjectId }));
     return response.performance;
+  }
+
+  async requestResultCorrection(
+    organizationId: string,
+    data: {
+      examinationId: string;
+      gradeId: string;
+      sectionId: string;
+      studentId: string;
+      subjectId: string;
+      newMarks: number;
+      reason: string;
+      requestedBy: string;
+    },
+  ): Promise<ResultCorrectionRequest> {
+    const response = await sisRequest<{ correction: ResultCorrectionRequest }>(organizationId, '/results/corrections', {
+      method: 'POST',
+      ...jsonBody(data),
+    });
+    return response.correction;
+  }
+
+  async getResultCorrections(organizationId: string, examinationId?: string): Promise<ResultCorrectionRequest[]> {
+    const response = await sisRequest<{ corrections: ResultCorrectionRequest[] }>(organizationId, '/results/corrections' + query({ examinationId }));
+    return response.corrections;
+  }
+
+  async reviewResultCorrection(
+    organizationId: string,
+    correctionId: string,
+    decision: 'approved' | 'rejected',
+    comments?: string,
+    actor?: ActorContext,
+  ): Promise<ResultCorrectionRequest> {
+    const response = await sisRequest<{ correction: ResultCorrectionRequest }>(organizationId, `/results/corrections/${correctionId}/review`, {
+      method: 'POST',
+      ...jsonBody({ decision, comments, userId: actor?.userId, role: actor?.role }),
+    });
+    return response.correction;
+  }
+
+  async getResultCard(organizationId: string, examinationId: string, studentId: string): Promise<StudentResultCard> {
+    const response = await sisRequest<{ card: StudentResultCard }>(organizationId, `/results/cards/${studentId}` + query({ examinationId }));
+    return response.card;
+  }
+
+  async getBatchResultCards(
+    organizationId: string,
+    examinationId: string,
+    gradeId: string,
+    sectionId: string,
+  ): Promise<StudentResultCard[]> {
+    const response = await sisRequest<{ cards: StudentResultCard[] }>(organizationId, '/results/cards-batch' + query({ examinationId, gradeId, sectionId }));
+    return response.cards;
+  }
+
+  async getExamResultRegister(
+    organizationId: string,
+    examinationId: string,
+    gradeId: string,
+    sectionId: string,
+  ): Promise<ExaminationResultRegister> {
+    const response = await sisRequest<{ register: ExaminationResultRegister }>(organizationId, '/results/reports/register' + query({ examinationId, gradeId, sectionId }));
+    return response.register;
+  }
+
+  async getMissingMarksReport(
+    organizationId: string,
+    examinationId: string,
+    gradeId?: string,
+    sectionId?: string,
+  ): Promise<MissingMarksReportItem[]> {
+    const response = await sisRequest<{ missingMarks: MissingMarksReportItem[] }>(organizationId, '/results/reports/missing-marks' + query({ examinationId, gradeId, sectionId }));
+    return response.missingMarks;
   }
 }
 

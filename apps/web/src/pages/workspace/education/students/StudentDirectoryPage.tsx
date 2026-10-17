@@ -6,7 +6,7 @@ import { useOrganization } from "@/org/use-organization";
 import { Link } from "@/routes/router";
 import { navigate } from "@/routes/navigation";
 import { AppShell } from "@/components/AppShell";
-import { Search, Plus, UserCircle2, ArrowLeft, Edit2, Trash2 } from "lucide-react";
+import { Search, Plus, UserCircle2, ArrowLeft, Edit2, Trash2, FileText } from "lucide-react";
 
 export const StudentDirectoryPage: React.FC = () => {
   const { currentOrganization } = useOrganization();
@@ -87,9 +87,14 @@ export const StudentDirectoryPage: React.FC = () => {
               <p className="text-slate-400">Manage all students within your organization.</p>
             </div>
           </div>
-          <Link to="/workspace/education/students/new">
-            <Button><Plus className="w-4 h-4 mr-2" /> Admit Student</Button>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/workspace/education/admissions">
+              <Button variant="outline"><FileText className="w-4 h-4 mr-2" /> Admissions & Enrollment</Button>
+            </Link>
+            <Link to="/workspace/education/students/new">
+              <Button><Plus className="w-4 h-4 mr-2" /> Admit Student</Button>
+            </Link>
+          </div>
         </div>
 
         <Card className="bg-[#0f141f] border-white/5">

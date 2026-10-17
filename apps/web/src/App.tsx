@@ -66,6 +66,7 @@ import { SisAnalyticsOverviewPage } from "./pages/workspace/education/analytics/
 import { SisReportsPage } from "./pages/workspace/education/analytics/SisReportsPage";
 import { SisDataQualityPage } from "./pages/workspace/education/analytics/SisDataQualityPage";
 import { SisHealthPage } from "./pages/workspace/education/analytics/SisHealthPage";
+import { AdmissionsPage } from "./pages/workspace/education/admissions/AdmissionsPage";
 import { useEffect } from "react";
 
 function WorkspaceRedirect() {
@@ -162,6 +163,14 @@ function App() {
         <ProtectedRoute>
           <WorkspaceGuard>
             <WorkspaceDomainsPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/education/admissions":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AdmissionsPage />
           </WorkspaceGuard>
         </ProtectedRoute>
       );

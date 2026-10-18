@@ -25,6 +25,7 @@ export interface MarkInput {
   sourceType: MarkSourceType;
   sourceId: string;
   examinationSubjectId?: string;
+  sectionId?: string;
   studentId: string;
   obtainedMarks?: number;
   remarks?: string;

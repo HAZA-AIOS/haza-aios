@@ -64,6 +64,7 @@ import {
   Clock,
   Trash2,
   Archive,
+  Plus,
 } from "lucide-react";
 
 export type ExamTab =
@@ -166,11 +167,14 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
 
   // Gradebook / Marks Entry Selection
   const [markSourceType, setMarkSourceType] = useState<"examination" | "assessment">("examination");
+  const [marksAcademicYearId, setMarksAcademicYearId] = useState("");
   const [marksGradeId, setMarksGradeId] = useState("");
   const [marksSectionId, setMarksSectionId] = useState("");
   const [marksExamId, setMarksExamId] = useState("");
   const [marksExamSubjectId, setMarksExamSubjectId] = useState("");
   const [marksAssessmentId, setMarksAssessmentId] = useState("");
+  const [marksSubjectId, setMarksSubjectId] = useState("");
+  const [isCreateAssessmentModalOpen, setIsCreateAssessmentModalOpen] = useState(false);
 
   const [enrolledRosterStudentIds, setEnrolledRosterStudentIds] = useState<string[]>([]);
   const [markInputs, setMarkInputs] = useState<
@@ -232,6 +236,31 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
     return examinations.find((item) => item.id === marksExamId);
   }, [examinations, marksExamId]);
 
+  const matchingAssessments = useMemo(() => {
+    if (markSourceType !== "assessment") return [];
+    return assessments.filter((a) => {
+      if (marksAcademicYearId && a.academicYearId !== marksAcademicYearId) return false;
+      if (marksGradeId && a.gradeId !== marksGradeId) return false;
+      if (marksSectionId && a.sectionId !== marksSectionId) return false;
+      if (marksSubjectId && a.subjectId !== marksSubjectId) return false;
+      return true;
+    });
+  }, [markSourceType, assessments, marksAcademicYearId, marksGradeId, marksSectionId, marksSubjectId]);
+
+  useEffect(() => {
+    if (markSourceType !== "assessment") return;
+    if (matchingAssessments.length > 0) {
+      const exists = matchingAssessments.some((a) => a.id === marksAssessmentId);
+      if (!exists) {
+        setMarksAssessmentId(matchingAssessments[0].id);
+      }
+    } else {
+      if (marksAssessmentId !== "") {
+        setMarksAssessmentId("");
+      }
+    }
+  }, [markSourceType, matchingAssessments, marksAssessmentId]);
+
   const activeAssessment = useMemo(() => {
     return assessments.find((item) => item.id === marksAssessmentId);
   }, [assessments, marksAssessmentId]);
@@ -254,8 +283,8 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
     if (markSourceType === "examination") {
       return activeExamSubject?.subjectId ?? "";
     }
-    return activeAssessment?.subjectId ?? "";
-  }, [markSourceType, activeExamSubject, activeAssessment]);
+    return activeAssessment?.subjectId ?? marksSubjectId ?? "";
+  }, [markSourceType, activeExamSubject, activeAssessment, marksSubjectId]);
 
   const enrolledStudents = useMemo(() => {
     return (students || []).filter((s) => (enrolledRosterStudentIds || []).includes(s.id));
@@ -271,9 +300,10 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
   }, [publications, resultSelection]);
 
   const isExamPublished = useMemo(() => {
+    if (markSourceType !== "examination") return false;
     const exam = (examinations || []).find((e) => e.id === marksExamId);
     return exam?.status === "published" || currentPublication?.status === "published";
-  }, [examinations, marksExamId, currentPublication]);
+  }, [markSourceType, examinations, marksExamId, currentPublication]);
 
   const userRole = currentMembership?.role ?? "Teacher";
 
@@ -283,10 +313,20 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
 
   useEffect(() => {
     if (!currentOrganization) return;
-    if (markSourceType === "examination" && activeExamSubject && selectedExamForMarks) {
-      void loadMarksRoster();
-    } else if (markSourceType === "assessment" && activeAssessment) {
-      void loadMarksRoster();
+    if (markSourceType === "examination") {
+      if (activeExamSubject && selectedExamForMarks) {
+        void loadMarksRoster();
+      } else {
+        setEnrolledRosterStudentIds([]);
+        setMarkInputs({});
+      }
+    } else if (markSourceType === "assessment") {
+      if (marksGradeId) {
+        void loadMarksRoster();
+      } else {
+        setEnrolledRosterStudentIds([]);
+        setMarkInputs({});
+      }
     }
   }, [
     currentOrganization,
@@ -294,6 +334,10 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
     marksExamSubjectId,
     marksExamId,
     marksAssessmentId,
+    marksGradeId,
+    marksSectionId,
+    marksSubjectId,
+    marksAcademicYearId,
   ]);
 
   async function loadData(throwOnError = false) {
@@ -374,6 +418,9 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
         setMarksGradeId(examSubjectsData[0].gradeId);
         setMarksSectionId(examSubjectsData[0].sectionId || "");
       }
+      if (activeYear) {
+        setMarksAcademicYearId((prev) => prev || activeYear.id);
+      }
       if (gradesData[0]) {
         setResultSelection((c) => ({ ...c, gradeId: gradesData[0].id }));
         setCardSelection((c) => ({ ...c, gradeId: gradesData[0].id }));
@@ -422,30 +469,36 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
       const rosterStudentIds = enrollments.map((e) => e.studentId);
       setEnrolledRosterStudentIds(rosterStudentIds);
 
-      // Pre-fill existing marks
-      const filterSourceId =
-        markSourceType === "examination" ? marksExamId : marksAssessmentId;
-      const relevantMarks = await ExaminationService.getMarks(orgId, {
-        sourceType: markSourceType,
-        sourceId: filterSourceId,
-        gradeId: targetGradeId,
-        sectionId: targetSectionId || undefined,
-        subjectId: activeSubjectId,
-      });
-
+      // Reset mark inputs first to ensure fresh state without stale student data
       const inputs: Record<string, { obtainedMarks: string; status: "present" | "absent" | "exempt"; remarks: string }> = {};
       for (const studentId of rosterStudentIds) {
-        const found = relevantMarks.find((m) => m.studentId === studentId);
-        if (found) {
-          const isAbs = found.remarks?.startsWith("[ABSENT]") || found.grade === "ABS";
-          const isExm = found.remarks?.startsWith("[EXEMPT]") || found.grade === "EXM";
-          inputs[studentId] = {
-            obtainedMarks: isAbs || isExm ? "" : String(found.obtainedMarks),
-            status: isAbs ? "absent" : isExm ? "exempt" : "present",
-            remarks: (found.remarks ?? "").replace(/^\[(ABSENT|EXEMPT)\]\s*/, ""),
-          };
-        } else {
-          inputs[studentId] = { obtainedMarks: "", status: "present", remarks: "" };
+        inputs[studentId] = { obtainedMarks: "", status: "present", remarks: "" };
+      }
+
+      // Pre-fill existing marks if source is chosen
+      const filterSourceId =
+        markSourceType === "examination" ? marksExamId : marksAssessmentId;
+
+      if (filterSourceId) {
+        const relevantMarks = await ExaminationService.getMarks(orgId, {
+          sourceType: markSourceType,
+          sourceId: filterSourceId,
+          gradeId: targetGradeId,
+          sectionId: targetSectionId || undefined,
+          subjectId: activeSubjectId || undefined,
+        });
+
+        for (const studentId of rosterStudentIds) {
+          const found = relevantMarks.find((m) => m.studentId === studentId);
+          if (found) {
+            const isAbs = found.remarks?.startsWith("[ABSENT]") || found.grade === "ABS";
+            const isExm = found.remarks?.startsWith("[EXEMPT]") || found.grade === "EXM";
+            inputs[studentId] = {
+              obtainedMarks: isAbs || isExm ? "" : String(found.obtainedMarks),
+              status: isAbs ? "absent" : isExm ? "exempt" : "present",
+              remarks: (found.remarks ?? "").replace(/^\[(ABSENT|EXEMPT)\]\s*/, ""),
+            };
+          }
         }
       }
       setMarkInputs(inputs);
@@ -728,12 +781,20 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
     e.preventDefault();
     if (!currentOrganization) return;
     await runAction(async () => {
-      await ExaminationService.createAssessment(currentOrganization.id, {
+      const created = await ExaminationService.createAssessment(currentOrganization.id, {
         ...assessmentForm,
         status: "draft",
       });
-      setMessage("Assessment created successfully.");
+      setMessage(`Assessment "${created.title}" created successfully.`);
       await loadData();
+      if (isCreateAssessmentModalOpen) {
+        setIsCreateAssessmentModalOpen(false);
+        setMarksAssessmentId(created.id);
+        if (created.gradeId) setMarksGradeId(created.gradeId);
+        if (created.sectionId) setMarksSectionId(created.sectionId);
+        if (created.academicYearId) setMarksAcademicYearId(created.academicYearId);
+        if (created.subjectId) setMarksSubjectId(created.subjectId);
+      }
     });
   }
 
@@ -1521,12 +1582,31 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                       ) : (
                         <>
                           <div>
+                            <label className="block text-xs font-medium text-slate-400 mb-1.5">Academic Session</label>
+                            <Select
+                              value={marksAcademicYearId}
+                              onChange={(e) => {
+                                setMarksAcademicYearId(e.target.value);
+                                setMarksAssessmentId("");
+                              }}
+                            >
+                              <option value="">All Academic Years</option>
+                              {academicYears.map((y) => (
+                                <option key={y.id} value={y.id}>
+                                  {y.name} {y.status === "active" ? "(Active)" : ""}
+                                </option>
+                              ))}
+                            </Select>
+                          </div>
+
+                          <div>
                             <label className="block text-xs font-medium text-slate-400 mb-1.5">Class / Grade</label>
                             <Select
                               value={marksGradeId}
                               onChange={(e) => {
                                 setMarksGradeId(e.target.value);
                                 setMarksSectionId("");
+                                setMarksAssessmentId("");
                               }}
                             >
                               <option value="">Select Class</option>
@@ -1542,7 +1622,10 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                             <label className="block text-xs font-medium text-slate-400 mb-1.5">Section</label>
                             <Select
                               value={marksSectionId}
-                              onChange={(e) => setMarksSectionId(e.target.value)}
+                              onChange={(e) => {
+                                setMarksSectionId(e.target.value);
+                                setMarksAssessmentId("");
+                              }}
                               disabled={!marksGradeId}
                             >
                               <option value="">Select Section</option>
@@ -1555,29 +1638,76 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                                 ))}
                             </Select>
                           </div>
+
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="block text-xs font-medium text-slate-400">Class Assessment</label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAssessmentForm((prev) => ({
+                                    ...prev,
+                                    academicYearId: marksAcademicYearId || academicYears.find((y) => y.status === "active")?.id || prev.academicYearId,
+                                    gradeId: marksGradeId || prev.gradeId,
+                                    sectionId: marksSectionId || prev.sectionId,
+                                    subjectId: marksSubjectId || prev.subjectId,
+                                  }));
+                                  setIsCreateAssessmentModalOpen(true);
+                                }}
+                                className="text-xs text-red-400 hover:text-red-300 font-medium inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" /> New
+                              </button>
+                            </div>
+                            <Select
+                              value={marksAssessmentId}
+                              onChange={(e) => setMarksAssessmentId(e.target.value)}
+                              disabled={!marksGradeId}
+                            >
+                              <option value="">
+                                {matchingAssessments.length === 0
+                                  ? "No assessments found"
+                                  : "Select Assessment"}
+                              </option>
+                              {matchingAssessments.map((a) => (
+                                <option key={a.id} value={a.id}>
+                                  {a.title} ({subjectName(a.subjectId)} — {a.maximumMarks} max)
+                                </option>
+                              ))}
+                            </Select>
+                          </div>
                         </>
                       )}
 
-                      <div className="lg:col-span-2 flex justify-end gap-2">
-                        {hasUnsavedMarks && (
-                          <span className="text-amber-400 text-xs self-center flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" /> Unsaved changes
-                          </span>
-                        )}
-                        <Button
-                          onClick={handleSaveMarks}
-                          disabled={
-                            (!activeExamSubject && !activeAssessment) ||
-                            enrolledStudents.length === 0 ||
-                            Object.keys(validationErrors).length > 0 ||
-                            isSavingMarks ||
-                            isExamPublished
-                          }
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-950/20"
-                        >
-                          <Save className="w-4 h-4 mr-2" />
-                          {isSavingMarks ? "Saving..." : "Save Gradebook Marks"}
-                        </Button>
+                      <div className="sm:col-span-2 lg:col-span-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-2 border-t border-white/5">
+                        <div className="text-xs text-slate-400">
+                          {markSourceType === "assessment" && activeAssessment && (
+                            <span>
+                              Assessment: <span className="font-semibold text-white">{activeAssessment.title}</span> | Subject: <span className="font-semibold text-white">{subjectName(activeAssessment.subjectId)}</span> | Max Marks: <span className="font-semibold text-white">{activeMaxMarks}</span>
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 self-end sm:self-auto">
+                          {hasUnsavedMarks && (
+                            <span className="text-amber-400 text-xs self-center flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5" /> Unsaved changes
+                            </span>
+                          )}
+                          <Button
+                            onClick={handleSaveMarks}
+                            disabled={
+                              (markSourceType === "examination" ? !activeExamSubject : !activeAssessment) ||
+                              enrolledStudents.length === 0 ||
+                              Object.keys(validationErrors).length > 0 ||
+                              isSavingMarks ||
+                              isExamPublished
+                            }
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-950/20"
+                          >
+                            <Save className="w-4 h-4 mr-2" />
+                            {isSavingMarks ? "Saving..." : "Save Gradebook Marks"}
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </CardContent>
@@ -1598,10 +1728,25 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                   <div className="p-6 border-b border-white/5 flex items-center justify-between">
                     <div>
                       <h3 className="text-lg font-medium text-white">Student Marks Entry Roster</h3>
-                      <p className="text-sm text-slate-400">
-                        Max Marks: <span className="font-semibold text-white">{activeMaxMarks}</span> | Passing:{" "}
-                        <span className="font-semibold text-emerald-400">{activePassingMarks}</span>
-                      </p>
+                      {markSourceType === "examination" ? (
+                        <p className="text-sm text-slate-400">
+                          Max Marks: <span className="font-semibold text-white">{activeMaxMarks}</span> | Passing:{" "}
+                          <span className="font-semibold text-emerald-400">{activePassingMarks}</span>
+                        </p>
+                      ) : activeAssessment ? (
+                        <p className="text-sm text-slate-400">
+                          Assessment: <span className="font-semibold text-white">{activeAssessment.title}</span> | Subject:{" "}
+                          <span className="font-semibold text-white">{subjectName(activeAssessment.subjectId)}</span> | Max Marks:{" "}
+                          <span className="font-semibold text-white">{activeMaxMarks}</span> | Passing:{" "}
+                          <span className="font-semibold text-emerald-400">{activePassingMarks}</span>
+                        </p>
+                      ) : (
+                        <p className="text-sm text-amber-400">
+                          {matchingAssessments.length === 0
+                            ? "No assessments created for this class yet. Create one above to enter marks."
+                            : "Select a Class Assessment above to enter marks."}
+                        </p>
+                      )}
                     </div>
                     {isExamPublished && (
                       <span className="text-xs text-red-400 font-semibold bg-red-950/40 border border-red-800/40 px-3 py-1.5 rounded-lg">
@@ -1610,12 +1755,46 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                     )}
                   </div>
 
+                  {markSourceType === "assessment" && marksGradeId && !activeAssessment && (
+                    <div className="mx-6 my-4 p-4 rounded-xl border border-amber-500/20 bg-amber-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-200 text-sm">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                        <span>
+                          {matchingAssessments.length === 0
+                            ? `No assessments found for ${gradeName(marksGradeId)}${marksSectionId ? ` — ${sectionName(marksSectionId)}` : ""}. Create an assessment to record marks.`
+                            : "Please select a Class Assessment from the dropdown above to enter marks."}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          setAssessmentForm((prev) => ({
+                            ...prev,
+                            academicYearId: marksAcademicYearId || academicYears.find((y) => y.status === "active")?.id || prev.academicYearId,
+                            gradeId: marksGradeId || prev.gradeId,
+                            sectionId: marksSectionId || prev.sectionId,
+                            subjectId: marksSubjectId || prev.subjectId,
+                          }));
+                          setIsCreateAssessmentModalOpen(true);
+                        }}
+                        className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"
+                      >
+                        <Plus className="w-4 h-4 mr-1" /> Create Assessment
+                      </Button>
+                    </div>
+                  )}
+
                   <CardContent className="p-0">
                     {enrolledStudents.length === 0 ? (
                       <div className="py-16 text-center text-slate-400">
                         <BookOpenCheck className="w-10 h-10 mx-auto text-slate-600 mb-3" />
                         <p className="text-base font-medium text-white">
-                          Select an examination and examination subject to load the roster.
+                          {markSourceType === "examination"
+                            ? "Select an examination and examination subject to load the roster."
+                            : !marksGradeId
+                              ? "Select a Class / Grade to load the enrolled student roster."
+                              : `No active students enrolled in ${gradeName(marksGradeId)}${marksSectionId ? ` — ${sectionName(marksSectionId)}` : ""}.`}
                         </p>
                       </div>
                     ) : (
@@ -1660,8 +1839,8 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                                           e.target.value as "present" | "absent" | "exempt"
                                         )
                                       }
-                                      disabled={isExamPublished}
-                                      className="h-8 bg-slate-900/80 border border-white/10 rounded-lg text-xs text-slate-200 px-2"
+                                      disabled={isExamPublished || (markSourceType === "assessment" && !activeAssessment)}
+                                      className="h-8 bg-slate-900/80 border border-white/10 rounded-lg text-xs text-slate-200 px-2 disabled:opacity-50"
                                     >
                                       <option value="present">Present</option>
                                       <option value="absent">Absent (ABS)</option>
@@ -1675,11 +1854,12 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                                         type="number"
                                         min="0"
                                         max={activeMaxMarks}
-                                        disabled={input.status !== "present" || isExamPublished}
+                                        disabled={input.status !== "present" || isExamPublished || (markSourceType === "assessment" && !activeAssessment)}
                                         aria-label={`Obtained marks for ${student.firstName} ${student.lastName}`}
                                         value={input.obtainedMarks}
+                                        placeholder={markSourceType === "assessment" && !activeAssessment ? "Pick assessment" : "0"}
                                         onChange={(e) => handleMarkInputChange(student.id, e.target.value)}
-                                        className={`h-9 bg-slate-900/60 text-white rounded-lg ${
+                                        className={`h-9 bg-slate-900/60 text-white rounded-lg disabled:opacity-50 ${
                                           fieldError
                                             ? "border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500"
                                             : "border-white/10"
@@ -1714,12 +1894,12 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
 
                                   <td className="px-5 py-4">
                                     <Input
-                                      placeholder="Add remarks..."
-                                      disabled={isExamPublished}
+                                      placeholder={markSourceType === "assessment" && !activeAssessment ? "Select assessment first" : "Add remarks..."}
+                                      disabled={isExamPublished || (markSourceType === "assessment" && !activeAssessment)}
                                       aria-label={`Remarks for ${student.firstName} ${student.lastName}`}
                                       value={input.remarks}
                                       onChange={(e) => handleRemarkInputChange(student.id, e.target.value)}
-                                      className="h-9 bg-slate-900/60 border-white/10 text-white rounded-lg text-xs"
+                                      className="h-9 bg-slate-900/60 border-white/10 text-white rounded-lg text-xs disabled:opacity-50"
                                     />
                                   </td>
                                 </tr>
@@ -2527,6 +2707,182 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                 ) : null}
               </div>
             )}
+          </div>
+        )}
+        {/* Quick Create Assessment Modal (Accessible from Class Assessment Gradebook) */}
+        {isCreateAssessmentModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 print:hidden">
+            <Card className="w-full max-w-2xl bg-[#0f141f] border-red-500/20 shadow-2xl">
+              <CardContent className="space-y-4 p-6">
+                <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Create Class Assessment</h3>
+                    <p className="text-xs text-slate-400">Configure a new assessment for marks entry and continuous grading.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsCreateAssessmentModalOpen(false)}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    ✕
+                  </Button>
+                </div>
+                <form onSubmit={handleCreateAssessment} className="grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Assessment Title</label>
+                    <Input
+                      placeholder="e.g. Starters Phonics Quiz"
+                      value={assessmentForm.title}
+                      onChange={(e) => setAssessmentForm({ ...assessmentForm, title: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Assessment Type</label>
+                    <Select
+                      value={assessmentForm.type}
+                      onChange={(e) => setAssessmentForm({ ...assessmentForm, type: e.target.value as AssessmentType })}
+                    >
+                      {assessmentTypes.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Academic Session</label>
+                    <Select
+                      value={assessmentForm.academicYearId}
+                      onChange={(e) => setAssessmentForm({ ...assessmentForm, academicYearId: e.target.value })}
+                      required
+                    >
+                      <option value="">Select Academic Year</option>
+                      {academicYears.map((y) => (
+                        <option key={y.id} value={y.id}>
+                          {y.name} {y.status === "active" ? "(Active)" : ""}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Class / Grade</label>
+                    <Select
+                      value={assessmentForm.gradeId}
+                      onChange={(e) => setAssessmentForm({ ...assessmentForm, gradeId: e.target.value, sectionId: "" })}
+                      required
+                    >
+                      <option value="">Select Class</option>
+                      {grades.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Section</label>
+                    <Select
+                      value={assessmentForm.sectionId}
+                      onChange={(e) => setAssessmentForm({ ...assessmentForm, sectionId: e.target.value })}
+                      required
+                    >
+                      <option value="">Select Section</option>
+                      {sections
+                        .filter((s) => !assessmentForm.gradeId || s.gradeId === assessmentForm.gradeId)
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Subject</label>
+                    <Select
+                      value={assessmentForm.subjectId}
+                      onChange={(e) => setAssessmentForm({ ...assessmentForm, subjectId: e.target.value })}
+                      required
+                    >
+                      <option value="">Select Subject</option>
+                      {subjects.map((sub) => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.name} ({sub.code})
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Teacher</label>
+                    <Select
+                      value={assessmentForm.teacherId}
+                      onChange={(e) => setAssessmentForm({ ...assessmentForm, teacherId: e.target.value })}
+                      required
+                    >
+                      <option value="">Select Teacher</option>
+                      {teachers.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.firstName} {t.lastName}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Maximum Marks</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={assessmentForm.maximumMarks}
+                      onChange={(e) => setAssessmentForm({ ...assessmentForm, maximumMarks: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Passing Marks</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={assessmentForm.passingMarks}
+                      onChange={(e) => setAssessmentForm({ ...assessmentForm, passingMarks: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Assessment Date</label>
+                    <Input
+                      type="date"
+                      value={assessmentForm.assessmentDate}
+                      onChange={(e) => setAssessmentForm({ ...assessmentForm, assessmentDate: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2 flex justify-end gap-2 pt-4 border-t border-white/5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setIsCreateAssessmentModalOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" className="bg-red-500 hover:bg-red-600 text-white">
+                      Create & Select Assessment
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
           </div>
         )}
       </div>

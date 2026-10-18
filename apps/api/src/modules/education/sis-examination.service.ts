@@ -953,8 +953,21 @@ export class SisExaminationService {
       conditions.push(eq(enrollments.sectionId, sectionId));
     }
     const rows = await this.database.db.select().from(enrollments).where(and(...conditions)).limit(1);
-    if (!rows.length) throw new ApiError(400, 'VALIDATION_FAILED', 'Student is not actively enrolled in the selected academic context.');
-    return rows[0];
+    if (rows.length) return rows[0];
+
+    // Fallback if enrollment has academicYear naming variation: match active enrollment in grade (and section)
+    const fallbackConditions = [
+      eq(enrollments.workspaceId, workspaceId),
+      eq(enrollments.studentId, studentId),
+      eq(enrollments.gradeId, gradeId),
+      eq(enrollments.status, 'active'),
+    ];
+    if (sectionId) {
+      fallbackConditions.push(eq(enrollments.sectionId, sectionId));
+    }
+    const fallbackRows = await this.database.db.select().from(enrollments).where(and(...fallbackConditions)).limit(1);
+    if (!fallbackRows.length) throw new ApiError(400, 'VALIDATION_FAILED', 'Student is not actively enrolled in the selected academic context.');
+    return fallbackRows[0];
   }
 
   private async findActiveEnrollments(workspaceId: string, academicYearName: string, academicYearId: string, gradeId: string, sectionId?: string) {
@@ -967,7 +980,19 @@ export class SisExaminationService {
     if (sectionId) {
       conditions.push(eq(enrollments.sectionId, sectionId));
     }
-    return this.database.db.select().from(enrollments).where(and(...conditions));
+    const rows = await this.database.db.select().from(enrollments).where(and(...conditions));
+    if (rows.length > 0) return rows;
+
+    // Fallback: active enrollments in grade (and section)
+    const fallbackConditions = [
+      eq(enrollments.workspaceId, workspaceId),
+      eq(enrollments.gradeId, gradeId),
+      eq(enrollments.status, 'active'),
+    ];
+    if (sectionId) {
+      fallbackConditions.push(eq(enrollments.sectionId, sectionId));
+    }
+    return this.database.db.select().from(enrollments).where(and(...fallbackConditions));
   }
 
   private async resolveExaminationMarkSource(tenant: Tenant, examinationId: string, examinationSubjectId?: string) {

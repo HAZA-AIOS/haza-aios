@@ -385,6 +385,83 @@ describeDatabase('DB-7 examination assessment and results persistence', () => {
       })
     ).rejects.toMatchObject({ statusCode: 400 });
   });
+
+  it('supports Class Assessment creation, marks entry with absent/exempt, boundary validation, and student enrollment lookup fallback', async () => {
+    const { tenant } = await createSisTenant(database, 'assessment-flow');
+    const sis = new SisService(database);
+    const exams = new SisExaminationService(database);
+    const fixture = await createClassFixture(sis, tenant);
+
+    // 1. Create a Class Assessment (e.g. Starters Phonics Quiz maxMarks: 25, passingMarks: 10)
+    const assessment = await exams.createAssessment(tenant, {
+      title: 'Starters Phonics Quiz',
+      academicYearId: fixture.year.id,
+      gradeId: fixture.grade.id,
+      sectionId: fixture.section.id,
+      subjectId: fixture.subject.id,
+      teacherId: fixture.staff.id,
+      type: 'class_test',
+      maximumMarks: 25,
+      passingMarks: 10,
+      weightage: 20,
+      assessmentDate: '2026-10-18',
+      status: 'published',
+    });
+
+    expect(assessment.id).toBeDefined();
+    expect(assessment.maximumMarks).toBe(25);
+
+    // 2. Reject marks exceeding maximum marks (26 > 25)
+    await expect(
+      exams.enterMark(tenant, {
+        sourceType: 'assessment',
+        sourceId: assessment.id,
+        sectionId: fixture.section.id,
+        studentId: fixture.students[0].id,
+        obtainedMarks: 26,
+        enteredBy: fixture.staff.id,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    // 3. Enter valid marks (22/25) for student 0, absent for student 1
+    const student0Mark = await exams.enterMark(tenant, {
+      sourceType: 'assessment',
+      sourceId: assessment.id,
+      sectionId: fixture.section.id,
+      studentId: fixture.students[0].id,
+      obtainedMarks: 22,
+      isAbsent: false,
+      isExempt: false,
+      enteredBy: fixture.staff.id,
+    });
+    expect(student0Mark.obtainedMarks).toBe(22);
+    expect(student0Mark.grade).toBeDefined();
+
+    const student1Mark = await exams.enterMark(tenant, {
+      sourceType: 'assessment',
+      sourceId: assessment.id,
+      sectionId: fixture.section.id,
+      studentId: fixture.students[1].id,
+      isAbsent: true,
+      remarks: 'Flu symptoms',
+      enteredBy: fixture.staff.id,
+    });
+    expect(student1Mark.isAbsent).toBe(true);
+    expect(student1Mark.grade).toBe('ABS');
+
+    // 4. Retrieve marks and verify persistence
+    const reloadedMarks = await exams.listMarks(tenant, {
+      sourceType: 'assessment',
+      sourceId: assessment.id,
+      gradeId: fixture.grade.id,
+      sectionId: fixture.section.id,
+    });
+    expect(reloadedMarks).toHaveLength(2);
+    const m0 = reloadedMarks.find((m) => m.studentId === fixture.students[0].id);
+    expect(m0?.obtainedMarks).toBe(22);
+    const m1 = reloadedMarks.find((m) => m.studentId === fixture.students[1].id);
+    expect(m1?.isAbsent).toBe(true);
+  });
 });
 
 async function createSisTenant(database: DatabaseClient, label: string) {

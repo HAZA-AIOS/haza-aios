@@ -506,4 +506,132 @@ describe("Epic 10L: Examination & Result Management Enhancement", () => {
       ])
     );
   });
+
+  it("supports Class Assessment marks entry for Reception 1 / Starters, loads active student roster, and saves marks", async () => {
+    vi.mocked(AcademicService.getGrades).mockResolvedValue([
+      { id: "grade-rec-1", organizationId: "org-1", name: "Reception 1", level: 0, order: 0, status: "active", createdAt: "now", updatedAt: "now" },
+      { id: "grade-1", organizationId: "org-1", name: "Grade 10", level: 10, order: 10, status: "active", createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(AcademicService.getSections).mockResolvedValue([
+      { id: "sec-starters", organizationId: "org-1", gradeId: "grade-rec-1", name: "Starters", capacity: 25, status: "active", createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(StudentService.getStudents).mockResolvedValue([
+      { id: "student-starter-1", organizationId: "org-1", admissionNumber: "REC-001", firstName: "Alice", lastName: "Wonder", dateOfBirth: "2021-05-10", gender: "female", admissionDate: "2026-01-10", status: "active", guardians: [], createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(EnrollmentService.getEnrollments).mockResolvedValue([
+      { id: "enr-rec-1", organizationId: "org-1", studentId: "student-starter-1", academicYear: "2026-2027", gradeId: "grade-rec-1", sectionId: "sec-starters", enrollmentDate: "2026-01-10", status: "active", createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(ExaminationService.getAssessments).mockResolvedValue([
+      {
+        id: "assess-1",
+        organizationId: "org-1",
+        title: "Starters Phonics Quiz",
+        academicYearId: "year-1",
+        gradeId: "grade-rec-1",
+        sectionId: "sec-starters",
+        subjectId: "subject-2",
+        teacherId: "teacher-1",
+        type: "class_test",
+        maximumMarks: 20,
+        passingMarks: 8,
+        weightage: 10,
+        assessmentDate: "2026-03-01",
+        status: "draft",
+        createdAt: "now",
+        updatedAt: "now",
+      },
+    ]);
+    vi.mocked(ExaminationService.bulkEnterMarks).mockResolvedValue([]);
+
+    renderPage("marks");
+
+    // Switch to Class Assessment
+    const classAssessmentBtn = await screen.findByRole("button", { name: "Class Assessment" });
+    fireEvent.click(classAssessmentBtn);
+
+    // Select Reception 1
+    const classSelect = screen.getByDisplayValue("Grade 10");
+    fireEvent.change(classSelect, { target: { value: "grade-rec-1" } });
+
+    // Select Starters section
+    const sectionSelect = await screen.findByDisplayValue("Select Section");
+    fireEvent.change(sectionSelect, { target: { value: "sec-starters" } });
+
+    // Verify student roster loaded Alice Wonder for Reception 1 / Starters
+    expect(await screen.findByText("Alice Wonder")).toBeDefined();
+    expect(await screen.findByText("REC-001")).toBeDefined();
+
+    // Verify Starters Phonics Quiz is auto-selected
+    const assessmentMatches = await screen.findAllByText(/Starters Phonics Quiz/);
+    expect(assessmentMatches.length).toBeGreaterThan(0);
+
+    // Verify max marks & passing marks bound from assessment
+    const maxMarksMatches = await screen.findAllByText(/Max Marks:/);
+    expect(maxMarksMatches.length).toBeGreaterThan(0);
+
+    // Enter marks: 18 / 20
+    const marksInput = screen.getByLabelText("Obtained marks for Alice Wonder");
+    fireEvent.change(marksInput, { target: { value: "18" } });
+
+    // Save marks
+    const saveButton = screen.getByRole("button", { name: /Save Gradebook Marks/i });
+    expect((saveButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(saveButton);
+
+    expect(ExaminationService.bulkEnterMarks).toHaveBeenCalledWith(
+      "org-1",
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: "assessment",
+          sourceId: "assess-1",
+          studentId: "student-starter-1",
+          obtainedMarks: 18,
+          isAbsent: false,
+          isExempt: false,
+        }),
+      ])
+    );
+  });
+
+  it("displays actionable empty state when no assessments exist for selected class/section and allows creating assessment", async () => {
+    vi.mocked(AcademicService.getGrades).mockResolvedValue([
+      { id: "grade-rec-1", organizationId: "org-1", name: "Reception 1", level: 0, order: 0, status: "active", createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(AcademicService.getSections).mockResolvedValue([
+      { id: "sec-starters", organizationId: "org-1", gradeId: "grade-rec-1", name: "Starters", capacity: 25, status: "active", createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(StudentService.getStudents).mockResolvedValue([
+      { id: "student-starter-1", organizationId: "org-1", admissionNumber: "REC-001", firstName: "Alice", lastName: "Wonder", dateOfBirth: "2021-05-10", gender: "female", admissionDate: "2026-01-10", status: "active", guardians: [], createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(EnrollmentService.getEnrollments).mockResolvedValue([
+      { id: "enr-rec-1", organizationId: "org-1", studentId: "student-starter-1", academicYear: "2026-2027", gradeId: "grade-rec-1", sectionId: "sec-starters", enrollmentDate: "2026-01-10", status: "active", createdAt: "now", updatedAt: "now" },
+    ]);
+    vi.mocked(ExaminationService.getAssessments).mockResolvedValue([]);
+
+    renderPage("marks");
+
+    // Switch to Class Assessment
+    const classAssessmentBtn = await screen.findByRole("button", { name: "Class Assessment" });
+    fireEvent.click(classAssessmentBtn);
+
+    // Select Reception 1
+    const classSelect = screen.getByDisplayValue("Select Class");
+    fireEvent.change(classSelect, { target: { value: "grade-rec-1" } });
+
+    // Select Starters
+    const sectionSelect = await screen.findByDisplayValue("Select Section");
+    fireEvent.change(sectionSelect, { target: { value: "sec-starters" } });
+
+    // Active roster should still be loaded immediately
+    expect(await screen.findByText("Alice Wonder")).toBeDefined();
+
+    // Verify actionable alert and button to create assessment
+    expect(await screen.findByText(/No assessments found for Reception 1/)).toBeDefined();
+    const createBtn = screen.getByRole("button", { name: /Create Assessment/i });
+    expect(createBtn).toBeDefined();
+
+    // Click Create Assessment to open modal
+    fireEvent.click(createBtn);
+    expect(await screen.findByText("Create Class Assessment")).toBeDefined();
+  });
 });

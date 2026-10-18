@@ -240,11 +240,11 @@ function AppShell({ children }: AppShellProps) {
   };
 
   return (
-    <div className="flex min-h-screen bg-[#080b11] text-white antialiased font-sans">
+    <div className="flex min-h-screen bg-[#080b11] text-white antialiased font-sans print:min-h-0 print:bg-white print:text-slate-900 print:block">
       
       {/* 1. DESKTOP SIDEBAR RAIL */}
       <aside
-        className={`hidden md:flex flex-col items-center border-r border-white/5  bg-indigo-900 py-6 transition-all duration-300 z-30 w-16 px-2`}
+        className={`hidden md:flex flex-col items-center border-r border-white/5  bg-indigo-900 py-6 transition-all duration-300 z-30 w-16 px-2 print:hidden`}
       >
         {/* Brand Logo */}
         <div className="flex items-center justify-center gap-3 w-full px-2 mb-6 relative group">
@@ -355,7 +355,7 @@ function AppShell({ children }: AppShellProps) {
       </aside>
 
       {/* 2. MOBILE HEADER BAR */}
-      <div className="md:hidden fixed top-0 left-0 right-0 h-16 border-b border-white/5 bg-[#090d16]/90 backdrop-blur-md flex items-center justify-between px-4 z-40">
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 border-b border-white/5 bg-[#090d16]/90 backdrop-blur-md flex items-center justify-between px-4 z-40 print:hidden">
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-2 text-slate-400 hover:text-white"
@@ -378,7 +378,7 @@ function AppShell({ children }: AppShellProps) {
 
       {/* MOBILE DRAWER NAVIGATION */}
       {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 top-16 bg-[#080b11] z-35 flex flex-col p-4 space-y-4">
+        <div className="md:hidden fixed inset-0 top-16 bg-[#080b11] z-35 flex flex-col p-4 space-y-4 print:hidden">
           {navItems.map((item) => (
             <button
               key={item.label}
@@ -414,10 +414,10 @@ function AppShell({ children }: AppShellProps) {
       )}
 
       {/* 3. MAIN CONTENT CONTAINER LAYOUT */}
-      <div className="flex-1 flex flex-col min-w-0 md:pt-0 pt-16">
+      <div className="flex-1 flex flex-col min-w-0 md:pt-0 pt-16 print:pt-0 print:m-0 print:w-full print:block">
         
         {/* TOP UTILITY HEADER BAR */}
-        <header className="h-16 border-b border-white/5 bg-indigo-900 px-6 flex items-center justify-between z-20">
+        <header className="h-16 border-b border-white/5 bg-indigo-900 px-6 flex items-center justify-between z-20 print:hidden">
           
           {/* Breadcrumb / Left Side Header */}
           <div className="flex items-center gap-3">
@@ -557,7 +557,7 @@ function AppShell({ children }: AppShellProps) {
         </header>
 
         {/* 4. MAIN PAGE DYNAMIC CONTENT */}
-        <main className="flex-1 overflow-y-auto p-6 relative">
+        <main className="flex-1 overflow-y-auto p-6 relative print:p-0 print:m-0 print:overflow-visible print:bg-white print:text-slate-900">
           {children}
         </main>
 

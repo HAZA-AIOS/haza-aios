@@ -1067,11 +1067,11 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
         </div>
 
         {isLoading ? (
-          <div className="rounded-2xl border border-white/5 bg-[#0f141f] p-12 text-center text-slate-400">
+          <div className="rounded-2xl border border-white/5 bg-[#0f141f] p-12 text-center text-slate-400 print:hidden">
             Loading examination data...
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-6 print:space-y-0">
             {/* 1. EXAMINATIONS & SUBJECTS CONFIGURATION */}
             {activeTab === "examinations" && (
               <div className="space-y-6">
@@ -2281,15 +2281,15 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
 
                 {/* Printable Cards Preview Area */}
                 {isLoadingCards ? (
-                  <div className="text-center py-12 text-slate-400">Loading result cards...</div>
+                  <div className="text-center py-12 text-slate-400 print:hidden">Loading result cards...</div>
                 ) : singleResultCard ? (
-                  <div className="flex justify-center">
+                  <div className="flex justify-center print:block print:w-full print:m-0 print:p-0">
                     <ResultCardView card={singleResultCard} />
                   </div>
                 ) : batchResultCards.length > 0 ? (
-                  <div className="space-y-8">
+                  <div className="space-y-8 print:space-y-0 print:block print:w-full">
                     {batchResultCards.map((card, idx) => (
-                      <div key={card.student.id} className="page-break-after">
+                      <div key={card.student.id} className="page-break-after print:m-0 print:p-0">
                         <ResultCardView card={card} />
                         {idx < batchResultCards.length - 1 && (
                           <div className="h-6 print:hidden border-b border-dashed border-slate-700 my-6" />
@@ -2298,7 +2298,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-16 text-slate-500 border border-dashed border-white/5 rounded-2xl">
+                  <div className="text-center py-16 text-slate-500 border border-dashed border-white/5 rounded-2xl print:hidden">
                     <Printer className="w-12 h-12 mx-auto mb-3 text-slate-600" />
                     <p className="text-base font-medium text-white">No result card loaded yet.</p>
                     <p className="text-sm">Select an examination and student/class above, then click Generate Preview.</p>
@@ -2537,7 +2537,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
 // Result Card Component (A4 Printable Layout)
 function ResultCardView({ card }: { card: StudentResultCard }) {
   return (
-    <div className="w-full max-w-[800px] bg-white text-slate-900 rounded-xl p-8 shadow-2xl border border-slate-200 print:shadow-none print:border-none print:p-0 print:m-0 print:w-full">
+    <div className="w-full max-w-[800px] bg-white text-slate-900 rounded-xl p-8 shadow-2xl border border-slate-200 print:shadow-none print:border-none print:p-6 print:m-0 print:w-full print:max-w-none print:rounded-none">
       {/* School Header */}
       <div className="text-center border-b-2 border-red-600 pb-5">
         <h1 className="text-2xl font-black uppercase tracking-wider text-slate-900">

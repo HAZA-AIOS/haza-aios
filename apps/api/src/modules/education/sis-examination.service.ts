@@ -88,6 +88,9 @@ function databaseError(error: unknown): never {
   if (mapped.code === 'DATABASE_UNIQUE_CONSTRAINT') {
     throw new ApiError(409, 'DATABASE_UNIQUE_CONSTRAINT', 'A SIS examination record with the same unique scope already exists.');
   }
+  if (mapped.code === 'DATABASE_FOREIGN_KEY_CONSTRAINT') {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'Referenced educational entity was not found or has an invalid relationship.');
+  }
   throw error;
 }
 
@@ -310,7 +313,21 @@ export class SisExaminationService {
     const source = sourceType === 'assessment' ? await this.resolveAssessmentMarkSource(tenant, String(input.sourceId)) : await this.resolveExaminationMarkSource(tenant, String(input.sourceId), typeof input.examinationSubjectId === 'string' ? input.examinationSubjectId : undefined);
     const student = (await this.database.db.select().from(students).where(and(eq(students.workspaceId, tenant.workspaceId), eq(students.id, String(input.studentId)))).limit(1))[0];
     if (!student) throw new ApiError(404, 'NOT_FOUND', 'Student not found for this organization.');
-    await this.findActiveEnrollment(tenant.workspaceId, String(input.studentId), source.academicYearName, source.academicYearId, source.gradeId, source.sectionId);
+
+    const targetSectionFilter = (source.sectionId && source.sectionId.trim())
+      ? source.sectionId.trim()
+      : (typeof input.sectionId === 'string' && input.sectionId.trim())
+        ? input.sectionId.trim()
+        : undefined;
+
+    const enrollment = await this.findActiveEnrollment(tenant.workspaceId, String(input.studentId), source.academicYearName, source.academicYearId, source.gradeId, targetSectionFilter);
+    const resolvedSectionId = (source.sectionId && source.sectionId.trim())
+      ? source.sectionId.trim()
+      : enrollment.sectionId;
+
+    if (!resolvedSectionId) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Could not resolve an active section enrollment for student.');
+    }
     
     if (sourceType === 'examination') {
       const exam = await this.getExaminationRow(tenant.workspaceId, String(input.sourceId));
@@ -356,7 +373,7 @@ export class SisExaminationService {
       academicYearId: source.academicYearId,
       termId: source.termId,
       gradeId: source.gradeId,
-      sectionId: source.sectionId,
+      sectionId: resolvedSectionId,
       subjectId: source.subjectId,
       studentId: String(input.studentId),
       maximumMarks: source.maximumMarks,
@@ -959,7 +976,7 @@ export class SisExaminationService {
     const examSubject = (await this.database.db.select().from(examinationSubjects).where(condition).limit(1))[0];
     if (!examSubject) this.notFound('Examination subject');
     const academicYear = await this.getAcademicYearRow(tenant.workspaceId, examination.academicYearId);
-    return { academicYearId: examination.academicYearId, academicYearName: academicYear.name, termId: examination.termId ?? undefined, gradeId: examSubject.gradeId, sectionId: examSubject.sectionId ?? '', subjectId: examSubject.subjectId, maximumMarks: examSubject.maximumMarks, passingMarks: examSubject.passingMarks };
+    return { academicYearId: examination.academicYearId, academicYearName: academicYear.name, termId: examination.termId ?? undefined, gradeId: examSubject.gradeId, sectionId: examSubject.sectionId ?? undefined, subjectId: examSubject.subjectId, maximumMarks: examSubject.maximumMarks, passingMarks: examSubject.passingMarks };
   }
 
   private async resolveAssessmentMarkSource(tenant: Tenant, assessmentId: string) {

@@ -296,7 +296,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
     marksAssessmentId,
   ]);
 
-  async function loadData() {
+  async function loadData(throwOnError = false) {
     if (!currentOrganization) return;
     setIsLoading(true);
     setError(null);
@@ -386,12 +386,13 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load examination data.");
+      if (throwOnError) throw err;
     } finally {
       setIsLoading(false);
     }
   }
 
-  async function loadMarksRoster() {
+  async function loadMarksRoster(throwOnError = false) {
     if (!currentOrganization) return;
     try {
       const orgId = currentOrganization.id;
@@ -452,6 +453,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
       setHasUnsavedMarks(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load class roster.");
+      if (throwOnError) throw err;
     }
   }
 
@@ -525,6 +527,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
 
   async function handleSaveMarks() {
     if (!currentOrganization) return;
+    if (isSavingMarks) return;
     if (Object.keys(validationErrors).length > 0) {
       setError("Please fix marks validation errors before saving.");
       return;
@@ -550,6 +553,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
           sourceId,
           examinationSubjectId:
             markSourceType === "examination" ? marksExamSubjectId : undefined,
+          sectionId: marksSectionId || undefined,
           studentId,
           obtainedMarks: val.status === "present" ? Number(val.obtainedMarks) : 0,
           isAbsent: val.status === "absent",
@@ -564,13 +568,27 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
         return;
       }
 
-      await ExaminationService.bulkEnterMarks(orgId, inputsToSave);
+      try {
+        await ExaminationService.bulkEnterMarks(orgId, inputsToSave);
+        setMessage("Gradebook marks saved successfully.");
+        setHasUnsavedMarks(false);
+      } catch (saveErr) {
+        // Preserve unsaved marks in state on save failure
+        const rawMessage = saveErr instanceof Error ? saveErr.message : String(saveErr);
+        const safeMessage = rawMessage.includes("500") || rawMessage.toLowerCase().includes("internal server error")
+          ? "An unexpected error occurred while saving marks. Please check your entries and try again."
+          : rawMessage;
+        setError(safeMessage);
+        return;
+      }
 
-      setMessage("Gradebook marks saved successfully.");
-      setHasUnsavedMarks(false);
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save marks.");
+      // Distinguish save failures from post-save refresh failures
+      try {
+        await loadData(true);
+        await loadMarksRoster(true);
+      } catch (refreshErr) {
+        setError("Marks were saved successfully, but refreshing the roster failed. Please reload the page.");
+      }
     } finally {
       setIsSavingMarks(false);
     }

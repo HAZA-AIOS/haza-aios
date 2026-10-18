@@ -278,4 +278,232 @@ describe("Epic 10L: Examination & Result Management Enhancement", () => {
     expect(await screen.findByText("Missing Marks Report")).toBeDefined();
     expect(await screen.findByText("Generate Report")).toBeDefined();
   });
+
+  it("saves marks for All Sections examination subject, confirms persistence, and displays success", async () => {
+    vi.mocked(ExaminationService.getExaminationSubjects).mockResolvedValue([
+      {
+        id: "exam-subj-all",
+        organizationId: "org-1",
+        examinationId: "exam-1",
+        gradeId: "grade-1",
+        sectionId: undefined, // All Sections
+        subjectId: "subject-1",
+        maximumMarks: 100,
+        passingMarks: 40,
+        weightage: 100,
+        status: "scheduled",
+        createdAt: "now",
+        updatedAt: "now",
+      },
+    ]);
+
+    vi.mocked(ExaminationService.bulkEnterMarks).mockResolvedValue([
+      {
+        id: "mark-rec-1",
+        organizationId: "org-1",
+        sourceType: "examination",
+        sourceId: "exam-1",
+        examinationSubjectId: "exam-subj-all",
+        academicYearId: "year-1",
+        gradeId: "grade-1",
+        sectionId: "section-1",
+        subjectId: "subject-1",
+        studentId: "student-1",
+        maximumMarks: 100,
+        obtainedMarks: 78,
+        percentage: 78,
+        grade: "B",
+        enteredBy: "staff-user",
+        createdAt: "now",
+        updatedAt: "now",
+      },
+    ]);
+
+    renderPage("marks");
+
+    // Wait for student roster to load
+    expect(await screen.findByText("Student Marks Entry Roster")).toBeDefined();
+    expect(await screen.findByText("Brian May")).toBeDefined();
+
+    // Find the mark input for Brian May and enter 78
+    const markInputs = screen.getAllByRole("spinbutton");
+    fireEvent.change(markInputs[0], { target: { value: "78" } });
+
+    // Expect unsaved changes indicator
+    expect(screen.getByText("Unsaved changes")).toBeDefined();
+
+    // Click Save Gradebook Marks
+    const saveButton = screen.getByRole("button", { name: /Save Gradebook Marks/i });
+    fireEvent.click(saveButton);
+
+    // Verify bulkEnterMarks was called with expected payload
+    expect(ExaminationService.bulkEnterMarks).toHaveBeenCalledWith(
+      "org-1",
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceType: "examination",
+          sourceId: "exam-1",
+          examinationSubjectId: "exam-subj-all",
+          studentId: "student-1",
+          obtainedMarks: 78,
+          isAbsent: false,
+          isExempt: false,
+        }),
+      ])
+    );
+
+    // Verify confirmation message
+    expect(await screen.findByText("Gradebook marks saved successfully.")).toBeDefined();
+  });
+
+  it("preserves unsaved marks in state when save fails and displays actionable error", async () => {
+    vi.mocked(ExaminationService.getExaminationSubjects).mockResolvedValue([
+      {
+        id: "exam-subj-all",
+        organizationId: "org-1",
+        examinationId: "exam-1",
+        gradeId: "grade-1",
+        sectionId: undefined,
+        subjectId: "subject-1",
+        maximumMarks: 100,
+        passingMarks: 40,
+        weightage: 100,
+        status: "scheduled",
+        createdAt: "now",
+        updatedAt: "now",
+      },
+    ]);
+
+    vi.mocked(ExaminationService.bulkEnterMarks).mockRejectedValueOnce(
+      new Error("Internal server error")
+    );
+
+    renderPage("marks");
+
+    expect(await screen.findByText("Brian May")).toBeDefined();
+    const markInputs = screen.getAllByRole("spinbutton");
+    fireEvent.change(markInputs[0], { target: { value: "78" } });
+
+    const saveButton = screen.getByRole("button", { name: /Save Gradebook Marks/i });
+    fireEvent.click(saveButton);
+
+    // Verify actionable message displayed without exposing raw 500 details
+    expect(
+      await screen.findByText("An unexpected error occurred while saving marks. Please check your entries and try again.")
+    ).toBeDefined();
+
+    // Verify input value was preserved
+    expect((markInputs[0] as HTMLInputElement).value).toBe("78");
+    // Verify unsaved changes indicator is still visible
+    expect(screen.getByText("Unsaved changes")).toBeDefined();
+  });
+
+  it("distinguishes save success from post-save refresh failure", async () => {
+    vi.mocked(ExaminationService.getExaminationSubjects).mockResolvedValue([
+      {
+        id: "exam-subj-all",
+        organizationId: "org-1",
+        examinationId: "exam-1",
+        gradeId: "grade-1",
+        sectionId: undefined,
+        subjectId: "subject-1",
+        maximumMarks: 100,
+        passingMarks: 40,
+        weightage: 100,
+        status: "scheduled",
+        createdAt: "now",
+        updatedAt: "now",
+      },
+    ]);
+
+    vi.mocked(ExaminationService.bulkEnterMarks).mockResolvedValueOnce([
+      {
+        id: "mark-rec-1",
+        organizationId: "org-1",
+        sourceType: "examination",
+        sourceId: "exam-1",
+        examinationSubjectId: "exam-subj-all",
+        academicYearId: "year-1",
+        gradeId: "grade-1",
+        sectionId: "section-1",
+        subjectId: "subject-1",
+        studentId: "student-1",
+        maximumMarks: 100,
+        obtainedMarks: 78,
+        percentage: 78,
+        enteredBy: "staff-user",
+        createdAt: "now",
+        updatedAt: "now",
+      },
+    ]);
+
+    renderPage("marks");
+
+    expect(await screen.findByText("Brian May")).toBeDefined();
+    const markInputs = screen.getAllByRole("spinbutton");
+    fireEvent.change(markInputs[0], { target: { value: "78" } });
+
+    // Force post-save loadData refresh to fail
+    vi.mocked(StudentService.getStudents).mockRejectedValueOnce(new Error("Network timeout during reload"));
+
+    const saveButton = screen.getByRole("button", { name: /Save Gradebook Marks/i });
+    fireEvent.click(saveButton);
+
+    // Verify specific refresh error is shown
+    expect(
+      await screen.findByText("Marks were saved successfully, but refreshing the roster failed. Please reload the page.")
+    ).toBeDefined();
+  });
+
+  it("handles Absent and Exempt student statuses properly in gradebook save", async () => {
+    vi.mocked(ExaminationService.bulkEnterMarks).mockResolvedValueOnce([
+      {
+        id: "mark-rec-abs",
+        organizationId: "org-1",
+        sourceType: "examination",
+        sourceId: "exam-1",
+        examinationSubjectId: "exam-subj-1",
+        academicYearId: "year-1",
+        gradeId: "grade-1",
+        sectionId: "section-1",
+        subjectId: "subject-1",
+        studentId: "student-1",
+        maximumMarks: 100,
+        obtainedMarks: 0,
+        percentage: 0,
+        grade: "ABS",
+        isAbsent: true,
+        enteredBy: "staff-user",
+        createdAt: "now",
+        updatedAt: "now",
+      },
+    ]);
+
+    renderPage("marks");
+
+    expect(await screen.findByText("Brian May")).toBeDefined();
+
+    // Select the attendance/status dropdown for student 1
+    const statusSelects = screen.getAllByRole("combobox");
+    // Find the one with value "present"
+    const studentStatusSelect = statusSelects.find((s) => (s as HTMLSelectElement).value === "present");
+    expect(studentStatusSelect).toBeDefined();
+
+    fireEvent.change(studentStatusSelect!, { target: { value: "absent" } });
+
+    const saveButton = screen.getByRole("button", { name: /Save Gradebook Marks/i });
+    fireEvent.click(saveButton);
+
+    expect(ExaminationService.bulkEnterMarks).toHaveBeenCalledWith(
+      "org-1",
+      expect.arrayContaining([
+        expect.objectContaining({
+          studentId: "student-1",
+          isAbsent: true,
+          isExempt: false,
+          obtainedMarks: 0,
+        }),
+      ])
+    );
+  });
 });

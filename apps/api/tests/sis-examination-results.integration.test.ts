@@ -197,6 +197,194 @@ describeDatabase('DB-7 examination assessment and results persistence', () => {
     expect(register.students).toHaveLength(2);
     expect(register.summary.totalEnrolled).toBe(2);
   });
+
+  it('reproduces and verifies hotfix for gradebook marks saving with All Sections examination subjects', async () => {
+    const { tenant } = await createSisTenant(database, 'hotfix-all-sections');
+    const foreignTenant = (await createSisTenant(database, 'hotfix-foreign')).tenant;
+    const sis = new SisService(database);
+    const exams = new SisExaminationService(database);
+
+    const suffix = randomUUID().slice(0, 6);
+    const year = await sis.createAcademicYear(tenant, { name: '2027-' + suffix, startDate: '2027-01-01', endDate: '2027-12-31', status: 'active' });
+    const grade = await sis.createGrade(tenant, { name: 'Reception 1', level: 0, order: 1, status: 'active' });
+    const sectionA = await sis.createSection(tenant, { gradeId: grade.id, name: 'A', capacity: 30, status: 'active' });
+    const sectionB = await sis.createSection(tenant, { gradeId: grade.id, name: 'B', capacity: 30, status: 'active' });
+    const subject = await sis.createSubject(tenant, { name: 'Mathematics', code: 'MATH-' + suffix, status: 'active', displayOrder: 1 });
+    const teacher = await sis.createStaff(tenant, { firstName: 'John', lastName: 'Doe', hireDate: '2027-01-01', staffType: 'teacher', employmentStatus: 'full_time', status: 'active' });
+
+    // Student 1 enrolled in Section A (Reproduction context: 1 student, 78% marks)
+    const student1 = await sis.createStudent(tenant, { admissionNumber: 'REC-001-' + suffix, firstName: 'Alice', lastName: 'Smith', dateOfBirth: '2022-01-01', gender: 'female', admissionDate: '2027-01-10', status: 'active', guardians: [] });
+    await sis.createEnrollment(tenant, { studentId: student1.id, academicYear: year.name, gradeId: grade.id, sectionId: sectionA.id, enrollmentDate: '2027-01-10', status: 'active' });
+
+    // Student 2 enrolled in Section B
+    const student2 = await sis.createStudent(tenant, { admissionNumber: 'REC-002-' + suffix, firstName: 'Bob', lastName: 'Jones', dateOfBirth: '2022-02-01', gender: 'male', admissionDate: '2027-01-10', status: 'active', guardians: [] });
+    await sis.createEnrollment(tenant, { studentId: student2.id, academicYear: year.name, gradeId: grade.id, sectionId: sectionB.id, enrollmentDate: '2027-01-10', status: 'active' });
+
+    // Student 3 enrolled in Section A
+    const student3 = await sis.createStudent(tenant, { admissionNumber: 'REC-003-' + suffix, firstName: 'Charlie', lastName: 'Brown', dateOfBirth: '2022-03-01', gender: 'male', admissionDate: '2027-01-10', status: 'active', guardians: [] });
+    await sis.createEnrollment(tenant, { studentId: student3.id, academicYear: year.name, gradeId: grade.id, sectionId: sectionA.id, enrollmentDate: '2027-01-10', status: 'active' });
+
+    // Examination: Final Exams 2027
+    const exam = await exams.createExamination(tenant, {
+      name: 'Final Exams 2027 ' + suffix,
+      academicYearId: year.id,
+      type: 'final',
+      startDate: '2027-11-01',
+      endDate: '2027-11-15',
+      status: 'scheduled',
+    });
+
+    // Subject: Mathematics — Reception 1 All (sectionId is undefined: All Sections)
+    const examSubject = await exams.addExaminationSubject(tenant, {
+      examinationId: exam.id,
+      gradeId: grade.id,
+      // sectionId is omitted: applies to All Sections of Reception 1
+      subjectId: subject.id,
+      maximumMarks: 100,
+      passingMarks: 40,
+      weightage: 100,
+      status: 'scheduled',
+    });
+    expect(examSubject.sectionId).toBeUndefined();
+
+    // 1. Save one student's marks (Exact reproduction case: 78 marks out of 100)
+    const savedSingle = await exams.bulkEnterMarks(tenant, [
+      {
+        sourceType: 'examination',
+        sourceId: exam.id,
+        examinationSubjectId: examSubject.id,
+        studentId: student1.id,
+        obtainedMarks: 78,
+        enteredBy: teacher.id,
+      },
+    ]);
+    expect(savedSingle).toHaveLength(1);
+    expect(savedSingle[0].obtainedMarks).toBe(78);
+    expect(savedSingle[0].percentage).toBe(78);
+    // Student 1 was enrolled in Section A, mark record must have Section A's id
+    expect(savedSingle[0].sectionId).toBe(sectionA.id);
+
+    // 2. Refresh and confirm persistence via fresh query
+    const refreshedMarks = await exams.listMarks(tenant, {
+      sourceType: 'examination',
+      sourceId: exam.id,
+      studentId: student1.id,
+    });
+    expect(refreshedMarks).toHaveLength(1);
+    expect(refreshedMarks[0].obtainedMarks).toBe(78);
+    expect(refreshedMarks[0].sectionId).toBe(sectionA.id);
+
+    // 3. Edit and save again: verify upsert behavior and no duplicate records
+    const updatedMark = await exams.enterMark(tenant, {
+      sourceType: 'examination',
+      sourceId: exam.id,
+      examinationSubjectId: examSubject.id,
+      studentId: student1.id,
+      obtainedMarks: 85,
+      enteredBy: teacher.id,
+    });
+    expect(updatedMark.obtainedMarks).toBe(85);
+    expect(updatedMark.percentage).toBe(85);
+
+    const recheckedMarks = await exams.listMarks(tenant, {
+      sourceType: 'examination',
+      sourceId: exam.id,
+      studentId: student1.id,
+    });
+    expect(recheckedMarks).toHaveLength(1);
+    expect(recheckedMarks[0].id).toBe(savedSingle[0].id); // Same record ID, no duplicate
+
+    // 4. Save multiple students including absent and exempt statuses across different sections
+    const bulkResults = await exams.bulkEnterMarks(tenant, [
+      {
+        sourceType: 'examination',
+        sourceId: exam.id,
+        examinationSubjectId: examSubject.id,
+        studentId: student2.id, // Section B
+        isAbsent: true,
+        remarks: 'Medical leave',
+        enteredBy: teacher.id,
+      },
+      {
+        sourceType: 'examination',
+        sourceId: exam.id,
+        examinationSubjectId: examSubject.id,
+        studentId: student3.id, // Section A
+        isExempt: true,
+        remarks: 'Approved sports exemption',
+        enteredBy: teacher.id,
+      },
+    ]);
+    expect(bulkResults).toHaveLength(2);
+
+    const student2Mark = bulkResults.find((m) => m.studentId === student2.id)!;
+    expect(student2Mark.isAbsent).toBe(true);
+    expect(student2Mark.grade).toBe('ABS');
+    expect(student2Mark.sectionId).toBe(sectionB.id); // Resolves student 2's Section B
+
+    const student3Mark = bulkResults.find((m) => m.studentId === student3.id)!;
+    expect(student3Mark.isExempt).toBe(true);
+    expect(student3Mark.grade).toBe('EXM');
+    expect(student3Mark.sectionId).toBe(sectionA.id); // Resolves student 3's Section A
+
+    // Verify total records in this exam is exactly 3 (no duplicates)
+    const allExamMarks = await exams.listMarks(tenant, {
+      sourceType: 'examination',
+      sourceId: exam.id,
+      subjectId: subject.id,
+    });
+    expect(allExamMarks).toHaveLength(3);
+
+    // 5. Reject invalid marks (> maxMarks, negative marks)
+    await expect(
+      exams.enterMark(tenant, {
+        sourceType: 'examination',
+        sourceId: exam.id,
+        examinationSubjectId: examSubject.id,
+        studentId: student1.id,
+        obtainedMarks: 150, // exceeds max 100
+        enteredBy: teacher.id,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    await expect(
+      exams.enterMark(tenant, {
+        sourceType: 'examination',
+        sourceId: exam.id,
+        examinationSubjectId: examSubject.id,
+        studentId: student1.id,
+        obtainedMarks: -5,
+        enteredBy: teacher.id,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    // 6. Prevent cross-tenant access
+    await expect(
+      exams.enterMark(foreignTenant, {
+        sourceType: 'examination',
+        sourceId: exam.id,
+        examinationSubjectId: examSubject.id,
+        studentId: student1.id,
+        obtainedMarks: 90,
+        enteredBy: teacher.id,
+      })
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    // 7. Preserve existing publication locking
+    await exams.calculateClassResults(tenant, exam.id, grade.id, sectionA.id);
+    await exams.publishResults(tenant, exam.id, grade.id, sectionA.id, teacher.id);
+
+    await expect(
+      exams.enterMark(tenant, {
+        sourceType: 'examination',
+        sourceId: exam.id,
+        examinationSubjectId: examSubject.id,
+        studentId: student1.id,
+        obtainedMarks: 90,
+        enteredBy: teacher.id,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
 });
 
 async function createSisTenant(database: DatabaseClient, label: string) {

@@ -1,0 +1,389 @@
+# HAZA AIOS — Epic 10N: System Hardening & Cross-Module Audit Matrix
+
+**Document ID:** `HAZA-AIOS-EPIC10N-AUDIT-MATRIX-001`  
+**Repository:** `HAZA-AIOS/haza-aios`  
+**Current Accepted Production Baseline:** `eb6c5d9df71c12a975b462418ae0d6fdf5a89113`  
+**Branch:** `feature/epic-10n-system-hardening`  
+**Date:** October 19, 2026  
+**Auditor:** HAZA AIOS Engineering Team  
+
+---
+
+## 1. Executive Summary
+
+This document presents the comprehensive security, architectural, cross-module, database, and operational audit for **Epic 10N: System Hardening & Cross-Module Auditing**. 
+
+The audit evaluated all modules implemented across Epics 10A through 10M, spanning multi-tenant authentication, admissions, enrollment, academic hierarchy, attendance, timetabling, examinations, gradebooks, finance, communication, and parent/student portals.
+
+A total of **16 findings** were identified across 5 audit domains:
+- **Critical Severity:** 0
+- **High Severity:** 5
+- **Medium Severity:** 8
+- **Low Severity:** 3
+
+All findings are classified with concrete source-code evidence, root-cause analyses, security/business impacts, and actionable remediation specifications.
+
+---
+
+## 2. Summary of Findings by Domain & Severity
+
+| Domain | Critical | High | Medium | Low | Total |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **A. Authentication & Security** | 0 | 2 | 2 | 0 | **4** |
+| **B. Cross-Module Integrity** | 0 | 2 | 2 | 0 | **4** |
+| **C. Database & API** | 0 | 1 | 2 | 1 | **4** |
+| **D. Frontend & UX** | 0 | 0 | 1 | 1 | **2** |
+| **E. Operational Reliability** | 0 | 1 | 1 | 0 | **2** |
+| **Total** | **0** | **5** | **8** | **3** | **16** |
+
+---
+
+## 3. Comprehensive Audit Matrix
+
+### Domain A: Authentication & Security
+
+#### Finding ID: `SEC-001`
+- **Module:** Education Module API Router (`apps/api/src/modules/education/education.module.ts`)
+- **Severity:** **High**
+- **Classification:** Confirmed Defect
+- **Evidence:**
+  `apps/api/src/modules/education/education.module.ts` lines 23–26 and 33–34:
+  ```typescript
+  function actor(request: { body?: unknown }, fallback?: Record<string, unknown>) {
+    const payload = body(request);
+    return (payload.actor && typeof payload.actor === "object" ? payload.actor : fallback) as Record<string, unknown> | undefined;
+  }
+  ...
+  const userActor = actor(request, defaultActor);
+  return { tenant, auth, actor: userActor };
+  ```
+- **Root Cause:** Client request body payload `request.body.actor` takes precedence over the authenticated server-side session actor (`defaultActor`), allowing client spoofing.
+- **Affected Files:**
+  - `apps/api/src/modules/education/education.module.ts`
+- **Security / Business Impact:** Authenticated callers can forge the `userId` and `role` recorded in financial transaction audit logs, admissions workflow transitions, and expense approvals.
+- **Recommended Correction:** Remove client-side body override. Always derive `actor` authoritatively from verified session:
+  ```typescript
+  const authoritativeActor = {
+    userId: auth.user.id,
+    role: membership?.role ?? "Member",
+    email: auth.user.email,
+  };
+  ```
+- **Regression Test Requirements:** Integration test asserting that sending `{ actor: { userId: "forged" } }` in request body is ignored and audit record logs `auth.user.id`.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+#### Finding ID: `SEC-002`
+- **Module:** API HTTP Application Layer (`apps/api/src/app.ts`, `apps/api/src/modules/auth/`)
+- **Severity:** **High**
+- **Classification:** Confirmed Defect
+- **Evidence:**
+  `apps/api/src/app.ts` lines 44–54:
+  Requests are processed directly without rate-limiting middleware or sliding-window throttling.
+- **Root Cause:** Lack of rate-limiting middleware in native HTTP request pipeline.
+- **Affected Files:**
+  - `apps/api/src/app.ts`
+  - `apps/api/src/middleware/rate-limiter.ts` (New file required)
+- **Security / Business Impact:** Authentication endpoints (`/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/forgot-password`, `/api/v1/auth/reset-password`) are vulnerable to automated brute-force attacks and credential stuffing.
+- **Recommended Correction:** Implement an in-memory sliding-window token bucket / IP-keyed rate limiter middleware for authentication routes (e.g., maximum 5 failed attempts per minute per IP for login).
+- **Regression Test Requirements:** Integration test sending 10 rapid failed login requests; assert HTTP 429 `TOO_MANY_REQUESTS` after limit exceeded.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+#### Finding ID: `SEC-003`
+- **Module:** Security Headers Middleware (`apps/api/src/middleware/security.ts`)
+- **Severity:** **Medium**
+- **Classification:** Potential Risk / Hardening Opportunity
+- **Evidence:**
+  `apps/api/src/middleware/security.ts` lines 3–8:
+  ```typescript
+  export function applySecurityHeaders(response: ServerResponse) {
+    response.setHeader("x-content-type-options", "nosniff");
+    response.setHeader("x-frame-options", "DENY");
+    response.setHeader("referrer-policy", "no-referrer");
+    response.setHeader("permissions-policy", "camera=(), microphone=(), geolocation=()");
+  }
+  ```
+- **Root Cause:** `Strict-Transport-Security` (HSTS) and `Content-Security-Policy` (CSP) headers are absent.
+- **Affected Files:**
+  - `apps/api/src/middleware/security.ts`
+- **Security / Business Impact:** While edge proxy (Cloudflare) provides partial SSL termination, direct backend responses lack HSTS enforcement and defense-in-depth CSP headers.
+- **Recommended Correction:** Add `strict-transport-security: max-age=31536000; includeSubDomains; preload` and base API CSP `default-src 'none'`.
+- **Regression Test Requirements:** Verify response headers on API endpoints include HSTS.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+#### Finding ID: `SEC-004`
+- **Module:** Cross-Module Audit Trails (`apps/api/src/modules/`)
+- **Severity:** **Medium**
+- **Classification:** Architectural Debt
+- **Evidence:**
+  Admissions stores audit trail inside JSON array in `portalUpdateRequests.payload`, Auth uses `security_events` table, and SIS Core uses structured logger without persistent audit queryability.
+- **Root Cause:** Absence of a centralized, tenant-scoped operational audit repository.
+- **Affected Files:**
+  - `apps/api/src/database/schema.ts`
+  - `apps/api/src/modules/education/`
+- **Security / Business Impact:** Compliance audits cannot run unified historical event queries across admissions, grading, and student lifecycle events.
+- **Recommended Correction:** Standardize operational audit event creation using existing `security_events` or create dedicated `organization_audit_events` table.
+- **Regression Test Requirements:** Verification that student lifecycle transitions record queryable audit records.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+### Domain B: Cross-Module Integrity
+
+#### Finding ID: `INT-001`
+- **Module:** SIS Admissions Service (`apps/api/src/modules/education/sis-admissions.service.ts`)
+- **Severity:** **High**
+- **Classification:** Confirmed Defect
+- **Evidence:**
+  `apps/api/src/modules/education/sis-admissions.service.ts` lines 971–1085 (`convertApplicationToEnrollment`):
+  Sequential database updates (`createStudent`, `createEnrollment`, `assignFee`, `portalUpdateRequests.update`) execute outside a `withTransaction` block.
+- **Root Cause:** Section is labeled `7. TRANSACTIONAL ENROLLMENT CONVERSION`, but `withTransaction(this.database, ...)` is omitted.
+- **Affected Files:**
+  - `apps/api/src/modules/education/sis-admissions.service.ts`
+- **Security / Business Impact:** A failure during enrollment creation or fee assignment leaves a student record in the database while leaving the application in `approved` state. Subsequent conversion attempts fail due to duplicate student detection, permanently stranding the applicant.
+- **Recommended Correction:** Wrap lines 971–1085 in `withTransaction(this.database, async ({ tx }) => { ... })` and pass transaction context down to internal helper queries.
+- **Regression Test Requirements:** Integration test that deliberately simulates a downstream error during enrollment creation; verify rollback of student record.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+#### Finding ID: `INT-002`
+- **Module:** Student Archival Lifecycle (`apps/api/src/modules/education/sis.service.ts`)
+- **Severity:** **High**
+- **Classification:** Confirmed Defect
+- **Evidence:**
+  `apps/api/src/modules/education/sis.service.ts` lines 289–293:
+  ```typescript
+  async deleteStudent(tenant: Tenant, id: string) {
+    const student = await this.getStudent(tenant, id);
+    if (!student) this.notFound("Student");
+    await this.database.db.update(students).set({ status: "archived", updatedAt: new Date() })
+      .where(and(eq(students.id, id), eq(students.workspaceId, tenant.workspaceId)));
+  }
+  ```
+- **Root Cause:** Archiving a student only updates `students.status = 'archived'`. Related records in `enrollments` remain `status: 'active'`.
+- **Affected Files:**
+  - `apps/api/src/modules/education/sis.service.ts`
+- **Security / Business Impact:** Active class section rosters, attendance sheets, and recurring billing queries continue to include archived students because they filter on `enrollments.status = 'active'`.
+- **Recommended Correction:** Execute coordinated status update in `withTransaction`: when student is archived, update active enrollments to `withdrawn` or `archived`, and check for outstanding unpaid invoices.
+- **Regression Test Requirements:** Archiving a student automatically transitions active enrollment to `archived` and excludes student from active section attendance sheets.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+#### Finding ID: `INT-003`
+- **Module:** Student Section Transfer Lifecycle (`apps/api/src/modules/education/sis.service.ts`)
+- **Severity:** **Medium**
+- **Classification:** Confirmed Defect
+- **Evidence:**
+  `apps/api/src/modules/education/sis.service.ts` lines 314–320:
+  ```typescript
+  async transferStudent(tenant: Tenant, studentId: string, newSectionId: string) {
+    ...
+    await this.updateEnrollment(tenant, current.id, { status: "transferred" });
+    return this.createEnrollment(tenant, { studentId, ... });
+  }
+  ```
+- **Root Cause:** Mutation is non-transactional, and class assessment marks / gradebook references linked to the previous section are not evaluated.
+- **Affected Files:**
+  - `apps/api/src/modules/education/sis.service.ts`
+- **Security / Business Impact:** If the second step fails, the student has no active enrollment. Historical assessment marks remain attached to the old section without a transfer history log.
+- **Recommended Correction:** Wrap `transferStudent` in `withTransaction`, record audit log, and preserve historical section linkage.
+- **Regression Test Requirements:** Test section transfer atomicity and confirm student appears in new section roster.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+#### Finding ID: `INT-004`
+- **Module:** Sequential Number Generation (`apps/api/src/modules/education/sis.service.ts`)
+- **Severity:** **Medium**
+- **Classification:** Concurrency Race Condition
+- **Evidence:**
+  `apps/api/src/modules/education/sis.service.ts` lines 710–721:
+  `nextEmployeeNumber` and `nextAdmissionNumber` query all rows, compute `max + 1` in Node memory, and return a string.
+- **Root Cause:** Lack of atomic sequence reservation or database-level lock.
+- **Affected Files:**
+  - `apps/api/src/modules/education/sis.service.ts`
+- **Security / Business Impact:** Concurrent student admissions or staff creations generate identical numbers, resulting in unhandled `DATABASE_UNIQUE_CONSTRAINT` collisions.
+- **Recommended Correction:** Implement atomic sequence counter in database or retry loop with collision handling.
+- **Regression Test Requirements:** Concurrent creation test with multiple parallel admissions requests.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+### Domain C: Database & API
+
+#### Finding ID: `DB-001`
+- **Module:** Query Architecture (`apps/api/src/modules/education/sis.service.ts`, `sis-finance.service.ts`)
+- **Severity:** **High**
+- **Classification:** Scalability & Memory Risk
+- **Evidence:**
+  `sis.service.ts` line 323:
+  ```typescript
+  const rows = await this.database.db.select().from(attendanceSessions)
+    .where(eq(attendanceSessions.workspaceId, tenant.workspaceId))
+    .orderBy(desc(attendanceSessions.attendanceDate));
+  return rows.filter((row) => (!filters.academicYearId || ...));
+  ```
+  `sis.service.ts` line 225 (`teachingAssignments`), line 296 (`enrollments`), `sis-finance.service.ts` line 515 (`generateRecurringInvoices`).
+- **Root Cause:** Queries retrieve all workspace records into Node process memory and filter using JavaScript `.filter()`.
+- **Affected Files:**
+  - `apps/api/src/modules/education/sis.service.ts`
+  - `apps/api/src/modules/education/sis-finance.service.ts`
+- **Security / Business Impact:** In production workspaces with thousands of attendance records and enrollments, this causes high memory consumption, high latency, and risks Node.js OOM crashes.
+- **Recommended Correction:** Move filters into SQL `WHERE` clauses combining `and(eq(col, filter))` and add sensible default `limit(100)` or pagination.
+- **Regression Test Requirements:** Benchmark query performance with SQL-level filtering; verify identical filtered results.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+#### Finding ID: `DB-002`
+- **Module:** API Request Body Pre-Validation (`apps/api/src/modules/education/education.module.ts`)
+- **Severity:** **Medium**
+- **Classification:** Robustness Defect
+- **Evidence:**
+  `education.module.ts` accepts raw `body(request)` as `Record<string, unknown>` without centralized schema validation.
+- **Root Cause:** Validation is performed via ad-hoc type assertions inside services rather than at the router boundary.
+- **Affected Files:**
+  - `apps/api/src/modules/education/education.module.ts`
+  - `apps/api/src/modules/education/validation/` (New directory required)
+- **Security / Business Impact:** Malformed or missing fields trigger unhandled MySQL schema errors (500) rather than standard HTTP 400 validation responses.
+- **Recommended Correction:** Introduce structured validation helper functions (analogous to `auth-validation.ts`) for all education mutation endpoints.
+- **Regression Test Requirements:** Test invalid payload inputs on all education POST/PATCH routes; assert HTTP 400 `VALIDATION_FAILED`.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+#### Finding ID: `DB-003`
+- **Module:** List Endpoint Pagination (`apps/api/src/modules/education/`)
+- **Severity:** **Medium**
+- **Classification:** Performance & Resource Management
+- **Evidence:**
+  Endpoints for students, invoices, payments, and expenses return unpaginated arrays.
+- **Root Cause:** Initial design assumed small cohort sizes.
+- **Affected Files:**
+  - `apps/api/src/modules/education/`
+- **Security / Business Impact:** Large response payloads degrade client performance and increase egress bandwidth costs.
+- **Recommended Correction:** Introduce optional `page` and `pageSize` (default 50, max 200) parameters on list endpoints while preserving backward compatibility.
+- **Regression Test Requirements:** Test pagination offset and limit parameters on student and invoice listings.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+#### Finding ID: `DB-004`
+- **Module:** Batch Invoice Generation Transaction Boundary (`apps/api/src/modules/education/sis-finance.service.ts`)
+- **Severity:** **Low**
+- **Classification:** Robustness Defect
+- **Evidence:**
+  `generateRecurringInvoices` loops over students and creates individual invoices. If an error occurs halfway, partial batch is created.
+- **Root Cause:** Missing batch transaction boundary or chunked settlement.
+- **Affected Files:**
+  - `apps/api/src/modules/education/sis-finance.service.ts`
+- **Security / Business Impact:** Partial batch generation requires manual reconciliation to determine which students were billed.
+- **Recommended Correction:** Wrap recurring billing batch in transaction or record batch execution log with failed/succeeded itemization.
+- **Regression Test Requirements:** Test recurring invoice batch generation with partial failure simulation.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+### Domain D: Frontend & UX
+
+#### Finding ID: `UX-001`
+- **Module:** Web Client Router (`apps/web/src/App.tsx`)
+- **Severity:** **Low**
+- **Classification:** Redundancy / Dead Code
+- **Evidence:**
+  `apps/web/src/App.tsx` lines 549–570:
+  Cases for `/workspace/education/attendance`, `/attendance/mark`, and `/attendance/history` are duplicated at the bottom of the switch block.
+- **Root Cause:** Merge artifact from prior stage integration.
+- **Affected Files:**
+  - `apps/web/src/App.tsx`
+- **Security / Business Impact:** Zero functional impact (first case matches), but creates codebase confusion and maintenance debt.
+- **Recommended Correction:** Remove duplicate switch cases (lines 549–570).
+- **Regression Test Requirements:** `npm run typecheck:web` and router smoke test on attendance pages.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+#### Finding ID: `UX-002`
+- **Module:** Web Modal Form Double-Submit Protection (`apps/web/src/pages/workspace/education/`)
+- **Severity:** **Medium**
+- **Classification:** UX / Concurrency Risk
+- **Evidence:**
+  Several modal dialogs in admissions and examinations do not explicitly disable the submit button while `isSubmitting` is true.
+- **Root Cause:** Inconsistent use of loading state across modal dialogs.
+- **Affected Files:**
+  - `apps/web/src/pages/workspace/education/admissions/AdmissionsPage.tsx`
+  - `apps/web/src/pages/workspace/education/examinations/ExaminationResultsPage.tsx`
+- **Security / Business Impact:** Double-clicking submit can issue duplicate API requests before response returns.
+- **Recommended Correction:** Enforce `disabled={isSubmitting}` and loading spinner icon on all dialog submission buttons.
+- **Regression Test Requirements:** Component test verifying button is disabled during pending promise.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+### Domain E: Operational Reliability
+
+#### Finding ID: `OPS-001`
+- **Module:** CI/CD Automation (`.github/workflows/`)
+- **Severity:** **High**
+- **Classification:** Operational Risk
+- **Evidence:**
+  `.github/workflows/` contains only `.gitkeep`. No automated pull request validation or build test action exists.
+- **Root Cause:** CI workflow was deferred during early staging foundations.
+- **Affected Files:**
+  - `.github/workflows/ci.yml` (New file required)
+- **Security / Business Impact:** Broken code, failing tests, or TypeScript compilation errors can be merged into `develop` or `main` undetected by GitHub checks.
+- **Recommended Correction:** Create GitHub Actions workflow `.github/workflows/ci.yml` running:
+  - `npm run typecheck:api`
+  - `npm run typecheck:web`
+  - `npm run test:run -w apps/api`
+  - `npm run test:run -w apps/web`
+  - `npm run build:api`
+  - `npm run build:web`
+- **Regression Test Requirements:** Workflow triggers and passes on pull request branches.
+- **Implementation Status:** Identified / Ready for Remediation
+
+---
+
+#### Finding ID: `OPS-002`
+- **Module:** Git Release History Management
+- **Severity:** **Medium**
+- **Classification:** Release Process Gap
+- **Evidence:**
+  Commit `eb6c5d9df71c12a975b462418ae0d6fdf5a89113` was released and accepted on production `main`, but lacks an annotated Git tag.
+- **Root Cause:** Release process pauses at authorization gate; tagging is pending user closeout instruction.
+- **Affected Files:**
+  - Git repository tags
+- **Security / Business Impact:** Traceability between semantic release numbers and Git commits is ambiguous.
+- **Recommended Correction:** Tag `main` at `eb6c5d9df71c12a975b462418ae0d6fdf5a89113` as `v0.9.0-alpha.3` or `v0.10.13-epic10m`.
+- **Regression Test Requirements:** `git tag -l` and `git show <tag>`.
+- **Implementation Status:** Documented / Awaiting Closeout Authorization
+
+---
+
+## 4. Implementation Status Tracker
+
+| Finding ID | Domain | Severity | Target Phase | Status |
+| :--- | :--- | :---: | :---: | :---: |
+| `SEC-001` | Auth & Security | High | Phase 1 (Security Remediation) | Planned |
+| `SEC-002` | Auth & Security | High | Phase 1 (Security Remediation) | Planned |
+| `SEC-003` | Auth & Security | Medium | Phase 1 (Security Remediation) | Planned |
+| `SEC-004` | Auth & Security | Medium | Phase 1 (Security Remediation) | Planned |
+| `INT-001` | Cross-Module | High | Phase 2 (Integrity Remediation) | Planned |
+| `INT-002` | Cross-Module | High | Phase 2 (Integrity Remediation) | Planned |
+| `INT-003` | Cross-Module | Medium | Phase 2 (Integrity Remediation) | Planned |
+| `INT-004` | Cross-Module | Medium | Phase 2 (Integrity Remediation) | Planned |
+| `DB-001` | Database & API | High | Phase 3 (DB & API Remediation) | Planned |
+| `DB-002` | Database & API | Medium | Phase 3 (DB & API Remediation) | Planned |
+| `DB-003` | Database & API | Medium | Phase 3 (DB & API Remediation) | Planned |
+| `DB-004` | Database & API | Low | Phase 3 (DB & API Remediation) | Planned |
+| `UX-001` | Frontend & UX | Low | Phase 4 (UX Polish) | Planned |
+| `UX-002` | Frontend & UX | Medium | Phase 4 (UX Polish) | Planned |
+| `OPS-001` | Operations | High | Phase 5 (CI/CD Hardening) | Planned |
+| `OPS-002` | Operations | Medium | Phase 0/5 (Closeout & Tagging) | Planned |

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useOrganization } from "@/org/use-organization";
 import { useAuth } from "@/auth/use-auth";
@@ -65,6 +65,7 @@ import {
   Trash2,
   Archive,
   Plus,
+  Search,
 } from "lucide-react";
 
 export type ExamTab =
@@ -175,6 +176,36 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
   const [marksAssessmentId, setMarksAssessmentId] = useState("");
   const [marksSubjectId, setMarksSubjectId] = useState("");
   const [isCreateAssessmentModalOpen, setIsCreateAssessmentModalOpen] = useState(false);
+  const [isSubmittingAssessment, setIsSubmittingAssessment] = useState(false);
+  const rosterRequestIdRef = useRef(0);
+
+  // Tab 2: Assessment Register Filters & Management State
+  const [assessmentFilter, setAssessmentFilter] = useState({
+    academicYearId: "",
+    gradeId: "",
+    sectionId: "",
+    subjectId: "",
+    status: "",
+    search: "",
+  });
+  const [editingAssessment, setEditingAssessment] = useState<Assessment | null>(null);
+  const [isEditAssessmentModalOpen, setIsEditAssessmentModalOpen] = useState(false);
+  const [isUpdatingAssessment, setIsUpdatingAssessment] = useState(false);
+  const [editAssessmentForm, setEditAssessmentForm] = useState({
+    title: "",
+    type: "class_test" as AssessmentType,
+    academicYearId: "",
+    gradeId: "",
+    sectionId: "",
+    subjectId: "",
+    teacherId: "",
+    maximumMarks: 20,
+    passingMarks: 8,
+    weightage: 10,
+    assessmentDate: today(),
+    status: "draft" as Assessment["status"],
+    description: "",
+  });
 
   const [enrolledRosterStudentIds, setEnrolledRosterStudentIds] = useState<string[]>([]);
   const [markInputs, setMarkInputs] = useState<
@@ -241,11 +272,32 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
     return assessments.filter((a) => {
       if (marksAcademicYearId && a.academicYearId !== marksAcademicYearId) return false;
       if (marksGradeId && a.gradeId !== marksGradeId) return false;
-      if (marksSectionId && a.sectionId !== marksSectionId) return false;
-      if (marksSubjectId && a.subjectId !== marksSubjectId) return false;
+      if (marksSectionId && a.sectionId && a.sectionId !== marksSectionId) return false;
       return true;
     });
-  }, [markSourceType, assessments, marksAcademicYearId, marksGradeId, marksSectionId, marksSubjectId]);
+  }, [markSourceType, assessments, marksAcademicYearId, marksGradeId, marksSectionId]);
+
+  const editingAssessmentHasMarks = useMemo(() => {
+    if (!editingAssessment) return false;
+    return marks.some((m) => m.sourceType === "assessment" && m.sourceId === editingAssessment.id);
+  }, [editingAssessment, marks]);
+
+  const filteredAssessments = useMemo(() => {
+    return assessments.filter((a) => {
+      if (assessmentFilter.academicYearId && a.academicYearId !== assessmentFilter.academicYearId) return false;
+      if (assessmentFilter.gradeId && a.gradeId !== assessmentFilter.gradeId) return false;
+      if (assessmentFilter.sectionId && a.sectionId !== assessmentFilter.sectionId) return false;
+      if (assessmentFilter.subjectId && a.subjectId !== assessmentFilter.subjectId) return false;
+      if (assessmentFilter.status && a.status !== assessmentFilter.status) return false;
+      if (assessmentFilter.search.trim()) {
+        const query = assessmentFilter.search.toLowerCase();
+        const titleMatch = a.title.toLowerCase().includes(query);
+        const descMatch = (a.description || "").toLowerCase().includes(query);
+        if (!titleMatch && !descMatch) return false;
+      }
+      return true;
+    });
+  }, [assessments, assessmentFilter]);
 
   useEffect(() => {
     if (markSourceType !== "assessment") return;
@@ -398,6 +450,10 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
       setAssessmentForm((current) => ({
         ...current,
         academicYearId: current.academicYearId || activeYear?.id || "",
+        gradeId: current.gradeId || gradesData[0]?.id || "",
+        sectionId: current.sectionId || sectionsData[0]?.id || "",
+        subjectId: current.subjectId || subjectsData[0]?.id || "",
+        teacherId: current.teacherId || (staffData.find((m) => m.staffType === "teacher")?.id || ""),
       }));
       setExamSubjectForm((current) => ({
         ...current,
@@ -408,28 +464,31 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
       }));
 
       if (examsData[0]) {
-        setMarksExamId(examsData[0].id);
-        setResultSelection((c) => ({ ...c, examinationId: examsData[0].id }));
-        setCardSelection((c) => ({ ...c, examinationId: examsData[0].id }));
-        setReportSelection((c) => ({ ...c, examinationId: examsData[0].id }));
+        setMarksExamId((prev) => prev || examsData[0].id);
+        setResultSelection((c) => ({ ...c, examinationId: c.examinationId || examsData[0].id }));
+        setCardSelection((c) => ({ ...c, examinationId: c.examinationId || examsData[0].id }));
+        setReportSelection((c) => ({ ...c, examinationId: c.examinationId || examsData[0].id }));
       }
       if (examSubjectsData[0]) {
-        setMarksExamSubjectId(examSubjectsData[0].id);
-        setMarksGradeId(examSubjectsData[0].gradeId);
-        setMarksSectionId(examSubjectsData[0].sectionId || "");
+        setMarksExamSubjectId((prev) => prev || examSubjectsData[0].id);
+        setMarksGradeId((prev) => prev || examSubjectsData[0].gradeId);
+        setMarksSectionId((prev) => (prev !== "" ? prev : (examSubjectsData[0].sectionId || "")));
+      }
+      if (subjectsData[0]) {
+        setMarksSubjectId((prev) => prev || subjectsData[0].id);
       }
       if (activeYear) {
         setMarksAcademicYearId((prev) => prev || activeYear.id);
       }
       if (gradesData[0]) {
-        setResultSelection((c) => ({ ...c, gradeId: gradesData[0].id }));
-        setCardSelection((c) => ({ ...c, gradeId: gradesData[0].id }));
-        setReportSelection((c) => ({ ...c, gradeId: gradesData[0].id }));
+        setResultSelection((c) => ({ ...c, gradeId: c.gradeId || gradesData[0].id }));
+        setCardSelection((c) => ({ ...c, gradeId: c.gradeId || gradesData[0].id }));
+        setReportSelection((c) => ({ ...c, gradeId: c.gradeId || gradesData[0].id }));
       }
       if (sectionsData[0]) {
-        setResultSelection((c) => ({ ...c, sectionId: sectionsData[0].id }));
-        setCardSelection((c) => ({ ...c, sectionId: sectionsData[0].id }));
-        setReportSelection((c) => ({ ...c, sectionId: sectionsData[0].id }));
+        setResultSelection((c) => ({ ...c, sectionId: c.sectionId || sectionsData[0].id }));
+        setCardSelection((c) => ({ ...c, sectionId: c.sectionId || sectionsData[0].id }));
+        setReportSelection((c) => ({ ...c, sectionId: c.sectionId || sectionsData[0].id }));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load examination data.");
@@ -441,6 +500,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
 
   async function loadMarksRoster(throwOnError = false) {
     if (!currentOrganization) return;
+    const reqId = ++rosterRequestIdRef.current;
     try {
       const orgId = currentOrganization.id;
       let targetGradeId = marksGradeId;
@@ -455,8 +515,10 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
       }
 
       if (!targetGradeId) {
-        setEnrolledRosterStudentIds([]);
-        setMarkInputs({});
+        if (reqId === rosterRequestIdRef.current) {
+          setEnrolledRosterStudentIds([]);
+          setMarkInputs({});
+        }
         return;
       }
 
@@ -465,6 +527,8 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
         sectionId: targetSectionId || undefined,
         status: "active",
       });
+
+      if (reqId !== rosterRequestIdRef.current) return;
 
       const rosterStudentIds = enrollments.map((e) => e.studentId);
       setEnrolledRosterStudentIds(rosterStudentIds);
@@ -488,6 +552,8 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
           subjectId: activeSubjectId || undefined,
         });
 
+        if (reqId !== rosterRequestIdRef.current) return;
+
         for (const studentId of rosterStudentIds) {
           const found = relevantMarks.find((m) => m.studentId === studentId);
           if (found) {
@@ -501,11 +567,15 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
           }
         }
       }
-      setMarkInputs(inputs);
-      setValidationErrors({});
-      setHasUnsavedMarks(false);
+      if (reqId === rosterRequestIdRef.current) {
+        setMarkInputs(inputs);
+        setValidationErrors({});
+        setHasUnsavedMarks(false);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load class roster.");
+      if (reqId === rosterRequestIdRef.current) {
+        setError(err instanceof Error ? err.message : "Failed to load class roster.");
+      }
       if (throwOnError) throw err;
     }
   }
@@ -780,22 +850,140 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
   async function handleCreateAssessment(e: React.FormEvent) {
     e.preventDefault();
     if (!currentOrganization) return;
-    await runAction(async () => {
+    if (isSubmittingAssessment) return;
+
+    setIsSubmittingAssessment(true);
+    setError(null);
+    try {
       const created = await ExaminationService.createAssessment(currentOrganization.id, {
         ...assessmentForm,
         status: "draft",
       });
       setMessage(`Assessment "${created.title}" created successfully.`);
-      await loadData();
+
+      // Update local state immediately so it's present in lists and selectors
+      setAssessments((prev) => [created, ...prev.filter((a) => a.id !== created.id)]);
+
+      // Synchronize Gradebook filters immediately
+      setMarkSourceType("assessment");
+      setMarksAssessmentId(created.id);
+      if (created.academicYearId) setMarksAcademicYearId(created.academicYearId);
+      if (created.gradeId) setMarksGradeId(created.gradeId);
+      if (created.sectionId) setMarksSectionId(created.sectionId);
+      if (created.subjectId) setMarksSubjectId(created.subjectId);
+
       if (isCreateAssessmentModalOpen) {
         setIsCreateAssessmentModalOpen(false);
-        setMarksAssessmentId(created.id);
-        if (created.gradeId) setMarksGradeId(created.gradeId);
-        if (created.sectionId) setMarksSectionId(created.sectionId);
-        if (created.academicYearId) setMarksAcademicYearId(created.academicYearId);
-        if (created.subjectId) setMarksSubjectId(created.subjectId);
       }
+
+      // Reset form on success (preserve session and grade/section context)
+      setAssessmentForm((prev) => ({
+        ...prev,
+        title: "",
+        subjectId: "",
+        maximumMarks: 20,
+        passingMarks: 8,
+        weightage: 10,
+        assessmentDate: today(),
+      }));
+
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create assessment.");
+    } finally {
+      setIsSubmittingAssessment(false);
+    }
+  }
+
+  function handleOpenEditAssessment(assessment: Assessment) {
+    setEditingAssessment(assessment);
+    setEditAssessmentForm({
+      title: assessment.title,
+      type: assessment.type,
+      academicYearId: assessment.academicYearId,
+      gradeId: assessment.gradeId,
+      sectionId: assessment.sectionId,
+      subjectId: assessment.subjectId,
+      teacherId: assessment.teacherId,
+      maximumMarks: assessment.maximumMarks,
+      passingMarks: assessment.passingMarks,
+      weightage: assessment.weightage ?? 10,
+      assessmentDate: assessment.assessmentDate,
+      status: assessment.status,
+      description: assessment.description ?? "",
     });
+    setIsEditAssessmentModalOpen(true);
+  }
+
+  async function handleUpdateAssessment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currentOrganization || !editingAssessment) return;
+    if (isUpdatingAssessment) return;
+
+    setIsUpdatingAssessment(true);
+    setError(null);
+    try {
+      const updated = await ExaminationService.updateAssessment(
+        currentOrganization.id,
+        editingAssessment.id,
+        {
+          ...editAssessmentForm,
+          maximumMarks: Number(editAssessmentForm.maximumMarks),
+          passingMarks: Number(editAssessmentForm.passingMarks),
+          weightage: Number(editAssessmentForm.weightage),
+        }
+      );
+      setMessage(`Assessment "${updated.title}" updated successfully.`);
+      setAssessments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      setIsEditAssessmentModalOpen(false);
+      setEditingAssessment(null);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update assessment.");
+    } finally {
+      setIsUpdatingAssessment(false);
+    }
+  }
+
+  async function handleDeleteAssessment(assessment: Assessment) {
+    if (!currentOrganization) return;
+    const hasMarks = marks.some((m) => m.sourceType === "assessment" && m.sourceId === assessment.id);
+    if (hasMarks) {
+      setError(`Cannot delete assessment "${assessment.title}": recorded marks exist in the gradebook. Remove student marks first or archive the assessment.`);
+      return;
+    }
+    if (!confirm(`Are you sure you want to delete assessment "${assessment.title}"? This cannot be undone.`)) {
+      return;
+    }
+    await runAction(async () => {
+      await ExaminationService.deleteAssessment(currentOrganization.id, assessment.id);
+      setMessage(`Assessment "${assessment.title}" deleted.`);
+      setAssessments((prev) => prev.filter((a) => a.id !== assessment.id));
+      if (marksAssessmentId === assessment.id) {
+        setMarksAssessmentId("");
+      }
+      await loadData();
+    });
+  }
+
+  async function handleQuickStatusChange(assessment: Assessment, status: Assessment["status"]) {
+    if (!currentOrganization) return;
+    await runAction(async () => {
+      const updated = await ExaminationService.updateAssessment(currentOrganization.id, assessment.id, { status });
+      setMessage(`Assessment status updated to "${status}".`);
+      setAssessments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      await loadData();
+    });
+  }
+
+  function handleSelectAssessmentForGradebook(assessment: Assessment) {
+    setMarkSourceType("assessment");
+    setMarksAcademicYearId(assessment.academicYearId);
+    setMarksGradeId(assessment.gradeId);
+    setMarksSectionId(assessment.sectionId);
+    setMarksSubjectId(assessment.subjectId);
+    setMarksAssessmentId(assessment.id);
+    setActiveTab("marks");
   }
 
   // Result Calculation & Approval Handlers
@@ -1374,111 +1562,402 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
 
             {/* 2. ASSESSMENTS */}
             {activeTab === "assessments" && (
-              <Card className="bg-[#0f141f] border-white/5">
-                <CardContent className="space-y-4 p-6">
-                  <h2 className="text-lg font-semibold text-white">Create Assessment</h2>
-                  <form onSubmit={handleCreateAssessment} className="grid gap-3 lg:grid-cols-4">
-                    <Input
-                      placeholder="Assessment title"
-                      value={assessmentForm.title}
-                      onChange={(e) => setAssessmentForm({ ...assessmentForm, title: e.target.value })}
-                      required
-                    />
-                    <Select
-                      value={assessmentForm.type}
-                      onChange={(e) => setAssessmentForm({ ...assessmentForm, type: e.target.value as AssessmentType })}
+              <div className="space-y-6">
+                {/* Header & Quick Summary */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-white tracking-tight">Class Assessments & Continuous Evaluation</h2>
+                    <p className="text-sm text-slate-400">
+                      Create, manage, and enter continuous evaluation marks for class tests, quizzes, assignments, and practicals.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setMarkSourceType("assessment");
+                        setActiveTab("marks");
+                      }}
+                      className="text-slate-300 border-white/10 hover:bg-white/5"
                     >
-                      {assessmentTypes.map((t) => (
-                        <option key={t.value} value={t.value}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </Select>
-                    <Select
-                      value={assessmentForm.academicYearId}
-                      onChange={(e) => setAssessmentForm({ ...assessmentForm, academicYearId: e.target.value })}
-                      required
-                    >
-                      <option value="">Academic Year</option>
-                      {academicYears.map((y) => (
-                        <option key={y.id} value={y.id}>
-                          {y.name}
-                        </option>
-                      ))}
-                    </Select>
-                    <Input
-                      type="date"
-                      value={assessmentForm.assessmentDate}
-                      onChange={(e) => setAssessmentForm({ ...assessmentForm, assessmentDate: e.target.value })}
-                    />
-                    <Select
-                      value={assessmentForm.gradeId}
-                      onChange={(e) => setAssessmentForm({ ...assessmentForm, gradeId: e.target.value })}
-                      required
-                    >
-                      <option value="">Class</option>
-                      {grades.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name}
-                        </option>
-                      ))}
-                    </Select>
-                    <Select
-                      value={assessmentForm.sectionId}
-                      onChange={(e) => setAssessmentForm({ ...assessmentForm, sectionId: e.target.value })}
-                      required
-                    >
-                      <option value="">Section</option>
-                      {sections
-                        .filter((s) => !assessmentForm.gradeId || s.gradeId === assessmentForm.gradeId)
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
+                      <BookOpenCheck className="w-4 h-4 mr-1.5 text-red-400" />
+                      Open Gradebook
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Create Assessment Form Card */}
+                <Card className="bg-[#0f141f] border-white/5 shadow-lg">
+                  <CardContent className="space-y-4 p-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Plus className="w-4 h-4 text-red-400" />
+                        <h3 className="text-md font-semibold text-white">Create New Assessment</h3>
+                      </div>
+                      <span className="text-xs text-slate-400">All fields marked with * are required</span>
+                    </div>
+
+                    <form onSubmit={handleCreateAssessment} className="grid gap-3 lg:grid-cols-4">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Assessment Title *</label>
+                        <Input
+                          placeholder="e.g. Monthly / Starters Phonics"
+                          value={assessmentForm.title}
+                          onChange={(e) => setAssessmentForm({ ...assessmentForm, title: e.target.value })}
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Assessment Type *</label>
+                        <Select
+                          value={assessmentForm.type}
+                          onChange={(e) => setAssessmentForm({ ...assessmentForm, type: e.target.value as AssessmentType })}
+                          required
+                        >
+                          {assessmentTypes.map((t) => (
+                            <option key={t.value} value={t.value}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Academic Session *</label>
+                        <Select
+                          value={assessmentForm.academicYearId}
+                          onChange={(e) => setAssessmentForm({ ...assessmentForm, academicYearId: e.target.value })}
+                          required
+                        >
+                          <option value="">Select Academic Year</option>
+                          {academicYears.map((y) => (
+                            <option key={y.id} value={y.id}>
+                              {y.name} {y.status === "active" ? "(Active)" : ""}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Assessment Date *</label>
+                        <Input
+                          type="date"
+                          value={assessmentForm.assessmentDate}
+                          onChange={(e) => setAssessmentForm({ ...assessmentForm, assessmentDate: e.target.value })}
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Class / Grade *</label>
+                        <Select
+                          value={assessmentForm.gradeId}
+                          onChange={(e) => setAssessmentForm({ ...assessmentForm, gradeId: e.target.value, sectionId: "" })}
+                          required
+                        >
+                          <option value="">Select Class</option>
+                          {grades.map((g) => (
+                            <option key={g.id} value={g.id}>
+                              {g.name}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Section *</label>
+                        <Select
+                          value={assessmentForm.sectionId}
+                          onChange={(e) => setAssessmentForm({ ...assessmentForm, sectionId: e.target.value })}
+                          required
+                        >
+                          <option value="">Select Section</option>
+                          {sections
+                            .filter((s) => !assessmentForm.gradeId || s.gradeId === assessmentForm.gradeId)
+                            .map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name}
+                              </option>
+                            ))}
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Subject *</label>
+                        <Select
+                          value={assessmentForm.subjectId}
+                          onChange={(e) => setAssessmentForm({ ...assessmentForm, subjectId: e.target.value })}
+                          required
+                        >
+                          <option value="">Select Subject</option>
+                          {subjects.map((sub) => (
+                            <option key={sub.id} value={sub.id}>
+                              {sub.name} ({sub.code})
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Teacher *</label>
+                        <Select
+                          value={assessmentForm.teacherId}
+                          onChange={(e) => setAssessmentForm({ ...assessmentForm, teacherId: e.target.value })}
+                          required
+                        >
+                          <option value="">Select Teacher</option>
+                          {teachers.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.firstName} {t.lastName}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Maximum Marks *</label>
+                        <Input
+                          type="number"
+                          min="1"
+                          placeholder="Max Marks"
+                          value={assessmentForm.maximumMarks}
+                          onChange={(e) => setAssessmentForm({ ...assessmentForm, maximumMarks: Number(e.target.value) })}
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Passing Marks *</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="Passing Marks"
+                          value={assessmentForm.passingMarks}
+                          onChange={(e) => setAssessmentForm({ ...assessmentForm, passingMarks: Number(e.target.value) })}
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-400 mb-1">Weightage % (Optional)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="Weightage %"
+                          value={assessmentForm.weightage}
+                          onChange={(e) => setAssessmentForm({ ...assessmentForm, weightage: Number(e.target.value) })}
+                        />
+                      </div>
+
+                      <div className="flex items-end">
+                        <Button
+                          type="submit"
+                          disabled={isSubmittingAssessment}
+                          className="w-full bg-red-500 hover:bg-red-600 text-white font-medium"
+                        >
+                          {isSubmittingAssessment ? "Creating..." : "Create Assessment"}
+                        </Button>
+                      </div>
+                    </form>
+                  </CardContent>
+                </Card>
+
+                {/* Assessment Register Table */}
+                <Card className="bg-[#0f141f] border-white/5 shadow-lg">
+                  <CardContent className="space-y-4 p-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-white/5">
+                      <div>
+                        <h3 className="text-md font-semibold text-white">
+                          Assessment Register ({filteredAssessments.length})
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          Complete register of scheduled, ongoing, and completed continuous class assessments.
+                        </p>
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        Total Recorded: <span className="text-white font-semibold">{assessments.length}</span>
+                      </div>
+                    </div>
+
+                    {/* Filter Bar */}
+                    <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 pt-1">
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-3 text-slate-500" />
+                        <Input
+                          placeholder="Search title..."
+                          value={assessmentFilter.search}
+                          onChange={(e) => setAssessmentFilter({ ...assessmentFilter, search: e.target.value })}
+                          className="pl-8 text-xs"
+                        />
+                      </div>
+
+                      <Select
+                        value={assessmentFilter.academicYearId}
+                        onChange={(e) => setAssessmentFilter({ ...assessmentFilter, academicYearId: e.target.value })}
+                      >
+                        <option value="">All Sessions</option>
+                        {academicYears.map((y) => (
+                          <option key={y.id} value={y.id}>
+                            {y.name}
                           </option>
                         ))}
-                    </Select>
-                    <Select
-                      value={assessmentForm.subjectId}
-                      onChange={(e) => setAssessmentForm({ ...assessmentForm, subjectId: e.target.value })}
-                      required
-                    >
-                      <option value="">Subject</option>
-                      {subjects.map((sub) => (
-                        <option key={sub.id} value={sub.id}>
-                          {sub.name}
-                        </option>
-                      ))}
-                    </Select>
-                    <Select
-                      value={assessmentForm.teacherId}
-                      onChange={(e) => setAssessmentForm({ ...assessmentForm, teacherId: e.target.value })}
-                      required
-                    >
-                      <option value="">Teacher</option>
-                      {teachers.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.firstName} {t.lastName}
-                        </option>
-                      ))}
-                    </Select>
-                    <Input
-                      type="number"
-                      min="1"
-                      placeholder="Max Marks"
-                      value={assessmentForm.maximumMarks}
-                      onChange={(e) => setAssessmentForm({ ...assessmentForm, maximumMarks: Number(e.target.value) })}
-                    />
-                    <Input
-                      type="number"
-                      min="0"
-                      placeholder="Passing Marks"
-                      value={assessmentForm.passingMarks}
-                      onChange={(e) => setAssessmentForm({ ...assessmentForm, passingMarks: Number(e.target.value) })}
-                    />
-                    <Button type="submit">Create Assessment</Button>
-                  </form>
-                </CardContent>
-              </Card>
+                      </Select>
+
+                      <Select
+                        value={assessmentFilter.gradeId}
+                        onChange={(e) => setAssessmentFilter({ ...assessmentFilter, gradeId: e.target.value, sectionId: "" })}
+                      >
+                        <option value="">All Classes</option>
+                        {grades.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.name}
+                          </option>
+                        ))}
+                      </Select>
+
+                      <Select
+                        value={assessmentFilter.sectionId}
+                        onChange={(e) => setAssessmentFilter({ ...assessmentFilter, sectionId: e.target.value })}
+                      >
+                        <option value="">All Sections</option>
+                        {sections
+                          .filter((s) => !assessmentFilter.gradeId || s.gradeId === assessmentFilter.gradeId)
+                          .map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                      </Select>
+
+                      <Select
+                        value={assessmentFilter.subjectId}
+                        onChange={(e) => setAssessmentFilter({ ...assessmentFilter, subjectId: e.target.value })}
+                      >
+                        <option value="">All Subjects</option>
+                        {subjects.map((sub) => (
+                          <option key={sub.id} value={sub.id}>
+                            {sub.name}
+                          </option>
+                        ))}
+                      </Select>
+
+                      <Select
+                        value={assessmentFilter.status}
+                        onChange={(e) => setAssessmentFilter({ ...assessmentFilter, status: e.target.value })}
+                      >
+                        <option value="">All Statuses</option>
+                        <option value="draft">Draft</option>
+                        <option value="assigned">Assigned</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                        <option value="published">Published</option>
+                        <option value="archived">Archived</option>
+                      </Select>
+                    </div>
+
+                    {/* Table View */}
+                    <div className="overflow-x-auto rounded-xl border border-white/5">
+                      <table className="w-full text-left text-sm text-slate-300">
+                        <thead className="bg-slate-900/60 text-xs uppercase text-slate-400">
+                          <tr>
+                            <th className="px-4 py-3">Assessment Title</th>
+                            <th className="px-4 py-3">Type</th>
+                            <th className="px-4 py-3">Class & Section</th>
+                            <th className="px-4 py-3">Subject</th>
+                            <th className="px-4 py-3 text-center">Date</th>
+                            <th className="px-4 py-3 text-center">Marks (Max / Pass)</th>
+                            <th className="px-4 py-3 text-center">Status</th>
+                            <th className="px-4 py-3 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {filteredAssessments.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                                {assessments.length === 0
+                                  ? "No class assessments created yet. Fill out the form above to create your first assessment."
+                                  : "No assessments match the selected filters."}
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredAssessments.map((a) => (
+                              <tr key={a.id} className="hover:bg-white/[0.02] transition-colors">
+                                <td className="px-4 py-3 font-medium text-white">
+                                  <div>{a.title}</div>
+                                  {a.description && <div className="text-xs text-slate-400 truncate max-w-xs">{a.description}</div>}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <Badge variant="secondary" className="text-xs capitalize">
+                                    {a.type.replace(/_/g, " ")}
+                                  </Badge>
+                                </td>
+                                <td className="px-4 py-3">
+                                  {gradeName(a.gradeId)} — {sectionName(a.sectionId)}
+                                </td>
+                                <td className="px-4 py-3">{subjectName(a.subjectId)}</td>
+                                <td className="px-4 py-3 text-center text-xs text-slate-300 whitespace-nowrap">{a.assessmentDate}</td>
+                                <td className="px-4 py-3 text-center font-semibold">
+                                  <span className="text-slate-200">{a.maximumMarks}</span>
+                                  <span className="text-slate-500 mx-1">/</span>
+                                  <span className="text-emerald-400">{a.passingMarks}</span>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <select
+                                    value={a.status}
+                                    onChange={(e) => handleQuickStatusChange(a, e.target.value as Assessment["status"])}
+                                    className="text-xs bg-slate-900 border border-white/10 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-red-500 cursor-pointer"
+                                  >
+                                    <option value="draft">Draft</option>
+                                    <option value="assigned">Assigned</option>
+                                    <option value="in_progress">In Progress</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="published">Published</option>
+                                    <option value="archived">Archived</option>
+                                  </select>
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleSelectAssessmentForGradebook(a)}
+                                      className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 text-xs px-2 h-7"
+                                      title="Enter Marks in Gradebook"
+                                    >
+                                      <BookOpenCheck className="w-3.5 h-3.5 mr-1" />
+                                      Enter Marks
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleOpenEditAssessment(a)}
+                                      className="text-slate-400 hover:text-white hover:bg-white/5 text-xs px-2 h-7"
+                                      title="Edit Assessment"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleDeleteAssessment(a)}
+                                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10 text-xs px-2 h-7"
+                                      title="Delete Assessment"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             )}
 
             {/* 3. GRADEBOOK & MARKS ENTRY */}
@@ -1651,6 +2130,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                                     gradeId: marksGradeId || prev.gradeId,
                                     sectionId: marksSectionId || prev.sectionId,
                                     subjectId: marksSubjectId || prev.subjectId,
+                                    teacherId: prev.teacherId || teachers[0]?.id || "",
                                   }));
                                   setIsCreateAssessmentModalOpen(true);
                                 }}
@@ -1775,6 +2255,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                             gradeId: marksGradeId || prev.gradeId,
                             sectionId: marksSectionId || prev.sectionId,
                             subjectId: marksSubjectId || prev.subjectId,
+                            teacherId: prev.teacherId || teachers[0]?.id || "",
                           }));
                           setIsCreateAssessmentModalOpen(true);
                         }}
@@ -2876,8 +3357,247 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                     >
                       Cancel
                     </Button>
-                    <Button type="submit" className="bg-red-500 hover:bg-red-600 text-white">
-                      Create & Select Assessment
+                    <Button
+                      type="submit"
+                      disabled={isSubmittingAssessment}
+                      className="bg-red-500 hover:bg-red-600 text-white"
+                    >
+                      {isSubmittingAssessment ? "Creating..." : "Create & Select Assessment"}
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Edit Assessment Modal */}
+        {isEditAssessmentModalOpen && editingAssessment && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 print:hidden">
+            <Card className="w-full max-w-2xl bg-[#0f141f] border-red-500/20 shadow-2xl">
+              <CardContent className="space-y-4 p-6">
+                <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Edit Class Assessment</h3>
+                    <p className="text-xs text-slate-400">Update configuration, boundaries, and status for this assessment.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setIsEditAssessmentModalOpen(false);
+                      setEditingAssessment(null);
+                    }}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    ✕
+                  </Button>
+                </div>
+
+                {editingAssessmentHasMarks && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      Recorded student marks exist for this assessment. Academic session, class, section, and subject are locked to preserve gradebook integrity. Maximum marks cannot be reduced below existing student scores.
+                    </span>
+                  </div>
+                )}
+
+                <form onSubmit={handleUpdateAssessment} className="grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Assessment Title *</label>
+                    <Input
+                      value={editAssessmentForm.title}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, title: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Assessment Type *</label>
+                    <Select
+                      value={editAssessmentForm.type}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, type: e.target.value as AssessmentType })}
+                      required
+                    >
+                      {assessmentTypes.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Status *</label>
+                    <Select
+                      value={editAssessmentForm.status}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, status: e.target.value as Assessment["status"] })}
+                      required
+                    >
+                      <option value="draft">Draft</option>
+                      <option value="assigned">Assigned</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="completed">Completed</option>
+                      <option value="published">Published</option>
+                      <option value="archived">Archived</option>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">
+                      Academic Session {editingAssessmentHasMarks && <span className="text-amber-400">(Locked)</span>}
+                    </label>
+                    <Select
+                      value={editAssessmentForm.academicYearId}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, academicYearId: e.target.value })}
+                      disabled={editingAssessmentHasMarks}
+                      required
+                    >
+                      {academicYears.map((y) => (
+                        <option key={y.id} value={y.id}>
+                          {y.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">
+                      Class / Grade {editingAssessmentHasMarks && <span className="text-amber-400">(Locked)</span>}
+                    </label>
+                    <Select
+                      value={editAssessmentForm.gradeId}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, gradeId: e.target.value, sectionId: "" })}
+                      disabled={editingAssessmentHasMarks}
+                      required
+                    >
+                      {grades.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">
+                      Section {editingAssessmentHasMarks && <span className="text-amber-400">(Locked)</span>}
+                    </label>
+                    <Select
+                      value={editAssessmentForm.sectionId}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, sectionId: e.target.value })}
+                      disabled={editingAssessmentHasMarks}
+                      required
+                    >
+                      {sections
+                        .filter((s) => !editAssessmentForm.gradeId || s.gradeId === editAssessmentForm.gradeId)
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">
+                      Subject {editingAssessmentHasMarks && <span className="text-amber-400">(Locked)</span>}
+                    </label>
+                    <Select
+                      value={editAssessmentForm.subjectId}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, subjectId: e.target.value })}
+                      disabled={editingAssessmentHasMarks}
+                      required
+                    >
+                      {subjects.map((sub) => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.name} ({sub.code})
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Teacher *</label>
+                    <Select
+                      value={editAssessmentForm.teacherId}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, teacherId: e.target.value })}
+                      required
+                    >
+                      {teachers.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.firstName} {t.lastName}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Maximum Marks *</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={editAssessmentForm.maximumMarks}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, maximumMarks: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Passing Marks *</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={editAssessmentForm.passingMarks}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, passingMarks: Number(e.target.value) })}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Weightage % (Optional)</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={editAssessmentForm.weightage}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, weightage: Number(e.target.value) })}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Assessment Date *</label>
+                    <Input
+                      type="date"
+                      value={editAssessmentForm.assessmentDate}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, assessmentDate: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Description (Optional)</label>
+                    <Input
+                      value={editAssessmentForm.description}
+                      onChange={(e) => setEditAssessmentForm({ ...editAssessmentForm, description: e.target.value })}
+                      placeholder="Optional notes or instructions"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2 flex justify-end gap-2 pt-4 border-t border-white/5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setIsEditAssessmentModalOpen(false);
+                        setEditingAssessment(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={isUpdatingAssessment} className="bg-red-500 hover:bg-red-600 text-white">
+                      {isUpdatingAssessment ? "Saving..." : "Save Changes"}
                     </Button>
                   </div>
                 </form>

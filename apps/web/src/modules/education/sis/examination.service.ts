@@ -117,6 +117,11 @@ export class ExaminationServiceClass {
     return response.assessments;
   }
 
+  async getAssessment(organizationId: string, id: string): Promise<Assessment> {
+    const response = await sisRequest<{ assessment: Assessment }>(organizationId, `/assessments/${id}`);
+    return response.assessment;
+  }
+
   async createAssessment(
     organizationId: string,
     data: Omit<Assessment, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>,
@@ -125,6 +130,20 @@ export class ExaminationServiceClass {
     void _actor;
     const response = await sisRequest<{ assessment: Assessment }>(organizationId, '/assessments', { method: 'POST', ...jsonBody(data) });
     return response.assessment;
+  }
+
+  async updateAssessment(
+    organizationId: string,
+    id: string,
+    data: Partial<Assessment>,
+  ): Promise<Assessment> {
+    const response = await sisRequest<{ assessment: Assessment }>(organizationId, `/assessments/${id}`, { method: 'PATCH', ...jsonBody(data) });
+    return response.assessment;
+  }
+
+  async deleteAssessment(organizationId: string, id: string): Promise<{ success: boolean; id: string }> {
+    const response = await sisRequest<{ success: boolean; id: string }>(organizationId, `/assessments/${id}`, { method: 'DELETE' });
+    return response;
   }
 
   async getGradingRules(organizationId: string): Promise<GradingRule[]> {

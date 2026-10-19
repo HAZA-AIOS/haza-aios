@@ -21,6 +21,7 @@ import {
   staffMembers,
   students,
   subjects,
+  teachingAssignments,
 } from '../../database/schema.js';
 
 type JsonRecord = Record<string, unknown>;
@@ -245,33 +246,161 @@ export class SisExaminationService {
     return rows.map((row) => this.assessmentDto(tenant, row));
   }
 
+  async getAssessment(tenant: Tenant, id: string) {
+    const row = await this.getAssessmentRow(tenant.workspaceId, id);
+    return this.assessmentDto(tenant, row);
+  }
+
   async createAssessment(tenant: Tenant, data: JsonRecord) {
-    if (!String(data.title ?? '').trim()) throw new ApiError(400, 'VALIDATION_FAILED', 'Assessment title is required.');
+    const title = String(data.title ?? '').trim();
+    if (!title) throw new ApiError(400, 'VALIDATION_FAILED', 'Assessment title is required.');
     assertMarks(data.maximumMarks, undefined, data.passingMarks);
-    await Promise.all([this.assertAcademicYear(tenant.workspaceId, String(data.academicYearId)), this.assertGrade(tenant.workspaceId, String(data.gradeId)), this.assertSectionInGrade(tenant.workspaceId, String(data.sectionId), String(data.gradeId)), this.assertSubject(tenant.workspaceId, String(data.subjectId))]);
+    await Promise.all([
+      this.assertAcademicYear(tenant.workspaceId, String(data.academicYearId)),
+      this.assertGrade(tenant.workspaceId, String(data.gradeId)),
+      this.assertSectionInGrade(tenant.workspaceId, String(data.sectionId), String(data.gradeId)),
+      this.assertSubject(tenant.workspaceId, String(data.subjectId)),
+    ]);
     if (data.termId) await this.assertTermInAcademicYear(tenant.workspaceId, String(data.termId), String(data.academicYearId));
-    const teacher = (await this.database.db.select().from(staffMembers).where(and(eq(staffMembers.workspaceId, tenant.workspaceId), eq(staffMembers.id, String(data.teacherId)))).limit(1))[0];
-    if (!teacher || teacher.staffType !== 'teacher') throw new ApiError(404, 'NOT_FOUND', 'Teacher not found for this organization.');
+
+    let resolvedTeacherId = typeof data.teacherId === 'string' && data.teacherId.trim() ? data.teacherId.trim() : undefined;
+    if (resolvedTeacherId) {
+      const teacher = (await this.database.db.select().from(staffMembers).where(and(eq(staffMembers.workspaceId, tenant.workspaceId), eq(staffMembers.id, resolvedTeacherId))).limit(1))[0];
+      if (!teacher || teacher.staffType !== 'teacher') throw new ApiError(404, 'NOT_FOUND', 'Teacher not found for this organization.');
+    } else {
+      const assignment = (await this.database.db.select().from(teachingAssignments).where(and(eq(teachingAssignments.workspaceId, tenant.workspaceId), eq(teachingAssignments.subjectId, String(data.subjectId)), eq(teachingAssignments.gradeId, String(data.gradeId)), eq(teachingAssignments.isActive, true))).limit(1))[0];
+      if (assignment) {
+        resolvedTeacherId = assignment.staffId;
+      } else {
+        const anyTeacher = (await this.database.db.select().from(staffMembers).where(and(eq(staffMembers.workspaceId, tenant.workspaceId), eq(staffMembers.staffType, 'teacher'), eq(staffMembers.status, 'active'))).limit(1))[0];
+        if (anyTeacher) {
+          resolvedTeacherId = anyTeacher.id;
+        } else {
+          throw new ApiError(404, 'NOT_FOUND', 'Teacher not found for this organization.');
+        }
+      }
+    }
+
+    const assessmentDate = String(data.assessmentDate ?? '');
+    if (!assessmentDate) throw new ApiError(400, 'VALIDATION_FAILED', 'Assessment date is required.');
+
+    const duplicate = (await this.database.db.select().from(assessments).where(
+      and(
+        eq(assessments.workspaceId, tenant.workspaceId),
+        eq(assessments.academicYearId, String(data.academicYearId)),
+        eq(assessments.gradeId, String(data.gradeId)),
+        eq(assessments.sectionId, String(data.sectionId)),
+        eq(assessments.subjectId, String(data.subjectId)),
+        eq(assessments.title, title),
+        eq(assessments.assessmentDate, assessmentDate)
+      )
+    ).limit(1))[0];
+    if (duplicate) {
+      throw new ApiError(409, 'DATABASE_UNIQUE_CONSTRAINT', `An assessment with title "${title}" already exists for this class, section, subject, and date.`);
+    }
+
     const id = uuid();
     await this.database.db.insert(assessments).values({
       id,
       workspaceId: tenant.workspaceId,
-      title: String(data.title).trim(),
+      title,
       academicYearId: String(data.academicYearId),
       termId: typeof data.termId === 'string' && data.termId ? data.termId : undefined,
       gradeId: String(data.gradeId),
       sectionId: String(data.sectionId),
       subjectId: String(data.subjectId),
-      teacherId: String(data.teacherId),
-      type: String(data.type ?? 'other') as typeof assessments.$inferInsert.type,
+      teacherId: resolvedTeacherId,
+      type: String(data.type ?? 'class_test') as typeof assessments.$inferInsert.type,
       maximumMarks: Number(data.maximumMarks),
       passingMarks: Number(data.passingMarks),
       weightage: data.weightage === undefined ? undefined : Number(data.weightage),
-      assessmentDate: String(data.assessmentDate),
+      assessmentDate,
       status: String(data.status ?? 'draft') as typeof assessments.$inferInsert.status,
       description: typeof data.description === 'string' ? data.description : undefined,
     }).catch(databaseError);
-    return (await this.listAssessments(tenant)).find((row) => row.id === id)!;
+
+    return this.getAssessment(tenant, id);
+  }
+
+  async updateAssessment(tenant: Tenant, id: string, data: JsonRecord) {
+    const current = await this.getAssessmentRow(tenant.workspaceId, id);
+    const existingMarks = await this.database.db.select().from(markRecords).where(
+      and(
+        eq(markRecords.workspaceId, tenant.workspaceId),
+        eq(markRecords.sourceType, 'assessment'),
+        eq(markRecords.sourceId, id)
+      )
+    );
+
+    if (existingMarks.length > 0) {
+      if (data.academicYearId && data.academicYearId !== current.academicYearId) {
+        throw new ApiError(400, 'VALIDATION_FAILED', 'Cannot change academic session for an assessment that already has recorded marks.');
+      }
+      if (data.gradeId && data.gradeId !== current.gradeId) {
+        throw new ApiError(400, 'VALIDATION_FAILED', 'Cannot change grade for an assessment that already has recorded marks.');
+      }
+      if (data.sectionId && data.sectionId !== current.sectionId) {
+        throw new ApiError(400, 'VALIDATION_FAILED', 'Cannot change section for an assessment that already has recorded marks.');
+      }
+      if (data.subjectId && data.subjectId !== current.subjectId) {
+        throw new ApiError(400, 'VALIDATION_FAILED', 'Cannot change subject for an assessment that already has recorded marks.');
+      }
+      if (data.maximumMarks !== undefined) {
+        const newMax = Number(data.maximumMarks);
+        const highestMark = Math.max(...existingMarks.map((m) => m.obtainedMarks));
+        if (newMax < highestMark) {
+          throw new ApiError(400, 'VALIDATION_FAILED', `Maximum marks (${newMax}) cannot be reduced below the highest recorded student mark (${highestMark}).`);
+        }
+      }
+    }
+
+    if (data.maximumMarks !== undefined || data.passingMarks !== undefined) {
+      assertMarks(data.maximumMarks ?? current.maximumMarks, undefined, data.passingMarks ?? current.passingMarks);
+    }
+    if (data.academicYearId) await this.assertAcademicYear(tenant.workspaceId, String(data.academicYearId));
+    if (data.gradeId) await this.assertGrade(tenant.workspaceId, String(data.gradeId));
+    if (data.sectionId) await this.assertSectionInGrade(tenant.workspaceId, String(data.sectionId), String(data.gradeId ?? current.gradeId));
+    if (data.subjectId) await this.assertSubject(tenant.workspaceId, String(data.subjectId));
+    if (data.termId) await this.assertTermInAcademicYear(tenant.workspaceId, String(data.termId), String(data.academicYearId ?? current.academicYearId));
+    if (data.teacherId) {
+      const teacher = (await this.database.db.select().from(staffMembers).where(and(eq(staffMembers.workspaceId, tenant.workspaceId), eq(staffMembers.id, String(data.teacherId)))).limit(1))[0];
+      if (!teacher || teacher.staffType !== 'teacher') throw new ApiError(404, 'NOT_FOUND', 'Teacher not found for this organization.');
+    }
+
+    const updates = { ...data };
+    delete updates.id;
+    delete updates.organizationId;
+    delete updates.workspaceId;
+    delete updates.createdAt;
+    delete updates.updatedAt;
+    if (typeof updates.title === 'string') updates.title = updates.title.trim();
+
+    await this.database.db.update(assessments).set({
+      ...clean(updates),
+      updatedAt: new Date(),
+    } as Partial<typeof assessments.$inferInsert>).where(
+      and(eq(assessments.id, id), eq(assessments.workspaceId, tenant.workspaceId))
+    ).catch(databaseError);
+
+    return this.getAssessment(tenant, id);
+  }
+
+  async deleteAssessment(tenant: Tenant, id: string) {
+    await this.getAssessmentRow(tenant.workspaceId, id);
+    const marks = await this.database.db.select().from(markRecords).where(
+      and(
+        eq(markRecords.workspaceId, tenant.workspaceId),
+        eq(markRecords.sourceType, 'assessment'),
+        eq(markRecords.sourceId, id)
+      )
+    ).limit(1);
+    if (marks.length > 0) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Assessment has associated mark records and cannot be deleted. Remove the marks first or archive the assessment.');
+    }
+    await this.database.db.delete(assessments).where(
+      and(eq(assessments.workspaceId, tenant.workspaceId), eq(assessments.id, id))
+    );
+    return { success: true, id };
   }
 
   async listGradingRules(tenant: Tenant): Promise<Array<ReturnType<SisExaminationService["gradingRuleDto"]>>> {
@@ -908,6 +1037,11 @@ export class SisExaminationService {
     return rows[0] ?? this.notFound('Examination');
   }
 
+  private async getAssessmentRow(workspaceId: string, id: string) {
+    const rows = await this.database.db.select().from(assessments).where(and(eq(assessments.workspaceId, workspaceId), eq(assessments.id, id))).limit(1);
+    return rows[0] ?? this.notFound('Assessment');
+  }
+
   private async getAcademicYearRow(workspaceId: string, id: string) {
     const rows = await this.database.db.select().from(academicYears).where(and(eq(academicYears.workspaceId, workspaceId), eq(academicYears.id, id))).limit(1);
     return rows[0] ?? this.notFound('Academic year');
@@ -1005,8 +1139,7 @@ export class SisExaminationService {
   }
 
   private async resolveAssessmentMarkSource(tenant: Tenant, assessmentId: string) {
-    const assessment = (await this.database.db.select().from(assessments).where(and(eq(assessments.workspaceId, tenant.workspaceId), eq(assessments.id, assessmentId))).limit(1))[0];
-    if (!assessment) this.notFound('Assessment');
+    const assessment = await this.getAssessmentRow(tenant.workspaceId, assessmentId);
     const academicYear = await this.getAcademicYearRow(tenant.workspaceId, assessment.academicYearId);
     return { academicYearId: assessment.academicYearId, academicYearName: academicYear.name, termId: assessment.termId ?? undefined, gradeId: assessment.gradeId, sectionId: assessment.sectionId, subjectId: assessment.subjectId, maximumMarks: assessment.maximumMarks, passingMarks: assessment.passingMarks };
   }

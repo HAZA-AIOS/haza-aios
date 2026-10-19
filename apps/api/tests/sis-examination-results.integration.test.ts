@@ -462,6 +462,168 @@ describeDatabase('DB-7 examination assessment and results persistence', () => {
     const m1 = reloadedMarks.find((m) => m.studentId === fixture.students[1].id);
     expect(m1?.isAbsent).toBe(true);
   });
+
+  it('reproduces and verifies hotfix for Epic 10L Class Assessment lifecycle, duplicate prevention, updates, delete safeguards, and session/date mismatch handling', async () => {
+    const { tenant } = await createSisTenant(database, 'assessment-lifecycle');
+    const sis = new SisService(database);
+    const exams = new SisExaminationService(database);
+
+    const suffix = randomUUID().slice(0, 6);
+    // Academic session 2027–2028
+    const sessionYear = await sis.createAcademicYear(tenant, {
+      name: '2027–2028',
+      startDate: '2027-01-01',
+      endDate: '2028-12-31',
+      status: 'active',
+    });
+    const grade = await sis.createGrade(tenant, {
+      name: 'Reception 1',
+      level: 0,
+      order: 1,
+      status: 'active',
+    });
+    const section = await sis.createSection(tenant, {
+      gradeId: grade.id,
+      name: 'Starters',
+      capacity: 25,
+      status: 'active',
+    });
+    const subject = await sis.createSubject(tenant, {
+      name: 'Mathematics',
+      code: 'MATH-' + suffix,
+      status: 'active',
+      displayOrder: 1,
+    });
+    const teacher = await sis.createStaff(tenant, {
+      firstName: 'Sarah',
+      lastName: 'Connor',
+      hireDate: '2026-01-01',
+      staffType: 'teacher',
+      employmentStatus: 'full_time',
+      status: 'active',
+    });
+
+    const student = await sis.createStudent(tenant, {
+      admissionNumber: 'REC-' + suffix,
+      firstName: 'Alice',
+      lastName: 'Wonder',
+      dateOfBirth: '2022-04-10',
+      gender: 'female',
+      admissionDate: '2026-10-01',
+      status: 'active',
+      guardians: [],
+    });
+    await sis.createEnrollment(tenant, {
+      studentId: student.id,
+      academicYear: sessionYear.name,
+      gradeId: grade.id,
+      sectionId: section.id,
+      enrollmentDate: '2026-10-01',
+      status: 'active',
+    });
+
+    // 1. Exact reproduction case:
+    // Title: Monthly, Type: Class Test, Session: 2027–2028, Grade: Reception 1, Section: Starters, Subject: Mathematics, Date: 2026-10-18, Max: 20, Pass: 12
+    const assessment = await exams.createAssessment(tenant, {
+      title: 'Monthly',
+      type: 'class_test',
+      academicYearId: sessionYear.id,
+      gradeId: grade.id,
+      sectionId: section.id,
+      subjectId: subject.id,
+      teacherId: teacher.id,
+      assessmentDate: '2026-10-18',
+      maximumMarks: 20,
+      passingMarks: 12,
+    });
+
+    expect(assessment.id).toBeDefined();
+    expect(assessment.title).toBe('Monthly');
+    expect(assessment.academicYearId).toBe(sessionYear.id); // Session not silently changed
+    expect(assessment.gradeId).toBe(grade.id);
+    expect(assessment.sectionId).toBe(section.id);
+    expect(assessment.subjectId).toBe(subject.id);
+    expect(assessment.maximumMarks).toBe(20);
+    expect(assessment.passingMarks).toBe(12);
+
+    // 2. Duplicate submission prevention:
+    await expect(
+      exams.createAssessment(tenant, {
+        title: 'Monthly',
+        type: 'class_test',
+        academicYearId: sessionYear.id,
+        gradeId: grade.id,
+        sectionId: section.id,
+        subjectId: subject.id,
+        teacherId: teacher.id,
+        assessmentDate: '2026-10-18',
+        maximumMarks: 20,
+        passingMarks: 12,
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    // 3. Mark entry and persistence:
+    const entered = await exams.enterMark(tenant, {
+      sourceType: 'assessment',
+      sourceId: assessment.id,
+      sectionId: section.id,
+      studentId: student.id,
+      obtainedMarks: 18,
+      enteredBy: teacher.id,
+    });
+    expect(entered.obtainedMarks).toBe(18);
+    expect(entered.sourceId).toBe(assessment.id);
+
+    const reloaded = await exams.listMarks(tenant, {
+      sourceType: 'assessment',
+      sourceId: assessment.id,
+      studentId: student.id,
+    });
+    expect(reloaded).toHaveLength(1);
+    expect(reloaded[0].obtainedMarks).toBe(18);
+
+    // 4. Update safeguards when marks exist:
+    const otherGrade = await sis.createGrade(tenant, { name: 'Grade 2 ' + suffix, level: 2, order: 2, status: 'active' });
+    // Cannot change class once marks exist
+    await expect(
+      exams.updateAssessment(tenant, assessment.id, { gradeId: otherGrade.id })
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    // Cannot reduce maximum marks below highest recorded mark (18)
+    await expect(
+      exams.updateAssessment(tenant, assessment.id, { maximumMarks: 15 })
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    // Valid update succeeds
+    const updated = await exams.updateAssessment(tenant, assessment.id, {
+      title: 'Monthly Assessment - Finalized',
+      passingMarks: 10,
+    });
+    expect(updated.title).toBe('Monthly Assessment - Finalized');
+    expect(updated.passingMarks).toBe(10);
+
+    // 5. Delete safeguards: cannot delete when marks exist
+    await expect(
+      exams.deleteAssessment(tenant, assessment.id)
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    // 6. Delete disposable assessment without marks succeeds
+    const disposable = await exams.createAssessment(tenant, {
+      title: 'Disposable Test',
+      type: 'quiz',
+      academicYearId: sessionYear.id,
+      gradeId: grade.id,
+      sectionId: section.id,
+      subjectId: subject.id,
+      teacherId: teacher.id,
+      assessmentDate: '2026-10-19',
+      maximumMarks: 10,
+      passingMarks: 5,
+    });
+    const deleteRes = await exams.deleteAssessment(tenant, disposable.id);
+    expect(deleteRes.success).toBe(true);
+    await expect(exams.getAssessment(tenant, disposable.id)).rejects.toMatchObject({ statusCode: 404 });
+  });
 });
 
 async function createSisTenant(database: DatabaseClient, label: string) {

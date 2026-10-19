@@ -634,4 +634,106 @@ describe("Epic 10L: Examination & Result Management Enhancement", () => {
     fireEvent.click(createBtn);
     expect(await screen.findByText("Create Class Assessment")).toBeDefined();
   });
+
+  it("renders Tab 2 Assessment Register table, filters assessments, and enables direct navigation to Gradebook", async () => {
+    vi.mocked(ExaminationService.getAssessments).mockResolvedValue([
+      {
+        id: "assess-monthly-1",
+        organizationId: "org-1",
+        title: "Monthly",
+        academicYearId: "year-1",
+        gradeId: "grade-1",
+        sectionId: "section-1",
+        subjectId: "subject-1",
+        teacherId: "teacher-1",
+        type: "class_test",
+        maximumMarks: 20,
+        passingMarks: 12,
+        weightage: 15,
+        assessmentDate: "2026-10-18",
+        status: "draft",
+        createdAt: "now",
+        updatedAt: "now",
+      },
+    ]);
+
+    renderPage("assessments");
+
+    // Verify Tab 2 title and Assessment Register table rendered
+    expect(await screen.findByText("Class Assessments & Continuous Evaluation")).toBeDefined();
+    expect(await screen.findByText("Assessment Register (1)")).toBeDefined();
+
+    // Verify Monthly assessment row data rendered
+    const titleElements = await screen.findAllByText("Monthly");
+    expect(titleElements.length).toBeGreaterThan(0);
+    expect(await screen.findByText(/Grade 10 — Section A/)).toBeDefined();
+    const mathMatches = await screen.findAllByText("Mathematics");
+    expect(mathMatches.length).toBeGreaterThan(0);
+    const maxMarksMatches = await screen.findAllByText("20");
+    expect(maxMarksMatches.length).toBeGreaterThan(0);
+    const passingMarksMatches = await screen.findAllByText("12");
+    expect(passingMarksMatches.length).toBeGreaterThan(0);
+
+    // Click "Enter Marks" action button to jump directly into Gradebook for this assessment
+    const enterMarksButtons = await screen.findAllByRole("button", { name: /Enter Marks/i });
+    expect(enterMarksButtons.length).toBeGreaterThan(0);
+    fireEvent.click(enterMarksButtons[0]);
+
+    // Verify Gradebook header is visible and active
+    expect(await screen.findByText("Student Gradebook")).toBeDefined();
+  });
+
+  it("creates class assessment from modal, updates local state, and synchronizes Gradebook filters", async () => {
+    const createdAssessment = {
+      id: "assess-created-1",
+      organizationId: "org-1",
+      title: "Monthly",
+      academicYearId: "year-1",
+      gradeId: "grade-1",
+      sectionId: "section-1",
+      subjectId: "subject-1",
+      teacherId: "teacher-1",
+      type: "class_test" as const,
+      maximumMarks: 20,
+      passingMarks: 12,
+      weightage: 10,
+      assessmentDate: "2026-10-18",
+      status: "draft" as const,
+      createdAt: "now",
+      updatedAt: "now",
+    };
+    vi.mocked(ExaminationService.createAssessment).mockResolvedValue(createdAssessment);
+    vi.mocked(StaffService.getStaffList).mockResolvedValue([
+      { id: "teacher-1", organizationId: "org-1", firstName: "Sarah", lastName: "Teacher", staffType: "teacher", email: "teacher@test.edu", status: "active", hireDate: "2026-01-01", employmentStatus: "full_time", createdAt: "now", updatedAt: "now" },
+    ]);
+
+    renderPage("marks");
+
+    // Switch to Class Assessment
+    const classAssessmentBtn = await screen.findByRole("button", { name: "Class Assessment" });
+    fireEvent.click(classAssessmentBtn);
+
+    // Open Create Assessment modal
+    const openModalBtn = screen.getByRole("button", { name: /Create Assessment/i });
+    fireEvent.click(openModalBtn);
+
+    // Verify modal open
+    expect(await screen.findByText("Create Class Assessment")).toBeDefined();
+
+    // Fill title
+    const titleInput = screen.getByPlaceholderText("e.g. Starters Phonics Quiz");
+    fireEvent.change(titleInput, { target: { value: "Monthly" } });
+
+    // Submit modal form
+    const submitBtn = screen.getByRole("button", { name: /Create & Select Assessment/i });
+    fireEvent.click(submitBtn);
+
+    // Verify createAssessment API called with required parameters
+    expect(ExaminationService.createAssessment).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({
+        title: "Monthly",
+      })
+    );
+  });
 });

@@ -305,6 +305,21 @@ export const educationModule: BackendModule = {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
       sendJson(response, 201, { assessment: await new SisExaminationService(database).createAssessment(tenant, body(request)) });
     }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/assessments/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { assessment: await new SisExaminationService(database).getAssessment(tenant, routeParams.id) });
+    }});
+    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/assessments/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { assessment: await new SisExaminationService(database).updateAssessment(tenant, routeParams.id, body(request)) });
+    }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/assessments/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisExaminationService(database).deleteAssessment(tenant, routeParams.id));
+    }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/grading-rules", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { rules: await new SisExaminationService(database).listGradingRules(tenant) });

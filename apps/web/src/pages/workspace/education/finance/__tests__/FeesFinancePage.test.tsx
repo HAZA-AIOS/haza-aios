@@ -310,6 +310,22 @@ describe("FeesFinancePage", () => {
     vi.mocked(FinanceService.getPayments).mockResolvedValue(samplePayments);
     vi.mocked(FinanceService.getReceipts).mockResolvedValue(sampleReceipts);
     vi.mocked(FinanceService.getStudentLedger).mockResolvedValue(sampleLedger);
+    vi.mocked(FinanceService.getExpenses).mockResolvedValue([]);
+    vi.mocked(FinanceService.getExpenseCategories).mockResolvedValue([]);
+    vi.mocked(FinanceService.getIncomes).mockResolvedValue([]);
+    vi.mocked(FinanceService.getLateFeePolicies).mockResolvedValue([]);
+    vi.mocked(FinanceService.getStudentLedgerReconciliation).mockResolvedValue({
+      studentId: "st-1",
+      totalInvoicesDebitCents: 40000,
+      totalDiscountsCreditCents: 10000,
+      totalPaymentsCreditCents: 10000,
+      totalVoidedDebitsCents: 0,
+      calculatedNetDueCents: 30000,
+      currentInvoiceBalanceCents: 30000,
+      isBalanced: true,
+      discrepancyCents: 0,
+      checkedAt: new Date().toISOString(),
+    });
     vi.mocked(FinanceService.getCollectionSummary).mockResolvedValue({
       totalBilledCents: 55000,
       totalCollectedCents: 10000,

@@ -497,6 +497,78 @@ export const InvoiceStatusBadge = React.forwardRef<HTMLSpanElement, InvoiceStatu
 );
 InvoiceStatusBadge.displayName = "InvoiceStatusBadge";
 
+/* ─────────────────── Expense Status Badge ─────────────────── */
+
+export interface ExpenseStatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  status: "draft" | "submitted" | "approved" | "rejected" | "paid" | "cancelled" | string;
+}
+
+const expenseStatusStyles: Record<string, string> = {
+  draft: "bg-slate-500/10 text-slate-400 border-slate-500/20",
+  submitted: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  approved: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  rejected: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+  paid: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  cancelled: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+};
+
+export const ExpenseStatusBadge = React.forwardRef<HTMLSpanElement, ExpenseStatusBadgeProps>(
+  ({ status, className, ...props }, ref) => {
+    const key = String(status).toLowerCase();
+    const formatted = key.replace(/_/g, " ");
+
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+          expenseStatusStyles[key] || expenseStatusStyles.draft,
+          className
+        )}
+        {...props}
+      >
+        {formatted}
+      </span>
+    );
+  }
+);
+ExpenseStatusBadge.displayName = "ExpenseStatusBadge";
+
+/* ─────────────────── Reconciliation Status Badge ─────────────────── */
+
+export interface ReconciliationStatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  status: "unreconciled" | "verified" | "reconciled" | "disputed" | string;
+}
+
+const reconciliationStatusStyles: Record<string, string> = {
+  unreconciled: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  verified: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  reconciled: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  disputed: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+};
+
+export const ReconciliationStatusBadge = React.forwardRef<HTMLSpanElement, ReconciliationStatusBadgeProps>(
+  ({ status, className, ...props }, ref) => {
+    const key = String(status).toLowerCase();
+    const formatted = key.replace(/_/g, " ");
+
+    return (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+          reconciliationStatusStyles[key] || reconciliationStatusStyles.unreconciled,
+          className
+        )}
+        {...props}
+      >
+        {formatted}
+      </span>
+    );
+  }
+);
+ReconciliationStatusBadge.displayName = "ReconciliationStatusBadge";
+
 /* ─────────────────── Portal Child Selector Card ─────────────────── */
 
 export interface PortalChildSelectorCardProps {

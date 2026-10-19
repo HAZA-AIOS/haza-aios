@@ -2234,6 +2234,130 @@ export const financeReceipts = mysqlTable(
   ],
 );
 
+export const financeLateFeePolicies = mysqlTable(
+  "finance_late_fee_policies",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    academicYearId: char("academic_year_id", { length: 36 })
+      .notNull()
+      .references(() => academicYears.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    code: varchar("code", { length: 80 }).notNull(),
+    name: varchar("name", { length: 180 }).notNull(),
+    gracePeriodDays: int("grace_period_days").notNull().default(5),
+    feeType: varchar("fee_type", { length: 40 }).notNull().default("fixed"),
+    amountCents: int("amount_cents").notNull().default(0),
+    percentageRate: int("percentage_rate").notNull().default(0),
+    maxCapCents: int("max_cap_cents").notNull().default(0),
+    status: varchar("status", { length: 40 }).notNull().default("active"),
+    applyAutomatically: boolean("apply_automatically").notNull().default(false),
+    payload: json("payload").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("finance_late_fee_policies_workspace_code_unique").on(table.workspaceId, table.code),
+    index("finance_late_fee_policies_workspace_status_idx").on(table.workspaceId, table.status),
+  ],
+);
+
+export const financeExpenseCategories = mysqlTable(
+  "finance_expense_categories",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    code: varchar("code", { length: 80 }).notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    status: varchar("status", { length: 40 }).notNull().default("active"),
+    displayOrder: int("display_order").notNull().default(0),
+    payload: json("payload").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("finance_expense_categories_workspace_code_unique").on(table.workspaceId, table.code),
+    index("finance_expense_categories_workspace_status_idx").on(table.workspaceId, table.status),
+  ],
+);
+
+export const financeExpenses = mysqlTable(
+  "finance_expenses",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    categoryId: char("category_id", { length: 36 })
+      .notNull()
+      .references(() => financeExpenseCategories.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    expenseNumber: varchar("expense_number", { length: 80 }).notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    amountCents: int("amount_cents").notNull(),
+    expenseDate: varchar("expense_date", { length: 20 }).notNull(),
+    payee: varchar("payee", { length: 180 }).notNull(),
+    paymentMethod: varchar("payment_method", { length: 40 }).notNull().default("bank_transfer"),
+    status: varchar("status", { length: 40 }).notNull().default("draft"),
+    payload: json("payload").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("finance_expenses_workspace_number_unique").on(table.workspaceId, table.expenseNumber),
+    index("finance_expenses_workspace_status_idx").on(table.workspaceId, table.status),
+    index("finance_expenses_workspace_date_idx").on(table.workspaceId, table.expenseDate),
+  ],
+);
+
+export const financeIncomes = mysqlTable(
+  "finance_incomes",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    incomeNumber: varchar("income_number", { length: 80 }).notNull(),
+    source: varchar("source", { length: 160 }).notNull(),
+    category: varchar("category", { length: 80 }).notNull(),
+    amountCents: int("amount_cents").notNull(),
+    receivedDate: varchar("received_date", { length: 20 }).notNull(),
+    paymentMethod: varchar("payment_method", { length: 40 }).notNull().default("cash"),
+    status: varchar("status", { length: 40 }).notNull().default("received"),
+    payload: json("payload").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("finance_incomes_workspace_number_unique").on(table.workspaceId, table.incomeNumber),
+    index("finance_incomes_workspace_date_idx").on(table.workspaceId, table.receivedDate),
+  ],
+);
+
+export const financeAccounts = mysqlTable(
+  "finance_accounts",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    accountNumber: varchar("account_number", { length: 80 }).notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    accountType: varchar("account_type", { length: 40 }).notNull().default("bank"),
+    balanceCents: int("balance_cents").notNull().default(0),
+    status: varchar("status", { length: 40 }).notNull().default("active"),
+    payload: json("payload").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("finance_accounts_workspace_number_unique").on(table.workspaceId, table.accountNumber),
+    index("finance_accounts_workspace_status_idx").on(table.workspaceId, table.status),
+  ],
+);
+
 export const communicationTemplates = mysqlTable(
   "communication_templates",
   {
@@ -2679,6 +2803,11 @@ export const schema = {
   financePayments,
   financeReceipts,
   financeStudentFeeAssignments,
+  financeLateFeePolicies,
+  financeExpenseCategories,
+  financeExpenses,
+  financeIncomes,
+  financeAccounts,
   internalDatabaseChecks,
   markRecords,
   membershipRoles,

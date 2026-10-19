@@ -559,6 +559,9 @@ export type AdjustmentType = "scholarship" | "sibling_discount" | "staff_child_d
 export type InvoiceStatus = "draft" | "issued" | "partially_paid" | "paid" | "overdue" | "cancelled" | "voided";
 export type PaymentMethod = "cash" | "bank_transfer" | "card" | "online" | "cheque" | "other";
 export type PaymentStatus = "recorded" | "voided";
+export type ReconciliationStatus = "unreconciled" | "verified" | "reconciled" | "disputed";
+export type ExpenseStatus = "draft" | "submitted" | "approved" | "rejected" | "paid" | "cancelled";
+export type LateFeeType = "fixed" | "percentage";
 export type LedgerEntryType = "invoice" | "discount" | "payment" | "payment_void";
 
 export interface FeeCategory {
@@ -681,6 +684,11 @@ export interface FeePayment {
   receivedBy: string;
   notes?: string;
   status: PaymentStatus;
+  reconciliationStatus?: ReconciliationStatus;
+  reconciledAt?: string;
+  reconciledBy?: string;
+  reconciliationNotes?: string;
+  bankStatementRef?: string;
   voidedAt?: string;
   voidReason?: string;
   voidedBy?: string;
@@ -764,6 +772,143 @@ export interface GradeFeeSummaryRow {
   billedCents: number;
   collectedCents: number;
   outstandingCents: number;
+}
+
+export interface LateFeePolicy {
+  id: string;
+  organizationId: string;
+  academicYearId: string;
+  name: string;
+  code: string;
+  description?: string;
+  gracePeriodDays: number;
+  feeType: LateFeeType;
+  amountCents: number;
+  percentageRate: number;
+  maxCapCents: number;
+  status: FinanceRecordStatus;
+  applyAutomatically: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExpenseCategory {
+  id: string;
+  organizationId: string;
+  code: string;
+  name: string;
+  description?: string;
+  status: FinanceRecordStatus;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExpenseRecord {
+  id: string;
+  organizationId: string;
+  expenseNumber: string;
+  title: string;
+  description?: string;
+  categoryId: string;
+  amountCents: number;
+  expenseDate: string;
+  payee: string;
+  payeeAccount?: string;
+  paymentMethod: PaymentMethod;
+  referenceNumber?: string;
+  status: ExpenseStatus;
+  submittedAt?: string;
+  submittedBy?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectionReason?: string;
+  disbursedAt?: string;
+  disbursedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IncomeRecord {
+  id: string;
+  organizationId: string;
+  receiptNumber: string;
+  source: string;
+  category: string;
+  amountCents: number;
+  receivedDate: string;
+  paymentMethod: PaymentMethod;
+  referenceNumber?: string;
+  notes?: string;
+  receivedBy: string;
+  status: FinanceRecordStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IncomeExpenseReport {
+  totalRevenueCents: number;
+  totalFeeIncomeCents: number;
+  totalOtherIncomeCents: number;
+  totalExpenseCents: number;
+  netSurplusCents: number;
+  marginPercentage: number;
+  expenseByCategory: Record<string, number>;
+  incomeByCategory: Record<string, number>;
+  paymentsCount: number;
+  incomesCount: number;
+  expensesCount: number;
+}
+
+export interface CashFlowTimelineItem {
+  date: string;
+  type: "fee_payment" | "other_income" | "expense_paid";
+  description: string;
+  inflowCents: number;
+  outflowCents: number;
+}
+
+export interface CashFlowReport {
+  totalInflowCents: number;
+  totalOutflowCents: number;
+  netCashFlowCents: number;
+  timeline: CashFlowTimelineItem[];
+}
+
+export interface LateFeesReport {
+  overdueInvoicesCount: number;
+  totalOverdueBalanceCents: number;
+  activePoliciesCount: number;
+  invoices: Array<{
+    invoiceId: string;
+    invoiceNumber: string;
+    studentId: string;
+    dueDate: string;
+    daysOverdue: number;
+    balanceCents: number;
+    status: string;
+  }>;
+}
+
+export interface LedgerReconciliationResult {
+  studentId: string;
+  totalInvoicesDebitCents: number;
+  totalDiscountsCreditCents: number;
+  totalPaymentsCreditCents: number;
+  totalVoidedDebitsCents: number;
+  calculatedNetDueCents: number;
+  currentInvoiceBalanceCents: number;
+  isBalanced: boolean;
+  discrepancyCents: number;
+  checkedAt: string;
+}
+
+export interface RecurringInvoiceGenerationResult {
+  billingPeriod: string;
+  evaluatedAssignmentsCount: number;
+  createdInvoicesCount: number;
+  skippedDuplicatesCount: number;
+  invoices: StudentInvoice[];
 }
 
 // --- COMMUNICATION & NOTIFICATIONS ---

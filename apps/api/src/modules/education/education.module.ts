@@ -25,6 +25,16 @@ function actor(request: { body?: unknown }, fallback?: Record<string, unknown>) 
   return (payload.actor && typeof payload.actor === "object" ? payload.actor : fallback) as Record<string, unknown> | undefined;
 }
 
+async function readTenantAuth(request: Parameters<AuthService["requireOrganizationPermission"]>[0] & { body?: unknown }, database: ConstructorParameters<typeof SisService>[0], organizationId: string, permission: "workspace.read" | "workspace.manage") {
+  const tenantContext = createTenantContext(organizationId);
+  const auth = await new AuthService(database).requireOrganizationPermission(request, tenantContext.organizationId, permission);
+  const tenant = await new SisService(database).getTenant(tenantContext.organizationId);
+  const membership = auth.memberships.find((item) => item.organizationId === tenantContext.organizationId);
+  const defaultActor = { userId: auth.user.id, role: membership?.role ?? "Member" };
+  const userActor = actor(request, defaultActor);
+  return { tenant, auth, actor: userActor };
+}
+
 export const educationModule: BackendModule = {
   name: "education",
   register(router) {
@@ -448,112 +458,6 @@ export const educationModule: BackendModule = {
       sendJson(response, 200, { ok: true });
     }});
 
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/categories", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { categories: await new SisFinanceService(database).listCategories(tenant) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/categories", async handler(request, response, { database, routeParams }) {
-      const payload = body(request);
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { category: await new SisFinanceService(database).createCategory(tenant, payload, actor(request)) });
-    }});
-    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/finance/categories/:id", async handler(request, response, { database, routeParams }) {
-      assertUuid(routeParams.id, "id");
-      const payload = body(request);
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { category: await new SisFinanceService(database).updateCategory(tenant, routeParams.id, payload, actor(request)) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/structures", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { structures: await new SisFinanceService(database).listStructures(tenant) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/structures", async handler(request, response, { database, routeParams }) {
-      const payload = body(request);
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { structure: await new SisFinanceService(database).createStructure(tenant, payload, actor(request)) });
-    }});
-    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/finance/structures/:id", async handler(request, response, { database, routeParams }) {
-      assertUuid(routeParams.id, "id");
-      const payload = body(request);
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { structure: await new SisFinanceService(database).updateStructure(tenant, routeParams.id, payload, actor(request)) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/assignments", async handler(request, response, { database, routeParams, url }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { assignments: await new SisFinanceService(database).listAssignments(tenant, url.searchParams.get("studentId") ?? undefined) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/assignments", async handler(request, response, { database, routeParams }) {
-      const payload = body(request);
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { assignment: await new SisFinanceService(database).assignFee(tenant, String(payload.studentId ?? ""), String(payload.enrollmentId ?? ""), String(payload.feeStructureId ?? ""), actor(request)) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/discounts", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { discounts: await new SisFinanceService(database).listDiscounts(tenant) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/discounts", async handler(request, response, { database, routeParams }) {
-      const payload = body(request);
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { discount: await new SisFinanceService(database).createDiscount(tenant, payload, actor(request)) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/invoices", async handler(request, response, { database, routeParams, url }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { invoices: await new SisFinanceService(database).listInvoices(tenant, url.searchParams) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/invoices", async handler(request, response, { database, routeParams }) {
-      const payload = body(request);
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { invoice: await new SisFinanceService(database).createInvoice(tenant, payload, actor(request)) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/invoices/:id/issue", async handler(request, response, { database, routeParams }) {
-      assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { invoice: await new SisFinanceService(database).issueInvoice(tenant, routeParams.id, actor(request)) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/payments", async handler(request, response, { database, routeParams, url }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { payments: await new SisFinanceService(database).listPayments(tenant, url.searchParams.get("studentId") ?? undefined) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/payments", async handler(request, response, { database, routeParams }) {
-      const payload = body(request);
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, await new SisFinanceService(database).recordPayment(tenant, payload, actor(request)));
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/payments/:id/void", async handler(request, response, { database, routeParams }) {
-      assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { payment: await new SisFinanceService(database).voidPayment(tenant, routeParams.id, body(request), actor(request)) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/receipts", async handler(request, response, { database, routeParams, url }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { receipts: await new SisFinanceService(database).listReceipts(tenant, url.searchParams.get("studentId") ?? undefined) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/ledger/:studentId", async handler(request, response, { database, routeParams }) {
-      assertUuid(routeParams.studentId, "studentId");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { ledger: await new SisFinanceService(database).ledger(tenant, routeParams.studentId) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/summary", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { summary: await new SisFinanceService(database).collectionSummary(tenant) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/collection", async handler(request, response, { database, routeParams, url }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { rows: await new SisFinanceService(database).collectionReport(tenant, url.searchParams) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/outstanding", async handler(request, response, { database, routeParams, url }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { rows: await new SisFinanceService(database).outstandingReport(tenant, url.searchParams) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/payments", async handler(request, response, { database, routeParams, url }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { rows: await new SisFinanceService(database).paymentReport(tenant, url.searchParams) });
-    }});
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/grades", async handler(request, response, { database, routeParams, url }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { rows: await new SisFinanceService(database).gradeSummary(tenant, url.searchParams) });
-    }});
-
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/audience/resolve", async handler(request, response, { database, routeParams }) {
       const payload = body(request);
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
@@ -792,144 +696,282 @@ export const educationModule: BackendModule = {
       const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
       sendJson(response, 200, { csv: await new SisAnalyticsService(database).exportCsv(tenant, routeParams.kind as never, url.searchParams, { userId: auth.user.id, role: membership?.role ?? "Member" }) });
     }});
-    // Finance Routes
+    /* ─────────────────────────────────────────────────────────────
+     * FINANCIAL MANAGEMENT (EPIC 10M)
+     * ───────────────────────────────────────────────────────────── */
+    // Categories
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/categories", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { categories: await new SisFinanceService(database).listCategories(tenant) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/categories", async handler(request, response, { database, routeParams }) {
-      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
-      sendJson(response, 201, { category: await new SisFinanceService(database).createCategory(tenant, body(request), { userId: auth.user.id, role: membership?.role ?? "Member" }) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { category: await new SisFinanceService(database).createCategory(tenant, body(request), actor) });
     }});
     router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/finance/categories/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
-      sendJson(response, 200, { category: await new SisFinanceService(database).updateCategory(tenant, routeParams.id, body(request), { userId: auth.user.id, role: membership?.role ?? "Member" }) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { category: await new SisFinanceService(database).updateCategory(tenant, routeParams.id, body(request), actor) });
+    }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/finance/categories/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { category: await new SisFinanceService(database).deleteCategory(tenant, routeParams.id, actor) });
     }});
 
+    // Fee Structures
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/structures", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { structures: await new SisFinanceService(database).listStructures(tenant) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/structures", async handler(request, response, { database, routeParams }) {
-      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
-      sendJson(response, 201, { structure: await new SisFinanceService(database).createStructure(tenant, body(request), { userId: auth.user.id, role: membership?.role ?? "Member" }) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { structure: await new SisFinanceService(database).createStructure(tenant, body(request), actor) });
     }});
     router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/finance/structures/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
-      sendJson(response, 200, { structure: await new SisFinanceService(database).updateStructure(tenant, routeParams.id, body(request), { userId: auth.user.id, role: membership?.role ?? "Member" }) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { structure: await new SisFinanceService(database).updateStructure(tenant, routeParams.id, body(request), actor) });
+    }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/finance/structures/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { structure: await new SisFinanceService(database).deleteStructure(tenant, routeParams.id, actor) });
     }});
 
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/assignments", async handler(request, response, { database, routeParams }) {
-      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
-      const reqBody = body(request);
-      sendJson(response, 201, { assignment: await new SisFinanceService(database).assignFee(tenant, String(reqBody.studentId), String(reqBody.enrollmentId), String(reqBody.feeStructureId), { userId: auth.user.id, role: membership?.role ?? "Member" }) });
-    }});
+    // Assignments
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/assignments", async handler(request, response, { database, routeParams, url }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { assignments: await new SisFinanceService(database).listAssignments(tenant, url.searchParams.get("studentId") ?? undefined) });
     }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/assignments", async handler(request, response, { database, routeParams }) {
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      const reqBody = body(request);
+      sendJson(response, 201, { assignment: await new SisFinanceService(database).assignFee(tenant, String(reqBody.studentId), String(reqBody.enrollmentId), String(reqBody.feeStructureId), actor) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/assignments/bulk", async handler(request, response, { database, routeParams }) {
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisFinanceService(database).bulkAssignFee(tenant, body(request) as any, actor));
+    }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/finance/assignments/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisFinanceService(database).unassignFee(tenant, routeParams.id, actor));
+    }});
 
+    // Discounts
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/discounts", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { discounts: await new SisFinanceService(database).listDiscounts(tenant) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/discounts", async handler(request, response, { database, routeParams }) {
-      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
-      sendJson(response, 201, { discount: await new SisFinanceService(database).createDiscount(tenant, body(request), { userId: auth.user.id, role: membership?.role ?? "Member" }) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { discount: await new SisFinanceService(database).createDiscount(tenant, body(request), actor) });
     }});
 
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/invoices", async handler(request, response, { database, routeParams }) {
-      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
-      sendJson(response, 201, { invoice: await new SisFinanceService(database).createInvoice(tenant, body(request), { userId: auth.user.id, role: membership?.role ?? "Member" }) });
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/invoices/:invoiceId/issue", async handler(request, response, { database, routeParams }) {
-      assertUuid(routeParams.invoiceId, "invoiceId");
-      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
-      sendJson(response, 200, { invoice: await new SisFinanceService(database).issueInvoice(tenant, routeParams.invoiceId, { userId: auth.user.id, role: membership?.role ?? "Member" }) });
-    }});
+    // Invoices & Billing
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/invoices", async handler(request, response, { database, routeParams, url }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { invoices: await new SisFinanceService(database).listInvoices(tenant, url.searchParams) });
     }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/invoices", async handler(request, response, { database, routeParams }) {
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { invoice: await new SisFinanceService(database).createInvoice(tenant, body(request), actor) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/invoices/:id/issue", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { invoice: await new SisFinanceService(database).issueInvoice(tenant, routeParams.id, actor) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/invoices/:id/void", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { invoice: await new SisFinanceService(database).voidInvoice(tenant, routeParams.id, body(request), actor) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/invoices/generate-recurring", async handler(request, response, { database, routeParams }) {
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisFinanceService(database).generateRecurringInvoices(tenant, body(request) as any, actor));
+    }});
 
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/payments", async handler(request, response, { database, routeParams }) {
-      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
-      sendJson(response, 201, await new SisFinanceService(database).recordPayment(tenant, body(request), { userId: auth.user.id, role: membership?.role ?? "Member" }));
-    }});
-    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/payments/:paymentId/void", async handler(request, response, { database, routeParams }) {
-      assertUuid(routeParams.paymentId, "paymentId");
-      const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.manage");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
-      const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
-      const reqBody = body(request);
-      sendJson(response, 200, { payment: await new SisFinanceService(database).voidPayment(tenant, routeParams.paymentId, reqBody as Record<string, unknown>, { userId: auth.user.id, role: membership?.role ?? "Member" }) });
-    }});
+    // Payments & Receipts & Reconciliation
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/payments", async handler(request, response, { database, routeParams, url }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { payments: await new SisFinanceService(database).listPayments(tenant, url.searchParams.get("studentId") ?? undefined) });
     }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/payments", async handler(request, response, { database, routeParams }) {
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, await new SisFinanceService(database).recordPayment(tenant, body(request), actor));
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/payments/:id/void", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { payment: await new SisFinanceService(database).voidPayment(tenant, routeParams.id, body(request), actor) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/payments/:id/reconcile", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { payment: await new SisFinanceService(database).reconcilePayment(tenant, routeParams.id, body(request), actor) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/payments/:id/unreconcile", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { payment: await new SisFinanceService(database).unreconcilePayment(tenant, routeParams.id, body(request), actor) });
+    }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/receipts", async handler(request, response, { database, routeParams, url }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { receipts: await new SisFinanceService(database).listReceipts(tenant, url.searchParams.get("studentId") ?? undefined) });
     }});
+
+    // Ledger & Integrity
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/ledger/:studentId", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.studentId, "studentId");
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { ledger: await new SisFinanceService(database).ledger(tenant, routeParams.studentId) });
     }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/ledger/:studentId/reconciliation", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.studentId, "studentId");
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { audit: await new SisFinanceService(database).reconcileStudentLedger(tenant, routeParams.studentId) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/ledger-audit", async handler(request, response, { database, routeParams }) {
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, await new SisFinanceService(database).auditLedgerIntegrity(tenant));
+    }});
 
+    // Late Fee Policies
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/late-fee-policies", async handler(request, response, { database, routeParams }) {
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { policies: await new SisFinanceService(database).listLateFeePolicies(tenant) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/late-fee-policies", async handler(request, response, { database, routeParams }) {
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { policy: await new SisFinanceService(database).createLateFeePolicy(tenant, body(request), actor) });
+    }});
+    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/finance/late-fee-policies/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { policy: await new SisFinanceService(database).updateLateFeePolicy(tenant, routeParams.id, body(request), actor) });
+    }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/finance/late-fee-policies/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { policy: await new SisFinanceService(database).deleteLateFeePolicy(tenant, routeParams.id, actor) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/late-fee-policies/apply", async handler(request, response, { database, routeParams }) {
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisFinanceService(database).applyLateFees(tenant, body(request), actor));
+    }});
+
+    // Expense Categories & Expenses
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/expense-categories", async handler(request, response, { database, routeParams }) {
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { categories: await new SisFinanceService(database).listExpenseCategories(tenant) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/expense-categories", async handler(request, response, { database, routeParams }) {
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { category: await new SisFinanceService(database).createExpenseCategory(tenant, body(request), actor) });
+    }});
+    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/finance/expense-categories/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { category: await new SisFinanceService(database).updateExpenseCategory(tenant, routeParams.id, body(request), actor) });
+    }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/finance/expense-categories/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { category: await new SisFinanceService(database).deleteExpenseCategory(tenant, routeParams.id, actor) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/expenses", async handler(request, response, { database, routeParams, url }) {
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { expenses: await new SisFinanceService(database).listExpenses(tenant, url.searchParams) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/expenses", async handler(request, response, { database, routeParams }) {
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { expense: await new SisFinanceService(database).createExpense(tenant, body(request), actor) });
+    }});
+    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/finance/expenses/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { expense: await new SisFinanceService(database).updateExpense(tenant, routeParams.id, body(request), actor) });
+    }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/finance/expenses/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { expense: await new SisFinanceService(database).deleteExpense(tenant, routeParams.id, actor) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/expenses/:id/submit", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { expense: await new SisFinanceService(database).submitExpense(tenant, routeParams.id, actor) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/expenses/:id/approve", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { expense: await new SisFinanceService(database).approveExpense(tenant, routeParams.id, body(request), actor) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/expenses/:id/reject", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { expense: await new SisFinanceService(database).rejectExpense(tenant, routeParams.id, body(request), actor) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/expenses/:id/disburse", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { expense: await new SisFinanceService(database).disburseExpense(tenant, routeParams.id, body(request), actor) });
+    }});
+
+    // Non-Tuition Incomes
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/incomes", async handler(request, response, { database, routeParams, url }) {
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { incomes: await new SisFinanceService(database).listIncomes(tenant, url.searchParams) });
+    }});
+    router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/incomes", async handler(request, response, { database, routeParams }) {
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { income: await new SisFinanceService(database).createIncome(tenant, body(request), actor) });
+    }});
+    router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/finance/incomes/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { income: await new SisFinanceService(database).updateIncome(tenant, routeParams.id, body(request), actor) });
+    }});
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/finance/incomes/:id", async handler(request, response, { database, routeParams }) {
+      assertUuid(routeParams.id, "id");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { income: await new SisFinanceService(database).deleteIncome(tenant, routeParams.id, actor) });
+    }});
+
+    // Reports
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/summary", async handler(request, response, { database, routeParams }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { summary: await new SisFinanceService(database).collectionSummary(tenant) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/collection", async handler(request, response, { database, routeParams, url }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { rows: await new SisFinanceService(database).collectionReport(tenant, url.searchParams) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/outstanding", async handler(request, response, { database, routeParams, url }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { rows: await new SisFinanceService(database).outstandingReport(tenant, url.searchParams) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/payments", async handler(request, response, { database, routeParams, url }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { rows: await new SisFinanceService(database).paymentReport(tenant, url.searchParams) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/grades", async handler(request, response, { database, routeParams, url }) {
-      await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
-      const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { rows: await new SisFinanceService(database).gradeSummary(tenant, url.searchParams) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/income-expense", async handler(request, response, { database, routeParams, url }) {
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { report: await new SisFinanceService(database).incomeExpenseReport(tenant, url.searchParams) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/cash-flow", async handler(request, response, { database, routeParams, url }) {
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { report: await new SisFinanceService(database).cashFlowReport(tenant, url.searchParams) });
+    }});
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/reports/late-fees", async handler(request, response, { database, routeParams, url }) {
+      const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { report: await new SisFinanceService(database).lateFeesReport(tenant, url.searchParams) });
     }});
 
     /* ─────────────────────────────────────────────────────────────

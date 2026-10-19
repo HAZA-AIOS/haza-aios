@@ -53,6 +53,10 @@ import { FeesOverviewPage } from "./pages/workspace/education/finance/FeesOvervi
 import { FeeStructuresPage } from "./pages/workspace/education/finance/FeeStructuresPage";
 import { InvoicesPage } from "./pages/workspace/education/finance/InvoicesPage";
 import { PaymentsPage } from "./pages/workspace/education/finance/PaymentsPage";
+import { ExpensesPage } from "./pages/workspace/education/finance/ExpensesPage";
+import { OtherIncomePage } from "./pages/workspace/education/finance/OtherIncomePage";
+import { LateFeePoliciesPage } from "./pages/workspace/education/finance/LateFeePoliciesPage";
+import { StudentAccountsPage } from "./pages/workspace/education/finance/StudentAccountsPage";
 import { FinanceReportsPage } from "./pages/workspace/education/finance/FinanceReportsPage";
 import { CommunicationOverviewPage } from "./pages/workspace/education/communication/CommunicationOverviewPage";
 import { AnnouncementsPage } from "./pages/workspace/education/communication/AnnouncementsPage";
@@ -403,6 +407,38 @@ function App() {
         <ProtectedRoute>
           <WorkspaceGuard>
             <PaymentsPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/education/finance/expenses":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <ExpensesPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/education/finance/income":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <OtherIncomePage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/education/finance/policies":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <LateFeePoliciesPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/education/finance/accounts":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <StudentAccountsPage />
           </WorkspaceGuard>
         </ProtectedRoute>
       );

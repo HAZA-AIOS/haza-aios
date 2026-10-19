@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { AcademicService } from "@/modules/education/sis/academic.service";
 import { EnrollmentService } from "@/modules/education/sis/enrollment.service";
@@ -338,10 +338,54 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
   const [cashFlowReportData, setCashFlowReportData] = useState<CashFlowReport | null>(null);
   const [lateFeesReportData, setLateFeesReportData] = useState<LateFeesReport | null>(null);
 
+  const tabPaths: Record<FinanceTab, string> = useMemo(
+    () => ({
+      overview: "/workspace/education/finance",
+      structures: "/workspace/education/finance/structures",
+      invoices: "/workspace/education/finance/invoices",
+      payments: "/workspace/education/finance/payments",
+      expenses: "/workspace/education/finance/expenses",
+      income: "/workspace/education/finance/income",
+      policies: "/workspace/education/finance/policies",
+      accounts: "/workspace/education/finance/accounts",
+      reports: "/workspace/education/finance/reports",
+    }),
+    []
+  );
+
+  const handleTabChange = useCallback(
+    (tabId: FinanceTab) => {
+      setActiveTab(tabId);
+      if (typeof window !== "undefined" && window.location.pathname.startsWith("/workspace/education/finance")) {
+        const targetPath = tabPaths[tabId];
+        if (targetPath && window.location.pathname !== targetPath) {
+          window.history.pushState({}, "", targetPath);
+        }
+      }
+    },
+    [tabPaths]
+  );
+
   // Sync initialTab when props change
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
+
+  // Handle browser back/forward history navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      if (typeof window === "undefined") return;
+      const path = window.location.pathname;
+      const foundTab = (Object.keys(tabPaths) as FinanceTab[]).find(
+        (key) => tabPaths[key] === path
+      );
+      if (foundTab) {
+        setActiveTab(foundTab);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [tabPaths]);
 
   const summary = useMemo(() => {
     const active = invoices.filter((invoice) => invoice.status !== "cancelled" && invoice.status !== "voided");
@@ -1232,7 +1276,7 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
                 data-testid={`finance-tab-${tab.id}`}
                 variant={isActive ? "default" : "outline"}
                 size="sm"
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 className={
                   isActive
                     ? "bg-red-600 hover:bg-red-700 text-white font-medium"
@@ -1270,7 +1314,7 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setActiveTab("invoices")}
+                          onClick={() => handleTabChange("invoices")}
                           className="text-xs text-red-400 hover:text-red-300"
                         >
                           View All ({invoices.length}) <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
@@ -1316,7 +1360,7 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setActiveTab("payments")}
+                          onClick={() => handleTabChange("payments")}
                           className="text-xs text-emerald-400 hover:text-emerald-300"
                         >
                           View All ({payments.length}) <ArrowUpRight className="ml-1 h-3.5 w-3.5" />

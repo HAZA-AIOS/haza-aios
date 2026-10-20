@@ -20,19 +20,24 @@ function body(request: { body?: unknown }) {
   return request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
 }
 
-function actor(request: { body?: unknown }, fallback?: Record<string, unknown>) {
-  const payload = body(request);
-  return (payload.actor && typeof payload.actor === "object" ? payload.actor : fallback) as Record<string, unknown> | undefined;
-}
-
-async function readTenantAuth(request: Parameters<AuthService["requireOrganizationPermission"]>[0] & { body?: unknown }, database: ConstructorParameters<typeof SisService>[0], organizationId: string, permission: "workspace.read" | "workspace.manage") {
+async function readTenantAuth(
+  request: Parameters<AuthService["requireOrganizationPermission"]>[0] & { body?: unknown },
+  database: ConstructorParameters<typeof SisService>[0],
+  organizationId: string,
+  permission: "workspace.read" | "workspace.manage",
+) {
   const tenantContext = createTenantContext(organizationId);
   const auth = await new AuthService(database).requireOrganizationPermission(request, tenantContext.organizationId, permission);
   const tenant = await new SisService(database).getTenant(tenantContext.organizationId);
-  const membership = auth.memberships.find((item) => item.organizationId === tenantContext.organizationId);
-  const defaultActor = { userId: auth.user.id, role: membership?.role ?? "Member" };
-  const userActor = actor(request, defaultActor);
-  return { tenant, auth, actor: userActor };
+  const membership = auth.memberships.find((item) => item.organizationId === tenantContext.organizationId && item.status === "active");
+  // SEC-001: Derive actor strictly from verified server-side authentication and active membership.
+  // Any client-supplied body.actor is completely ignored to prevent actor spoofing and privilege escalation.
+  const authoritativeActor = {
+    userId: auth.user.id,
+    role: membership?.role ?? "Member",
+    email: auth.user.email,
+  };
+  return { tenant, auth, actor: authoritativeActor };
 }
 
 export const educationModule: BackendModule = {
@@ -460,8 +465,8 @@ export const educationModule: BackendModule = {
 
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/audience/resolve", async handler(request, response, { database, routeParams }) {
       const payload = body(request);
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { recipients: await new SisCommunicationService(database).resolveAudience(tenant, payload.audience as Record<string, unknown>, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { recipients: await new SisCommunicationService(database).resolveAudience(tenant, payload.audience as Record<string, unknown>, actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/templates/render", async handler(request, response, { database, routeParams }) {
       const payload = body(request);
@@ -478,18 +483,18 @@ export const educationModule: BackendModule = {
       sendJson(response, 200, { template: await new SisCommunicationService(database).getTemplate(tenant, routeParams.id) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/templates", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { template: await new SisCommunicationService(database).createTemplate(tenant, body(request), actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { template: await new SisCommunicationService(database).createTemplate(tenant, body(request), actor) });
     }});
     router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/communication/templates/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { template: await new SisCommunicationService(database).updateTemplate(tenant, routeParams.id, body(request), actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { template: await new SisCommunicationService(database).updateTemplate(tenant, routeParams.id, body(request), actor) });
     }});
     router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/communication/templates/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, await new SisCommunicationService(database).deleteTemplate(tenant, routeParams.id, actor(request)));
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisCommunicationService(database).deleteTemplate(tenant, routeParams.id, actor));
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/announcements", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
@@ -516,36 +521,36 @@ export const educationModule: BackendModule = {
       sendJson(response, 200, { announcement: await new SisCommunicationService(database).getAnnouncement(tenant, routeParams.id) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/announcements", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { announcement: await new SisCommunicationService(database).createAnnouncement(tenant, body(request), actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { announcement: await new SisCommunicationService(database).createAnnouncement(tenant, body(request), actor) });
     }});
     router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { announcement: await new SisCommunicationService(database).updateAnnouncement(tenant, routeParams.id, body(request), actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { announcement: await new SisCommunicationService(database).updateAnnouncement(tenant, routeParams.id, body(request), actor) });
     }});
     router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, await new SisCommunicationService(database).deleteAnnouncement(tenant, routeParams.id, actor(request)));
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisCommunicationService(database).deleteAnnouncement(tenant, routeParams.id, actor));
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id/publish", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { announcement: await new SisCommunicationService(database).publishAnnouncement(tenant, routeParams.id, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { announcement: await new SisCommunicationService(database).publishAnnouncement(tenant, routeParams.id, actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id/archive", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { announcement: await new SisCommunicationService(database).archiveAnnouncement(tenant, routeParams.id, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { announcement: await new SisCommunicationService(database).archiveAnnouncement(tenant, routeParams.id, actor) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/messages", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { messages: await new SisCommunicationService(database).listMessages(tenant) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/messages", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { message: await new SisCommunicationService(database).sendCommunication(tenant, body(request), actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { message: await new SisCommunicationService(database).sendCommunication(tenant, body(request), actor) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/notifications", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
@@ -578,44 +583,44 @@ export const educationModule: BackendModule = {
       sendJson(response, 200, { deliveries: await new SisCommunicationService(database).deliveryHistory(tenant) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/contacts", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { contacts: await new SisCommunicationService(database).getDirectMessageContacts(tenant, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { contacts: await new SisCommunicationService(database).getDirectMessageContacts(tenant, actor) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/conversations", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { conversations: await new SisCommunicationService(database).listConversations(tenant, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { conversations: await new SisCommunicationService(database).listConversations(tenant, actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/conversations", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 201, { message: await new SisCommunicationService(database).sendDirectMessage(tenant, body(request) as any, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 201, { message: await new SisCommunicationService(database).sendDirectMessage(tenant, body(request) as unknown as Parameters<SisCommunicationService["sendDirectMessage"]>[1], actor) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/conversations/:id/messages", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { messages: await new SisCommunicationService(database).getConversationMessages(tenant, routeParams.id, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { messages: await new SisCommunicationService(database).getConversationMessages(tenant, routeParams.id, actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/conversations/:id/reply", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       const payload = body(request);
-      sendJson(response, 201, { message: await new SisCommunicationService(database).sendDirectMessage(tenant, { ...payload, conversationId: routeParams.id } as any, actor(request)) });
+      sendJson(response, 201, { message: await new SisCommunicationService(database).sendDirectMessage(tenant, { ...payload, conversationId: routeParams.id } as unknown as Parameters<SisCommunicationService["sendDirectMessage"]>[1], actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/conversations/:id/archive", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, await new SisCommunicationService(database).archiveConversation(tenant, routeParams.id, actor(request)));
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, await new SisCommunicationService(database).archiveConversation(tenant, routeParams.id, actor));
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/deliveries/:id/retry", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { delivery: await new SisCommunicationService(database).retryDelivery(tenant, routeParams.id, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { delivery: await new SisCommunicationService(database).retryDelivery(tenant, routeParams.id, actor) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/preferences", async handler(request, response, { database, routeParams, url }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       const kind = url.searchParams.get("kind") || "user";
-      const id = url.searchParams.get("id") || String(actor(request)?.userId || "");
+      const id = url.searchParams.get("id") || String(actor.userId || "");
       sendJson(response, 200, { preference: await new SisCommunicationService(database).getPreferences(tenant, { kind, id }) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/preferences", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { preference: await new SisCommunicationService(database).savePreference(tenant, body(request), actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { preference: await new SisCommunicationService(database).savePreference(tenant, body(request), actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/domain-notifications", async handler(request, response, { database, routeParams }) {
       const payload = body(request);
@@ -636,13 +641,18 @@ export const educationModule: BackendModule = {
       sendJson(response, 200, { policy: await new SisPortalService(database).savePolicy(tenant, body(request)) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/portal/requests", async handler(request, response, { database, routeParams, url }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { requests: await new SisPortalService(database).listRequests(tenant, { userId: url.searchParams.get("userId") ?? "", role: url.searchParams.get("role") ?? "" }) });
+      const { tenant, auth, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      const membership = auth.memberships.find((item) => item.organizationId === tenant.organizationId && item.status === "active");
+      const isPrivileged = membership?.role === "Owner" || membership?.role === "Admin";
+      const filterActor = isPrivileged && url.searchParams.get("userId")
+        ? { userId: url.searchParams.get("userId") ?? "", role: url.searchParams.get("role") ?? "" }
+        : actor;
+      sendJson(response, 200, { requests: await new SisPortalService(database).listRequests(tenant, filterActor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/portal/requests", async handler(request, response, { database, routeParams }) {
       const payload = body(request);
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 201, { request: await new SisPortalService(database).submitRequest(tenant, payload.actor as Record<string, unknown> ?? {}, payload.input as Record<string, unknown> ?? {}) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 201, { request: await new SisPortalService(database).submitRequest(tenant, actor, payload.input as Record<string, unknown> ?? {}) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/portal/parent-dashboard", async handler(request, response, { database, routeParams, url }) {
       const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
@@ -751,7 +761,7 @@ export const educationModule: BackendModule = {
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/assignments/bulk", async handler(request, response, { database, routeParams }) {
       const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, await new SisFinanceService(database).bulkAssignFee(tenant, body(request) as any, actor));
+      sendJson(response, 200, await new SisFinanceService(database).bulkAssignFee(tenant, body(request) as unknown as Parameters<SisFinanceService["bulkAssignFee"]>[1], actor));
     }});
     router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/finance/assignments/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -790,7 +800,7 @@ export const educationModule: BackendModule = {
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/invoices/generate-recurring", async handler(request, response, { database, routeParams }) {
       const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, await new SisFinanceService(database).generateRecurringInvoices(tenant, body(request) as any, actor));
+      sendJson(response, 200, await new SisFinanceService(database).generateRecurringInvoices(tenant, body(request) as unknown as Parameters<SisFinanceService["generateRecurringInvoices"]>[1], actor));
     }});
 
     // Payments & Receipts & Reconciliation

@@ -110,4 +110,11 @@ describe("loadConfig", () => {
       }),
     ).toThrow("DATABASE_NAME is required");
   });
+
+  it("configures trustProxy correctly based on environment and explicit setting", () => {
+    expect(loadConfig({}).trustProxy).toBe(false);
+    expect(loadConfig({ TRUST_PROXY: "true" }).trustProxy).toBe(true);
+    expect(loadConfig({ TRUST_PROXY: "false" }).trustProxy).toBe(false);
+    expect(loadConfig({ NODE_ENV: "test" }).trustProxy).toBe(false);
+  });
 });

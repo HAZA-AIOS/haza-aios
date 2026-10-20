@@ -38,23 +38,25 @@ graph TD
 
 ### Phase 1: Core Security & Authentication Hardening
 - **Objective:** Eliminate actor identity spoofing, add authentication rate limiting, and harden security headers.
-- **Tasks:**
+- **Status:** **Completed & Verified** (October 20, 2026)
+- **Remediated Findings:** `SEC-001`, `SEC-002`, `SEC-003`
+- **Tasks Executed:**
   1. **Fix `SEC-001` (Actor Identity Enforcement):**
-     - Modify `readTenantAuth` in [`apps/api/src/modules/education/education.module.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/education.module.ts).
-     - Authoritative actor resolution strictly derives from `auth.user.id` and active membership role.
-     - Reject or ignore client-supplied `payload.actor`.
+     - Completely removed `actor(request, fallback)` helper from [`apps/api/src/modules/education/education.module.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/education.module.ts).
+     - Authoritative actor resolution strictly derives from `auth.user.id`, `membership.role`, and `auth.user.email`.
+     - Client-supplied `payload.actor` is completely ignored across financial mutations, portal request submissions, admissions, and communication routes.
   2. **Fix `SEC-002` (Authentication Rate Limiting):**
-     - Create `apps/api/src/middleware/rate-limiter.ts` implementing in-memory token bucket / sliding window.
-     - Apply to `/api/v1/auth/login` (5 attempts/min), `/api/v1/auth/register`, `/api/v1/auth/forgot-password`, `/api/v1/auth/reset-password`.
-     - Return HTTP 429 `TOO_MANY_REQUESTS` with `retry-after` header upon limit exhaustion.
+     - Implemented `InMemoryRateLimiterStore` in [`apps/api/src/middleware/rate-limiter.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/middleware/rate-limiter.ts) using sliding-window timestamp tracking.
+     - Protected `/api/v1/auth/login` (5 failed attempts/min per account/IP, 30 attempts/min per IP), `/register` (5/hr), `/forgot-password` (3/15m per account, 15/15m per IP), and `/reset-password` (5/15m).
+     - Added configurable `trustProxy` setting in `apps/api/src/config/env.ts` to neutralize forged forwarding headers when direct/untrusted.
+     - Returns HTTP 429 `TOO_MANY_REQUESTS` with standard `Retry-After` header and response JSON.
   3. **Fix `SEC-003` (Security Headers Hardening):**
-     - Update [`apps/api/src/middleware/security.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/middleware/security.ts) to set:
-       - `strict-transport-security: max-age=31536000; includeSubDomains; preload`
-       - `x-content-type-options: nosniff`
-       - `x-frame-options: DENY`
+     - Updated [`apps/api/src/middleware/security.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/middleware/security.ts) to emit:
        - `content-security-policy: default-src 'none'; frame-ancestors 'none'`
-- **Dependencies:** None. Self-contained in API middleware and routing.
-- **Estimated Effort:** Minimal risk; zero database schema changes required.
+       - `strict-transport-security: max-age=31536000` on verified HTTPS responses (omitted on local HTTP development to prevent accidental local cache lockouts).
+       - Preserved `x-content-type-options: nosniff`, `x-frame-options: DENY`, `referrer-policy: no-referrer`, and `permissions-policy`.
+- **Verification Evidence:** `apps/api/tests/epic10n-security-hardening.integration.test.ts` (14/14 tests passing).
+- **Quality Gates:** `typecheck:api` (0 errors), `typecheck:web` (0 errors), `build:api` (passed), `build:web` (passed).
 
 ---
 

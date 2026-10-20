@@ -43,7 +43,11 @@ export function createApp(
 
   return createServer(async (request, response) => {
     const requestContext = createRequestContext(request, response);
-    applySecurityHeaders(response);
+    applySecurityHeaders(response, request, {
+      trustProxy: config.trustProxy,
+      appEnv: config.appEnv,
+      nodeEnv: config.nodeEnv,
+    });
     applyCors(request, response, config);
 
     if (request.method === "OPTIONS") {
@@ -95,6 +99,13 @@ function handleError(
       ? error
       : new ApiError(500, "INTERNAL_SERVER_ERROR", "Internal server error");
 
+  if (apiError.statusCode === 429) {
+    const details = apiError.details as { retryAfter?: number } | undefined;
+    if (typeof details?.retryAfter === "number") {
+      response.setHeader("Retry-After", String(details.retryAfter));
+    }
+  }
+
   logger.error(apiError.message, {
     code: apiError.code,
     statusCode: apiError.statusCode,
@@ -103,11 +114,14 @@ function handleError(
     internalErrorType: error instanceof Error ? error.name : typeof error,
   });
 
+  const retryAfter = (apiError.details as { retryAfter?: number })?.retryAfter;
+
   sendJson(response, apiError.statusCode, {
     error: {
       code: apiError.code,
       message: apiError.message,
       requestId,
+      ...(typeof retryAfter === "number" ? { retryAfter } : {}),
       ...(nodeEnv !== "production" && apiError.details ? { details: apiError.details } : {}),
     },
   });

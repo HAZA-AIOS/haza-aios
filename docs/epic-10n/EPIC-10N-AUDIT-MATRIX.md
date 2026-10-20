@@ -70,25 +70,32 @@ All findings are classified with concrete source-code evidence, root-cause analy
   };
   ```
 - **Regression Test Requirements:** Integration test asserting that sending `{ actor: { userId: "forged" } }` in request body is ignored and audit record logs `auth.user.id`.
-- **Implementation Status:** Identified / Ready for Remediation
+- **Implementation Status:** **Resolved (Phase 1)**
+- **Remediation Details:** Eliminated `actor(request, fallback)` helper entirely from `apps/api/src/modules/education/education.module.ts`. In `readTenantAuth`, `actor` is derived strictly and immutably from `auth.user.id`, `membership?.role ?? "Member"`, and `auth.user.email`. Any client-supplied `body.actor` is completely ignored across all financial, portal, admissions, and communication routes.
+- **Verification Evidence:** `apps/api/tests/epic10n-security-hardening.integration.test.ts` (suite passed, 14/14 tests).
 
 ---
 
 #### Finding ID: `SEC-002`
-- **Module:** API HTTP Application Layer (`apps/api/src/app.ts`, `apps/api/src/modules/auth/`)
+- **Module:** API HTTP Application Layer (`apps/api/src/app.ts`, `apps/api/src/modules/auth/`, `apps/api/src/middleware/rate-limiter.ts`)
 - **Severity:** **High**
 - **Classification:** Confirmed Defect
 - **Evidence:**
   `apps/api/src/app.ts` lines 44–54:
-  Requests are processed directly without rate-limiting middleware or sliding-window throttling.
+  Requests were processed directly without rate-limiting middleware or sliding-window throttling.
 - **Root Cause:** Lack of rate-limiting middleware in native HTTP request pipeline.
 - **Affected Files:**
   - `apps/api/src/app.ts`
-  - `apps/api/src/middleware/rate-limiter.ts` (New file required)
-- **Security / Business Impact:** Authentication endpoints (`/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/forgot-password`, `/api/v1/auth/reset-password`) are vulnerable to automated brute-force attacks and credential stuffing.
-- **Recommended Correction:** Implement an in-memory sliding-window token bucket / IP-keyed rate limiter middleware for authentication routes (e.g., maximum 5 failed attempts per minute per IP for login).
-- **Regression Test Requirements:** Integration test sending 10 rapid failed login requests; assert HTTP 429 `TOO_MANY_REQUESTS` after limit exceeded.
-- **Implementation Status:** Identified / Ready for Remediation
+  - `apps/api/src/middleware/rate-limiter.ts` (Created)
+  - `apps/api/src/modules/auth/auth.module.ts`
+  - `apps/api/src/config/env.ts`
+  - `apps/api/src/common/errors/api-error.ts`
+- **Security / Business Impact:** Authentication endpoints (`/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/forgot-password`, `/api/v1/auth/reset-password`) were vulnerable to automated brute-force attacks and credential stuffing.
+- **Recommended Correction:** Implement a typed sliding-window token-bucket in-memory rate limiter middleware for authentication routes with HTTP 429 and `Retry-After` header.
+- **Regression Test Requirements:** Integration test sending rapid failed login requests; assert HTTP 429 `TOO_MANY_REQUESTS` and `Retry-After` header after limit exceeded.
+- **Implementation Status:** **Resolved (Phase 1)**
+- **Remediation Details:** Implemented `InMemoryRateLimiterStore` in `apps/api/src/middleware/rate-limiter.ts` with sliding-window accounting. Wired per-account (5 failed attempts/min) and per-IP abuse limits (30 attempts/min) on `/api/v1/auth/login`, forgot-password (3/15m per account, 15/15m per IP), reset-password (5/15m), and registration (5/hr per IP). Handled proxy forwarding via configurable `trustProxy` setting (ignoring spoofed `X-Forwarded-For` when untrusted). Returned HTTP 429 `TOO_MANY_REQUESTS` with standard `Retry-After` header.
+- **Verification Evidence:** `apps/api/tests/epic10n-security-hardening.integration.test.ts` (suite passed, 14/14 tests).
 
 ---
 
@@ -106,13 +113,16 @@ All findings are classified with concrete source-code evidence, root-cause analy
     response.setHeader("permissions-policy", "camera=(), microphone=(), geolocation=()");
   }
   ```
-- **Root Cause:** `Strict-Transport-Security` (HSTS) and `Content-Security-Policy` (CSP) headers are absent.
+- **Root Cause:** `Strict-Transport-Security` (HSTS) and `Content-Security-Policy` (CSP) headers were absent.
 - **Affected Files:**
   - `apps/api/src/middleware/security.ts`
-- **Security / Business Impact:** While edge proxy (Cloudflare) provides partial SSL termination, direct backend responses lack HSTS enforcement and defense-in-depth CSP headers.
-- **Recommended Correction:** Add `strict-transport-security: max-age=31536000; includeSubDomains; preload` and base API CSP `default-src 'none'`.
-- **Regression Test Requirements:** Verify response headers on API endpoints include HSTS.
-- **Implementation Status:** Identified / Ready for Remediation
+  - `apps/api/src/app.ts`
+- **Security / Business Impact:** While edge proxy provides partial SSL termination, direct backend responses lacked HSTS enforcement and defense-in-depth CSP headers.
+- **Recommended Correction:** Add `strict-transport-security: max-age=31536000` on verified HTTPS responses and base API CSP `default-src 'none'; frame-ancestors 'none'`.
+- **Regression Test Requirements:** Verify response headers on API endpoints include HSTS on HTTPS and omit on local HTTP dev.
+- **Implementation Status:** **Resolved (Phase 1)**
+- **Remediation Details:** Updated `applySecurityHeaders` in `apps/api/src/middleware/security.ts` to emit `content-security-policy: default-src 'none'; frame-ancestors 'none'` on all responses, and `strict-transport-security: max-age=31536000` only on verified HTTPS responses (`socket.encrypted` or trusted `x-forwarded-proto === 'https'`). Local HTTP development is protected against accidental HSTS cache poisoning.
+- **Verification Evidence:** `apps/api/tests/epic10n-security-hardening.integration.test.ts` (suite passed, 14/14 tests).
 
 ---
 

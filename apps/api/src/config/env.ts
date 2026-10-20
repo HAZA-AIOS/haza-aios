@@ -18,6 +18,7 @@ export type ApiConfig = {
   apiBasePath: "/api/v1";
   serviceName: "haza-aios-api";
   version: string;
+  trustProxy: boolean;
 };
 
 export type EmailConfig = {
@@ -110,6 +111,11 @@ export function loadConfig(env: EnvInput = process.env): ApiConfig {
   const database = readDatabaseConfig(env, nodeEnv, appEnv);
   const email = readEmailConfig(env, appEnv);
 
+  const trustProxy =
+    env.TRUST_PROXY !== undefined
+      ? env.TRUST_PROXY === "true" || env.TRUST_PROXY === "1"
+      : (appEnv === "production" || appEnv === "staging");
+
   return {
     appEnv,
     nodeEnv,
@@ -126,6 +132,7 @@ export function loadConfig(env: EnvInput = process.env): ApiConfig {
     apiBasePath: "/api/v1",
     serviceName: "haza-aios-api",
     version: env.npm_package_version || "0.0.0",
+    trustProxy,
   };
 }
 

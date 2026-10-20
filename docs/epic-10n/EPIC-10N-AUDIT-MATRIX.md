@@ -93,13 +93,13 @@ All findings are classified with concrete source-code evidence, root-cause analy
 - **Security / Business Impact:** Authentication endpoints (`/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/forgot-password`, `/api/v1/auth/reset-password`) were vulnerable to automated brute-force attacks and credential stuffing.
 - **Recommended Correction:** Implement a typed sliding-window token-bucket in-memory rate limiter middleware for authentication routes with HTTP 429 and `Retry-After` header.
 - **Regression Test Requirements:** Integration test sending rapid failed login requests; assert HTTP 429 `TOO_MANY_REQUESTS` and `Retry-After` header after limit exceeded.
-- **Implementation Status:** **Resolved (Phase 1)**
-- **Remediation Details:** Implemented `InMemoryRateLimiterStore` in `apps/api/src/middleware/rate-limiter.ts` with sliding-window accounting. Wired per-account (5 failed attempts/min) and per-IP abuse limits (30 attempts/min) on `/api/v1/auth/login`, forgot-password (3/15m per account, 15/15m per IP), reset-password (5/15m), and registration (5/hr per IP). Handled proxy forwarding via configurable `trustProxy` setting (ignoring spoofed `X-Forwarded-For` when untrusted). Returned HTTP 429 `TOO_MANY_REQUESTS` with standard `Retry-After` header.
-- **Verification Evidence:** `apps/api/tests/epic10n-security-hardening.integration.test.ts` (suite passed, 14/14 tests).
+- **Implementation Status:** **Resolved (Phase 1 & Phase 1 Review SEC-002A)**
+- **Remediation Details:** Implemented `InMemoryRateLimiterStore` in `apps/api/src/middleware/rate-limiter.ts` with sliding-window accounting. Wired per-account (5 failed attempts/min) and per-IP abuse limits (30 attempts/min) on `/api/v1/auth/login`, forgot-password (3/15m per account, 15/15m per IP), reset-password (5/15m), and registration (5/hr per IP). In response to SEC-002A GitHub review, eliminated automatic `trustProxy` enablement in production/staging without explicit configuration (`TRUST_PROXY`). Implemented IP normalization, IPv4/IPv6 CIDR matching, and verified proxy socket checks. Direct connections with spoofed `X-Forwarded-For` or `CF-Connecting-IP` headers are neutralized by strictly verifying `request.socket.remoteAddress` against trusted proxy ranges (`DEFAULT_TRUSTED_PROXY_RANGES`, `CLOUDFLARE_PROXY_RANGES`). For multi-hop proxies, `X-Forwarded-For` is traversed right-to-left to determine the authentic initiating client. `CF-Connecting-IP` is only accepted when verified upstream proxy is Cloudflare.
+- **Verification Evidence:** `apps/api/tests/epic10n-security-hardening.integration.test.ts` (suite passed, 27/27 tests covering all 10 SEC-002A proxy trust scenarios).
 
 ---
 
-#### Finding ID: `SEC-003`
+#### Finding ID: `SEC-003` (and `SEC-003A`)
 - **Module:** Security Headers Middleware (`apps/api/src/middleware/security.ts`)
 - **Severity:** **Medium**
 - **Classification:** Potential Risk / Hardening Opportunity
@@ -118,11 +118,11 @@ All findings are classified with concrete source-code evidence, root-cause analy
   - `apps/api/src/middleware/security.ts`
   - `apps/api/src/app.ts`
 - **Security / Business Impact:** While edge proxy provides partial SSL termination, direct backend responses lacked HSTS enforcement and defense-in-depth CSP headers.
-- **Recommended Correction:** Add `strict-transport-security: max-age=31536000` on verified HTTPS responses and base API CSP `default-src 'none'; frame-ancestors 'none'`.
-- **Regression Test Requirements:** Verify response headers on API endpoints include HSTS on HTTPS and omit on local HTTP dev.
-- **Implementation Status:** **Resolved (Phase 1)**
-- **Remediation Details:** Updated `applySecurityHeaders` in `apps/api/src/middleware/security.ts` to emit `content-security-policy: default-src 'none'; frame-ancestors 'none'` on all responses, and `strict-transport-security: max-age=31536000` only on verified HTTPS responses (`socket.encrypted` or trusted `x-forwarded-proto === 'https'`). Local HTTP development is protected against accidental HSTS cache poisoning.
-- **Verification Evidence:** `apps/api/tests/epic10n-security-hardening.integration.test.ts` (suite passed, 14/14 tests).
+- **Recommended Correction:** Add `strict-transport-security: max-age=31536000` on verified HTTPS responses and base API CSP `default-src 'none'; frame-ancestors 'none'`. Intentionally omit `includeSubDomains` and `preload`.
+- **Regression Test Requirements:** Verify response headers on API endpoints include HSTS on HTTPS, omit on local HTTP dev, and ensure untrusted forwarding headers cannot falsely establish HTTPS.
+- **Implementation Status:** **Resolved (Phase 1 & Phase 1 Review SEC-003A)**
+- **Remediation Details:** Updated `applySecurityHeaders` in `apps/api/src/middleware/security.ts` to emit `content-security-policy: default-src 'none'; frame-ancestors 'none'` on all responses, and `strict-transport-security: max-age=31536000` only on verified HTTPS responses (`socket.encrypted` or trusted `x-forwarded-proto === 'https'` arriving from a verified trusted proxy socket). Local HTTP development and untrusted direct requests sending `x-forwarded-proto` are protected against false HTTPS evaluation. Reconciled implementation and documentation to explicitly confirm `includeSubDomains` is intentionally omitted.
+- **Verification Evidence:** `apps/api/tests/epic10n-security-hardening.integration.test.ts` (suite passed, 27/27 tests).
 
 ---
 

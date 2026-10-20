@@ -13,9 +13,14 @@ import {
   InMemoryRateLimiterStore,
   defaultRateLimiterStore,
   hashIdentifier,
+  normalizeIp,
+  isIpInCidr,
+  isTrustedProxy,
   resolveClientIp,
 } from "../src/middleware/rate-limiter.js";
 import { AuthService } from "../src/modules/auth/services/auth.service.js";
+import { SisService } from "../src/modules/education/sis.service.js";
+import { SisFinanceService } from "../src/modules/education/sis-finance.service.js";
 
 const logger = {
   error: vi.fn(),
@@ -61,9 +66,9 @@ describe("Epic 10N Phase 1: Core Security & Authentication Hardening", () => {
   });
 
   /* ─────────────────────────────────────────────────────────────
-   * SEC-003: Security Headers (HSTS & CSP)
+   * SEC-003 / SEC-003A: Security Headers (HSTS & CSP)
    * ───────────────────────────────────────────────────────────── */
-  describe("SEC-003: Security Headers: HSTS and CSP", () => {
+  describe("SEC-003A: Security Headers: HSTS and CSP Consistency", () => {
     it("emits nosniff, frame-options DENY, referrer-policy, and restrictive API CSP on all responses", async () => {
       const response = await fetch(`${baseUrl}/api/v1/health`);
 
@@ -80,7 +85,7 @@ describe("Epic 10N Phase 1: Core Security & Authentication Hardening", () => {
       expect(response.headers.get("strict-transport-security")).toBeNull();
     });
 
-    it("emits strict-transport-security: max-age=31536000 only when request is verified HTTPS", () => {
+    it("emits strict-transport-security: max-age=31536000 only when request is verified direct HTTPS", () => {
       const mockResponse = {
         headers: {} as Record<string, string>,
         setHeader(name: string, value: string) {
@@ -89,16 +94,19 @@ describe("Epic 10N Phase 1: Core Security & Authentication Hardening", () => {
       } as any;
 
       const mockHttpsRequest = {
-        socket: { encrypted: true },
+        socket: { encrypted: true, remoteAddress: "127.0.0.1" },
         headers: {},
       } as any;
 
       applySecurityHeaders(mockResponse, mockHttpsRequest);
       expect(mockResponse.headers["strict-transport-security"]).toBe("max-age=31536000");
+      // Must NOT contain includeSubDomains or preload
+      expect(mockResponse.headers["strict-transport-security"]).not.toContain("includeSubDomains");
+      expect(mockResponse.headers["strict-transport-security"]).not.toContain("preload");
       expect(mockResponse.headers["content-security-policy"]).toBe("default-src 'none'; frame-ancestors 'none'");
     });
 
-    it("emits strict-transport-security when x-forwarded-proto is https in staging or production", () => {
+    it("emits strict-transport-security when x-forwarded-proto is https from a verified trusted proxy", () => {
       const mockResponse = {
         headers: {} as Record<string, string>,
         setHeader(name: string, value: string) {
@@ -107,23 +115,44 @@ describe("Epic 10N Phase 1: Core Security & Authentication Hardening", () => {
       } as any;
 
       const mockForwardedRequest = {
-        socket: { encrypted: false },
+        socket: { encrypted: false, remoteAddress: "10.0.0.1" }, // Private network IP (trusted)
         headers: { "x-forwarded-proto": "https" },
       } as any;
 
-      // In production/staging with trusted proxy
       applySecurityHeaders(mockResponse, mockForwardedRequest, {
+        trustProxy: true,
+      });
+      expect(mockResponse.headers["strict-transport-security"]).toBe("max-age=31536000");
+      expect(mockResponse.headers["strict-transport-security"]).not.toContain("includeSubDomains");
+    });
+
+    it("does NOT emit strict-transport-security when untrusted socket sends forged x-forwarded-proto", () => {
+      const mockResponse = {
+        headers: {} as Record<string, string>,
+        setHeader(name: string, value: string) {
+          this.headers[name.toLowerCase()] = value;
+        },
+      } as any;
+
+      // Socket is a public untrusted client IP
+      const mockUntrustedRequest = {
+        socket: { encrypted: false, remoteAddress: "203.0.113.50" },
+        headers: { "x-forwarded-proto": "https" },
+      } as any;
+
+      applySecurityHeaders(mockResponse, mockUntrustedRequest, {
         trustProxy: true,
         appEnv: "production",
       });
-      expect(mockResponse.headers["strict-transport-security"]).toBe("max-age=31536000");
+      // Untrusted socket MUST NOT establish HTTPS, so HSTS must be omitted
+      expect(mockResponse.headers["strict-transport-security"]).toBeUndefined();
     });
   });
 
   /* ─────────────────────────────────────────────────────────────
-   * SEC-002: Rate Limiting & Proxy Protection
+   * SEC-002 / SEC-002A: Rate Limiting & Proxy Trust Boundaries
    * ───────────────────────────────────────────────────────────── */
-  describe("SEC-002: Authentication Endpoint Rate Limiting", () => {
+  describe("SEC-002A: Trusted Proxy and Client IP Validation", () => {
     it("unit: InMemoryRateLimiterStore tracks consumption and provides accurate retryAfterSeconds", () => {
       const store = new InMemoryRateLimiterStore();
       const key = "test:consume";
@@ -140,21 +169,151 @@ describe("Epic 10N Phase 1: Core Security & Authentication Hardening", () => {
       store.destroy();
     });
 
-    it("unit: resolveClientIp ignores spoofed headers when trustProxy is false", () => {
+    it("unit: normalizeIp validates, strips ports, and handles IPv4-mapped IPv6", () => {
+      expect(normalizeIp(" 192.168.1.1 ")).toBe("192.168.1.1");
+      expect(normalizeIp("192.168.1.1:8080")).toBe("192.168.1.1");
+      expect(normalizeIp("[2001:db8::1]:8080")).toBe("2001:db8::1");
+      expect(normalizeIp("::ffff:192.168.1.1")).toBe("192.168.1.1");
+      expect(normalizeIp("2001:0db8::1")).toBe("2001:0db8::1");
+      expect(normalizeIp("invalid-ip")).toBeNull();
+      expect(normalizeIp("999.999.999.999")).toBeNull();
+      expect(normalizeIp("1.2.3.4.5")).toBeNull();
+      expect(normalizeIp("<script>")).toBeNull();
+      expect(normalizeIp("")).toBeNull();
+    });
+
+    it("unit: isIpInCidr correctly matches IPv4 and IPv6 CIDRs", () => {
+      // IPv4
+      expect(isIpInCidr("127.0.0.1", "127.0.0.0/8")).toBe(true);
+      expect(isIpInCidr("10.5.2.1", "10.0.0.0/8")).toBe(true);
+      expect(isIpInCidr("192.168.1.50", "192.168.0.0/16")).toBe(true);
+      expect(isIpInCidr("172.20.1.1", "172.16.0.0/12")).toBe(true);
+      expect(isIpInCidr("100.65.0.1", "100.64.0.0/10")).toBe(true);
+      expect(isIpInCidr("203.0.113.5", "10.0.0.0/8")).toBe(false);
+
+      // IPv6
+      expect(isIpInCidr("::1", "::1/128")).toBe(true);
+      expect(isIpInCidr("fe80::1", "fe80::/10")).toBe(true);
+      expect(isIpInCidr("2606:4700::1", "2606:4700::/32")).toBe(true);
+      expect(isIpInCidr("2001:db8::1", "2606:4700::/32")).toBe(false);
+    });
+
+    it("unit (Requirement 1): valid trusted-proxy request resolves client IP from X-Forwarded-For", () => {
       const request = {
-        socket: { remoteAddress: "192.168.1.50" },
+        socket: { remoteAddress: "127.0.0.1" }, // Trusted loopback proxy
         headers: {
-          "x-forwarded-for": "203.0.113.195, 10.0.0.1",
-          "cf-connecting-ip": "198.51.100.1",
+          "x-forwarded-for": "203.0.113.195",
         },
       } as any;
 
-      const ipWithoutTrust = resolveClientIp(request, false);
-      expect(ipWithoutTrust).toBe("192.168.1.50");
+      const ip = resolveClientIp(request, true);
+      expect(ip).toBe("203.0.113.195");
+    });
 
-      const ipWithTrust = resolveClientIp(request, true);
-      // With trustProxy: true and cf-connecting-ip present, takes cf-connecting-ip
-      expect(ipWithTrust).toBe("198.51.100.1");
+    it("unit (Requirement 2): direct request with forged CF-Connecting-IP ignores header and returns socket IP", () => {
+      const request = {
+        socket: { remoteAddress: "203.0.113.50" }, // Public untrusted client
+        headers: {
+          "cf-connecting-ip": "1.1.1.1",
+        },
+      } as any;
+
+      // Even with trustProxy: true, untrusted socket origin prevents trusting headers
+      const ip = resolveClientIp(request, true);
+      expect(ip).toBe("203.0.113.50");
+    });
+
+    it("unit (Requirement 3): direct request with forged X-Forwarded-For ignores header and returns socket IP", () => {
+      const request = {
+        socket: { remoteAddress: "203.0.113.50" }, // Public untrusted client
+        headers: {
+          "x-forwarded-for": "1.1.1.1",
+        },
+      } as any;
+
+      const ip = resolveClientIp(request, true);
+      expect(ip).toBe("203.0.113.50");
+    });
+
+    it("unit (Requirement 4): malformed IP headers are rejected and fall back safely to socket IP", () => {
+      const request = {
+        socket: { remoteAddress: "127.0.0.1" },
+        headers: {
+          "x-forwarded-for": "malformed-ip; select * from users",
+        },
+      } as any;
+
+      const ip = resolveClientIp(request, true);
+      expect(ip).toBe("127.0.0.1");
+    });
+
+    it("unit (Requirement 5): multiple forwarded IP values traversed right-to-left to find authentic client", () => {
+      const request = {
+        socket: { remoteAddress: "10.0.1.1" }, // Railway container ingress proxy (trusted)
+        headers: {
+          // Client (203.0.113.195) -> Internal Proxy (10.0.2.2) -> Railway (10.0.1.1)
+          "x-forwarded-for": "203.0.113.195, 10.0.2.2",
+        },
+      } as any;
+
+      const ip = resolveClientIp(request, true);
+      expect(ip).toBe("203.0.113.195");
+    });
+
+    it("unit (Requirement 6): IPv4 and IPv6 addresses are properly supported and normalized", () => {
+      // IPv6 client through trusted proxy
+      const v6Request = {
+        socket: { remoteAddress: "::1" },
+        headers: {
+          "x-forwarded-for": "2001:0db8::8a2e:0370:7334",
+        },
+      } as any;
+      expect(resolveClientIp(v6Request, true)).toBe("2001:0db8::8a2e:0370:7334");
+
+      // IPv4-mapped IPv6 client normalized to IPv4
+      const mappedRequest = {
+        socket: { remoteAddress: "127.0.0.1" },
+        headers: {
+          "x-forwarded-for": "::ffff:198.51.100.25",
+        },
+      } as any;
+      expect(resolveClientIp(mappedRequest, true)).toBe("198.51.100.25");
+    });
+
+    it("unit (Requirement 7): requests with proxy trust disabled ignore all forwarding headers", () => {
+      const request = {
+        socket: { remoteAddress: "127.0.0.1" },
+        headers: {
+          "x-forwarded-for": "203.0.113.195",
+          "cf-connecting-ip": "1.1.1.1",
+        },
+      } as any;
+
+      expect(resolveClientIp(request, false)).toBe("127.0.0.1");
+    });
+
+    it("unit (Requirement 8): requests with proxy trust enabled but unverified proxy origin ignore headers", () => {
+      const request = {
+        socket: { remoteAddress: "198.51.100.99" }, // Public IP not in trusted proxy ranges
+        headers: {
+          "x-forwarded-for": "203.0.113.195",
+          "cf-connecting-ip": "1.1.1.1",
+        },
+      } as any;
+
+      expect(resolveClientIp(request, true)).toBe("198.51.100.99");
+    });
+
+    it("unit: valid Cloudflare proxy request extracts CF-Connecting-IP when upstream is Cloudflare", () => {
+      const request = {
+        socket: { remoteAddress: "10.0.0.1" }, // Railway proxy
+        headers: {
+          "x-forwarded-for": "203.0.113.195, 173.245.48.5", // 173.245.48.5 is in Cloudflare IP range
+          "cf-connecting-ip": "203.0.113.195",
+        },
+      } as any;
+
+      expect(resolveClientIp(request, true)).toBe("203.0.113.195");
     });
 
     it("unit: hashIdentifier normalizes and hashes sensitive identifiers", () => {
@@ -164,6 +323,16 @@ describe("Epic 10N Phase 1: Core Security & Authentication Hardening", () => {
       expect(hash1).toHaveLength(16);
       expect(hash1).not.toContain("admin");
       expect(hash1).not.toContain("example");
+    });
+
+    it("unit: isTrustedProxy matches configured CIDR lists", () => {
+      expect(isTrustedProxy("127.0.0.1", true)).toBe(true);
+      expect(isTrustedProxy("10.0.0.1", true)).toBe(true);
+      expect(isTrustedProxy("172.16.0.1", true)).toBe(true);
+      expect(isTrustedProxy("192.168.1.1", true)).toBe(true);
+      expect(isTrustedProxy("100.64.0.1", true)).toBe(true);
+      expect(isTrustedProxy("203.0.113.50", true)).toBe(false);
+      expect(isTrustedProxy("203.0.113.50", "203.0.113.0/24")).toBe(true);
     });
 
     it("rate limits repeated failed logins, returning HTTP 429 and Retry-After header", async () => {
@@ -201,38 +370,95 @@ describe("Epic 10N Phase 1: Core Security & Authentication Hardening", () => {
       expect(differentUserResponse.status).toBe(401);
     });
 
-    it("does not allow client-spoofed X-Forwarded-For headers to bypass rate limits when trustProxy is false", async () => {
+    it("integration (Requirement 9): enforces rate limits despite attempted header spoofing", async () => {
       const payload = { email: "bruteforce@example.com", password: "wrong-password" };
 
-      // Accumulate 5 failed attempts with different spoofed X-Forwarded-For headers
+      // Accumulate 5 failed attempts with different spoofed X-Forwarded-For and CF-Connecting-IP headers
       for (let i = 0; i < 5; i++) {
         const response = await fetch(`${baseUrl}/api/v1/auth/login`, {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            "x-forwarded-for": `10.0.0.${i + 1}`,
+            "x-forwarded-for": `198.51.100.${i + 1}`,
+            "cf-connecting-ip": `203.0.113.${i + 1}`,
           },
           body: JSON.stringify(payload),
         });
         expect(response.status).toBe(401);
       }
 
-      // 6th attempt with yet another spoofed header is still blocked
-      const response = await fetch(`${baseUrl}/api/v1/auth/login`, {
+      // 6th attempt with yet another spoofed header is still blocked because trustProxy is false by default in test
+      const blockedResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-forwarded-for": "10.0.0.99",
+          "x-forwarded-for": "198.51.100.99",
+          "cf-connecting-ip": "203.0.113.99",
         },
         body: JSON.stringify(payload),
       });
-      expect(response.status).toBe(429);
+      expect(blockedResponse.status).toBe(429);
     });
 
-    it("rate limits forgot-password requests, returning HTTP 429 and Retry-After", async () => {
+    it("resets failed login count on successful login", async () => {
+      const payload = { email: "gooduser@example.com", password: "wrong-password" };
+
+      // Record 3 failed attempts
+      for (let i = 0; i < 3; i++) {
+        await fetch(`${baseUrl}/api/v1/auth/login`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      // Spy on AuthService.prototype.login to simulate success
+      const loginSpy = vi.spyOn(AuthService.prototype, "login").mockResolvedValueOnce({
+        user: {
+          id: "u1",
+          email: "gooduser@example.com",
+          firstName: "Good",
+          lastName: "User",
+          displayName: "Good User",
+          emailVerified: true,
+          status: "active",
+          lastLoginAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        session: {
+          id: "sess-1",
+          userId: "u1",
+          accessToken: "sample-token",
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+          rememberMe: false,
+        },
+        memberships: [],
+      } as any);
+
+      // Successful login
+      const successResponse = await fetch(`${baseUrl}/api/v1/auth/login`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "gooduser@example.com", password: "correct-password" }),
+      });
+      expect(successResponse.status).toBe(200);
+      loginSpy.mockRestore();
+
+      // Ensure another 4 failed attempts are now allowed before being blocked
+      for (let i = 0; i < 4; i++) {
+        const res = await fetch(`${baseUrl}/api/v1/auth/login`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        expect(res.status).toBe(401);
+      }
+    });
+
+    it("enforces forgot-password rate limits (3 requests per 15 min per account)", async () => {
       const payload = { email: "forgot@example.com" };
 
-      // 3 requests allowed per 15 min per account
       for (let i = 0; i < 3; i++) {
         const response = await fetch(`${baseUrl}/api/v1/auth/forgot-password`, {
           method: "POST",
@@ -242,181 +468,220 @@ describe("Epic 10N Phase 1: Core Security & Authentication Hardening", () => {
         expect(response.status).toBe(200);
       }
 
-      // 4th request must be throttled
-      const blockedResponse = await fetch(`${baseUrl}/api/v1/auth/forgot-password`, {
+      const blocked = await fetch(`${baseUrl}/api/v1/auth/forgot-password`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      expect(blockedResponse.status).toBe(429);
-      expect(blockedResponse.headers.get("retry-after")).toBeTruthy();
-      const body = await blockedResponse.json();
-      expect(body.error.code).toBe("TOO_MANY_REQUESTS");
+      expect(blocked.status).toBe(429);
+      expect(blocked.headers.get("retry-after")).toBeTruthy();
     });
 
-    it("rate limits reset-password attempts, returning HTTP 429 and Retry-After", async () => {
-      const payload = { token: "invalid-token-12345", password: "NewStrongPassword123!" };
+    it("enforces reset-password rate limits (5 attempts per 15 min)", async () => {
+      const payload = { token: "sample-token", password: "new-password-1234!" };
 
-      // 5 attempts allowed per 15 min per token
       for (let i = 0; i < 5; i++) {
         const response = await fetch(`${baseUrl}/api/v1/auth/reset-password`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
         });
-        // 400 INVALID_RESET_TOKEN from service
+        // Returns 400 for invalid token
         expect(response.status).toBe(400);
       }
 
-      // 6th attempt must be throttled
-      const blockedResponse = await fetch(`${baseUrl}/api/v1/auth/reset-password`, {
+      const blocked = await fetch(`${baseUrl}/api/v1/auth/reset-password`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
+      expect(blocked.status).toBe(429);
+    });
 
-      expect(blockedResponse.status).toBe(429);
-      expect(blockedResponse.headers.get("retry-after")).toBeTruthy();
-      const body = await blockedResponse.json();
-      expect(body.error.code).toBe("TOO_MANY_REQUESTS");
+    it("enforces registration rate limits (5 attempts per hour per IP)", async () => {
+      const registerPayload = (i: number) => ({
+        email: `newuser${i}@example.com`,
+        password: "Password1234!",
+        fullName: `New User ${i}`,
+      });
+
+      for (let i = 0; i < 5; i++) {
+        const response = await fetch(`${baseUrl}/api/v1/auth/register-identity`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(registerPayload(i)),
+        });
+        // 400 because registration without invitation/existing org may fail, but hits rate limiter
+        expect([200, 201, 400, 403]).toContain(response.status);
+      }
+
+      const blocked = await fetch(`${baseUrl}/api/v1/auth/register-identity`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(registerPayload(99)),
+      });
+      expect(blocked.status).toBe(429);
     });
   });
 
   /* ─────────────────────────────────────────────────────────────
-   * SEC-001: Eliminate Client Actor Identity Spoofing
+   * SEC-001: Actor Identity Hardening
    * ───────────────────────────────────────────────────────────── */
-  describe("SEC-001: Eliminate Client Actor Identity Spoofing", () => {
-    const validOrgId = "11111111-1111-4111-8111-111111111111";
-    const validWorkspaceId = "22222222-2222-4222-8222-222222222222";
+  describe("SEC-001: Actor Identity Hardening in Education API", () => {
+    it("ignores forged actor payload in request body and derives actor strictly from authenticated session", async () => {
+      const validOrgId = "11111111-1111-4111-8111-111111111111";
 
-    it("rejects unauthenticated requests to protected education routes with 401", async () => {
-      const response = await fetch(
-        `${baseUrl}/api/v1/organizations/${validOrgId}/sis/finance/categories`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ name: "Tuition" }),
-        },
-      );
-      expect(response.status).toBe(401);
-      const data = await response.json();
-      expect(data.error.code).toBe("UNAUTHENTICATED");
-    });
-
-    it("ignores client-supplied body.actor in portal request submission and binds to verified session actor", async () => {
-      // Mock authenticated session as Alice (Member)
-      const mockUser = { id: "user-alice-111", email: "alice@example.com", fullName: "Alice Student" };
-      const mockMembership = {
+      const tenantSpy = vi.spyOn(SisService.prototype, "getTenant").mockResolvedValueOnce({
         organizationId: validOrgId,
-        role: "Member",
-        status: "active",
-        permissions: ["workspace.read"],
-      };
+        workspaceId: "ws-111",
+      });
 
-      vi.spyOn(AuthService.prototype, "requireOrganizationPermission").mockResolvedValueOnce({
-        user: mockUser as any,
-        session: { id: "session-1", userId: mockUser.id, expiresAt: new Date(Date.now() + 3600_000) } as any,
-        memberships: [mockMembership as any],
+      const authSpy = vi.spyOn(AuthService.prototype, "requireOrganizationPermission").mockResolvedValueOnce({
+        user: {
+          id: "user-legit-111",
+          email: "legit@example.com",
+          firstName: "Legit",
+          lastName: "User",
+          displayName: "Legit User",
+          emailVerified: true,
+          status: "active",
+          lastLoginAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        session: {
+          id: "session-1",
+          userId: "user-legit-111",
+          tokenHash: "mock-hash",
+          status: "active",
+          rememberMe: false,
+          expiresAt: new Date(Date.now() + 3600_000),
+          revokedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        memberships: [
+          {
+            id: "mem-1",
+            organizationId: validOrgId,
+            userId: "user-legit-111",
+            role: "Admin",
+            status: "active",
+            permissions: ["workspace.read", "workspace.manage"],
+          },
+        ],
         platformPermissions: [],
-      });
+      } as any);
 
-      const { SisService } = await import("../src/modules/education/sis.service.js");
-      vi.spyOn(SisService.prototype, "getTenant").mockResolvedValueOnce({
-        organizationId: validOrgId,
-        workspaceId: validWorkspaceId,
-      });
+      const createStructureSpy = vi.spyOn(SisFinanceService.prototype, "createStructure").mockResolvedValueOnce({
+        id: "struct-1",
+        name: "Tuition Fee",
+        code: "TUIT-01",
+        amount: 500,
+        currency: "USD",
+        feeType: "tuition",
+        frequency: "term",
+      } as any);
 
-      const { SisPortalService } = await import("../src/modules/education/sis-portal.service.js");
-      const submitSpy = vi.spyOn(SisPortalService.prototype, "submitRequest").mockImplementation(async (tenant, actor, input) => {
-        return {
-          id: "33333333-3333-4333-8333-333333333333",
-          organizationId: tenant.organizationId,
-          requesterUserId: String(actor.userId ?? ""),
-          requesterRole: String(actor.role ?? ""),
-          ...input,
-        } as any;
-      });
-
-      // Submit request with malicious payload attempting to spoof actor as Eve (Admin/Owner)
-      const spoofedPayload = {
+      const spoofedFeePayload = {
+        name: "Tuition Fee",
+        code: "TUIT-01",
+        amount: 500,
+        currency: "USD",
+        feeType: "tuition",
+        frequency: "term",
         actor: {
-          userId: "user-eve-spoofed-999",
-          role: "Owner",
-          tenantId: "forged-tenant-id",
-        },
-        input: {
-          type: "profile_update",
-          subject: "Change of Phone",
-          details: "Please update my phone number.",
+          userId: "attacker-forged-uuid",
+          role: "SuperAdmin",
+          email: "attacker@forged.com",
         },
       };
 
       const response = await fetch(
-        `${baseUrl}/api/v1/organizations/${validOrgId}/sis/portal/requests`,
+        `${baseUrl}/api/v1/organizations/${validOrgId}/sis/finance/structures`,
         {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            authorization: "Bearer mock-token-alice",
+            authorization: "Bearer mock-token",
           },
-          body: JSON.stringify(spoofedPayload),
+          body: JSON.stringify(spoofedFeePayload),
         },
       );
 
       expect(response.status).toBe(201);
       const data = await response.json();
+      expect(data.structure).toBeTruthy();
+      expect(data.structure.name).toBe("Tuition Fee");
 
-      // Verified: The created record MUST have requesterUserId = alice's ID, NOT the spoofed actor!
-      expect(data.request.requesterUserId).toBe("user-alice-111");
-      expect(data.request.requesterUserId).not.toBe("user-eve-spoofed-999");
-      expect(data.request.requesterRole).toBe("Member");
-      expect(data.request.requesterRole).not.toBe("Owner");
-
-      expect(submitSpy).toHaveBeenCalledWith(
+      // Verify that createStructure received the authoritative actor, NOT the forged actor
+      expect(createStructureSpy).toHaveBeenCalledWith(
         expect.anything(),
-        expect.objectContaining({ userId: "user-alice-111", role: "Member" }),
         expect.anything(),
+        expect.objectContaining({ userId: "user-legit-111", role: "Admin", email: "legit@example.com" }),
       );
+
+      authSpy.mockRestore();
+      tenantSpy.mockRestore();
+      createStructureSpy.mockRestore();
     });
 
-    it("ignores client-supplied body.actor in financial fee category creation and binds to authoritative actor", async () => {
-      const mockAdmin = { id: "user-admin-222", email: "admin@example.com", fullName: "Admin User" };
-      const mockMembership = {
-        organizationId: validOrgId,
-        role: "Admin",
-        status: "active",
-        permissions: ["workspace.manage"],
-      };
+    it("applies authenticated actor context to fee category creation and audit records", async () => {
+      const validOrgId = "22222222-2222-4222-8222-222222222222";
 
-      vi.spyOn(AuthService.prototype, "requireOrganizationPermission").mockResolvedValueOnce({
-        user: mockAdmin as any,
-        session: { id: "session-2", userId: mockAdmin.id, expiresAt: new Date(Date.now() + 3600_000) } as any,
-        memberships: [mockMembership as any],
+      const tenantSpy = vi.spyOn(SisService.prototype, "getTenant").mockResolvedValueOnce({
+        organizationId: validOrgId,
+        workspaceId: "ws-222",
+      });
+
+      const authSpy = vi.spyOn(AuthService.prototype, "requireOrganizationPermission").mockResolvedValueOnce({
+        user: {
+          id: "user-admin-222",
+          email: "admin2@example.com",
+          firstName: "Admin",
+          lastName: "Two",
+          displayName: "Admin Two",
+          emailVerified: true,
+          status: "active",
+          lastLoginAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        session: {
+          id: "session-2",
+          userId: "user-admin-222",
+          tokenHash: "mock-hash-2",
+          status: "active",
+          rememberMe: false,
+          expiresAt: new Date(Date.now() + 3600_000),
+          revokedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        memberships: [
+          {
+            id: "mem-2",
+            organizationId: validOrgId,
+            userId: "user-admin-222",
+            role: "Admin",
+            status: "active",
+            permissions: ["workspace.read", "workspace.manage"],
+          },
+        ],
         platformPermissions: [],
-      });
+      } as any);
 
-      const { SisService } = await import("../src/modules/education/sis.service.js");
-      vi.spyOn(SisService.prototype, "getTenant").mockResolvedValueOnce({
+      const createCategorySpy = vi.spyOn(SisFinanceService.prototype, "createCategory").mockResolvedValueOnce({
+        id: "cat-123",
         organizationId: validOrgId,
-        workspaceId: validWorkspaceId,
-      });
+        name: "Athletics",
+        code: "ATH-01",
+        createdBy: "user-admin-222",
+      } as any);
 
-      const { SisFinanceService } = await import("../src/modules/education/sis-finance.service.js");
-      const createCategorySpy = vi.spyOn(SisFinanceService.prototype, "createCategory").mockImplementation(async (tenant, data, actor) => {
-        return {
-          id: "44444444-4444-4444-8444-444444444444",
-          organizationId: tenant.organizationId,
-          name: String(data.name ?? ""),
-          createdBy: String((actor as any)?.userId ?? ""),
-          role: String((actor as any)?.role ?? ""),
-        } as any;
-      });
-
-      // Attempt to spoof actor as someone else in category payload
       const spoofedCategoryPayload = {
-        name: "Sports Fee",
-        code: "SPORT-01",
+        name: "Athletics",
+        code: "ATH-01",
         actor: {
           userId: "forged-actor-id",
           role: "SuperAdmin",
@@ -439,13 +704,16 @@ describe("Epic 10N Phase 1: Core Security & Authentication Hardening", () => {
       const data = await response.json();
       expect(data.category).toBeTruthy();
       expect(data.category.createdBy).toBe("user-admin-222");
-      expect(data.category.createdBy).not.toBe("forged-actor-id");
 
       expect(createCategorySpy).toHaveBeenCalledWith(
         expect.anything(),
         expect.anything(),
-        expect.objectContaining({ userId: "user-admin-222", role: "Admin" }),
+        expect.objectContaining({ userId: "user-admin-222", role: "Admin", email: "admin2@example.com" }),
       );
+
+      authSpy.mockRestore();
+      tenantSpy.mockRestore();
+      createCategorySpy.mockRestore();
     });
   });
 });

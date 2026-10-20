@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { isTrustedProxy, type ProxyTrustOption } from "./rate-limiter.js";
 
 export type SecurityHeaderOptions = {
   isHttps?: boolean;
-  trustProxy?: boolean;
+  trustProxy?: ProxyTrustOption;
   appEnv?: string;
   nodeEnv?: string;
 };
@@ -34,24 +35,25 @@ export function applySecurityHeaders(
   );
 
   // HTTP Strict Transport Security (HSTS):
-  // Enable Strict-Transport-Security only for verified HTTPS responses.
-  // Avoid applying production HSTS behavior to local HTTP development.
+  // Strict-Transport-Security is enabled ONLY for verified HTTPS responses.
+  // 1. Direct TLS connection: request.socket.encrypted === true.
+  // 2. Forwarded HTTPS: x-forwarded-proto === "https", BUT ONLY IF the immediate
+  //    socket connection originates from a verified trusted proxy.
+  //    Untrusted clients sending x-forwarded-proto over plain HTTP are strictly ignored.
+  // Note: max-age is 1 year (31,536,000 seconds).
+  // includeSubDomains and preload are intentionally omitted until all subdomains are verified.
   const isDirectHttps = Boolean(
     request?.socket && (request.socket as { encrypted?: boolean }).encrypted,
   );
-  const isForwardedHttps = request?.headers["x-forwarded-proto"] === "https";
-  const isProdOrStaging =
-    options?.appEnv === "production" ||
-    options?.appEnv === "staging" ||
-    options?.nodeEnv === "production";
 
-  const isHttps =
-    options?.isHttps ??
-    (isDirectHttps || (isForwardedHttps && (options?.trustProxy || isProdOrStaging)));
+  const socketIp = request?.socket?.remoteAddress;
+  const isProxyTrusted = isTrustedProxy(socketIp, options?.trustProxy ?? false);
+  const isForwardedHttps =
+    isProxyTrusted && request?.headers["x-forwarded-proto"] === "https";
+
+  const isHttps = options?.isHttps ?? (isDirectHttps || isForwardedHttps);
 
   if (isHttps) {
-    // max-age: 1 year (31,536,000 seconds).
-    // Note: includeSubDomains and preload intentionally omitted until all subdomains are verified.
     response.setHeader("strict-transport-security", "max-age=31536000");
   }
 }

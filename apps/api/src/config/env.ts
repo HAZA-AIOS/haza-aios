@@ -111,10 +111,12 @@ export function loadConfig(env: EnvInput = process.env): ApiConfig {
   const database = readDatabaseConfig(env, nodeEnv, appEnv);
   const email = readEmailConfig(env, appEnv);
 
+  // Never trust forwarding headers solely because APP_ENV is production.
+  // Require explicit configuration of TRUST_PROXY to enable reverse proxy trust.
   const trustProxy =
     env.TRUST_PROXY !== undefined
-      ? env.TRUST_PROXY === "true" || env.TRUST_PROXY === "1"
-      : (appEnv === "production" || appEnv === "staging");
+      ? env.TRUST_PROXY === "true" || env.TRUST_PROXY === "1" || env.TRUST_PROXY === "cloudflare"
+      : false;
 
   return {
     appEnv,

@@ -45,17 +45,19 @@ graph TD
      - Completely removed `actor(request, fallback)` helper from [`apps/api/src/modules/education/education.module.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/education.module.ts).
      - Authoritative actor resolution strictly derives from `auth.user.id`, `membership.role`, and `auth.user.email`.
      - Client-supplied `payload.actor` is completely ignored across financial mutations, portal request submissions, admissions, and communication routes.
-  2. **Fix `SEC-002` (Authentication Rate Limiting):**
+  2. **Fix `SEC-002` & `SEC-002A` (Authentication Rate Limiting & Proxy Trust Boundaries):**
      - Implemented `InMemoryRateLimiterStore` in [`apps/api/src/middleware/rate-limiter.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/middleware/rate-limiter.ts) using sliding-window timestamp tracking.
      - Protected `/api/v1/auth/login` (5 failed attempts/min per account/IP, 30 attempts/min per IP), `/register` (5/hr), `/forgot-password` (3/15m per account, 15/15m per IP), and `/reset-password` (5/15m).
-     - Added configurable `trustProxy` setting in `apps/api/src/config/env.ts` to neutralize forged forwarding headers when direct/untrusted.
+     - Added configurable `trustProxy` setting in `apps/api/src/config/env.ts` requiring explicit configuration (never defaults to true on `production`).
+     - Implemented IP normalization, IPv4/IPv6 CIDR matching (`DEFAULT_TRUSTED_PROXY_RANGES`, `CLOUDFLARE_PROXY_RANGES`), and socket origin verification.
+     - Traverses multi-hop `X-Forwarded-For` right-to-left to find authentic client; only trusts `CF-Connecting-IP` when verified upstream proxy is Cloudflare.
      - Returns HTTP 429 `TOO_MANY_REQUESTS` with standard `Retry-After` header and response JSON.
-  3. **Fix `SEC-003` (Security Headers Hardening):**
+  3. **Fix `SEC-003` & `SEC-003A` (Security Headers Hardening & HSTS Policy):**
      - Updated [`apps/api/src/middleware/security.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/middleware/security.ts) to emit:
        - `content-security-policy: default-src 'none'; frame-ancestors 'none'`
-       - `strict-transport-security: max-age=31536000` on verified HTTPS responses (omitted on local HTTP development to prevent accidental local cache lockouts).
+       - `strict-transport-security: max-age=31536000` on verified HTTPS responses (direct TLS or forwarded HTTPS arriving from a verified trusted proxy socket). Intentionally omits `includeSubDomains` and `preload`.
        - Preserved `x-content-type-options: nosniff`, `x-frame-options: DENY`, `referrer-policy: no-referrer`, and `permissions-policy`.
-- **Verification Evidence:** `apps/api/tests/epic10n-security-hardening.integration.test.ts` (14/14 tests passing).
+- **Verification Evidence:** `apps/api/tests/epic10n-security-hardening.integration.test.ts` (27/27 tests passing).
 - **Quality Gates:** `typecheck:api` (0 errors), `typecheck:web` (0 errors), `build:api` (passed), `build:web` (passed).
 
 ---

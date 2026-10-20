@@ -63,23 +63,30 @@ graph TD
 ---
 
 ### Phase 2: Cross-Module Lifecycle & Transactional Integrity
+- **Status:** **Completed & Verified** (October 20, 2026)
 - **Objective:** Guarantee atomicity for student admissions conversion, student archival, transfers, and sequence numbers.
-- **Tasks:**
+- **Completed Tasks:**
   1. **Fix `INT-001` (Admissions Conversion Transaction Boundary):**
-     - Wrap `convertApplicationToEnrollment` in [`apps/api/src/modules/education/sis-admissions.service.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/sis-admissions.service.ts) within `withTransaction(this.database, async ({ tx }) => { ... })`.
-     - Ensure student creation, enrollment creation, and application status update succeed or rollback atomically.
+     - Wrapped `convertApplicationToEnrollment` in [`apps/api/src/modules/education/sis-admissions.service.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/sis-admissions.service.ts) within `withTransaction(this.database, async ({ tx }) => { ... })`.
+     - Transactional status re-check and idempotency handling guarantees repeat attempts return established student/enrollment records without duplicate writes.
+     - Student creation, enrollment creation, fee package assignment, and application status update succeed or rollback atomically.
   2. **Fix `INT-002` (Student Archival Lifecycle Coherency):**
      - In [`apps/api/src/modules/education/sis.service.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/sis.service.ts) `deleteStudent`:
-       - Check for unpaid invoices; if found, log warning or require confirmation.
-       - Inside transaction, set `students.status = 'archived'` AND update active records in `enrollments` to `status = 'archived'`.
-       - Exclude archived enrollments from active attendance sessions and gradebooks.
+       - Pre-flight dues check validates student invoices via `SisFinanceService`, blocking archival on positive balances unless `forceWithOutstandingDues: true` is passed.
+       - Inside `withTransaction`, atomically transitions student status to `archived` AND active records in `enrollments` to `status = 'dropped'`.
+       - Excluded archived students from recurring billing in `SisFinanceService.generateRecurringInvoices`.
+       - Strictly preserved all historical attendance, examination marks, and invoice history.
   3. **Fix `INT-003` (Section Transfer Atomicity & Audit Trail):**
-     - In `sis.service.ts` `transferStudent`: wrap previous enrollment deactivation and new enrollment creation in a single transaction.
-     - Record transfer audit entry noting origin and target section IDs.
+     - In `sis.service.ts` `transferStudent`: wrapped previous enrollment transition to `transferred` and new enrollment creation with status `active` in `withTransaction`.
+     - Strictly validates destination section existence within workspace and grade alignment.
+     - Emits structured audit log recording before/after section snapshots with safe actor foreign-key resolution.
   4. **Fix `INT-004` (Admission & Employee Number Concurrency Guard):**
-     - Introduce atomic sequence reservation or retry loop on unique collision to prevent duplicate generation failures under concurrent load.
-- **Dependencies:** Phase 1 complete.
-- **Estimated Effort:** Low regression risk; strictly strengthens data consistency.
+     - Refactored `nextAdmissionNumber`, `nextEmployeeNumber`, `nextEnquiryNumber`, and `nextApplicationNumber` to parse the true sequence maximum using regular expressions rather than counting rows.
+     - Wrapped creation operations in bounded retry loops (up to 12 attempts) with randomized jitter backoff.
+     - Broadened `isUniqueConstraintError` to capture MySQL unique constraints (1062 / `ER_DUP_ENTRY`), deadlocks (1213 / `ER_LOCK_DEADLOCK`), and lock timeouts (1205 / `ER_LOCK_WAIT_TIMEOUT`).
+- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (15/15 tests passing, 100%).
+- **Quality Gates:** `typecheck:api` (0 errors), `typecheck:web` (0 errors), `build:api` (passed), `build:web` (passed).
+- **Report:** [`docs/epic-10n/EPIC-10N-PHASE-2-TRANSACTIONAL-INTEGRITY.md`](file:///c:/HAZA-APPS/HAZA-AIOS/docs/epic-10n/EPIC-10N-PHASE-2-TRANSACTIONAL-INTEGRITY.md).
 
 ---
 

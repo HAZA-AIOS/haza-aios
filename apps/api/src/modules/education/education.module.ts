@@ -204,10 +204,12 @@ export const educationModule: BackendModule = {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
       sendJson(response, 200, { student: await new SisService(database).updateStudent(tenant, routeParams.id, body(request)) });
     }});
-    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/students/:id", async handler(request, response, { database, routeParams }) {
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/students/:id", async handler(request, response, { database, routeParams, url }) {
       assertUuid(routeParams.id, "id");
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      await new SisService(database).deleteStudent(tenant, routeParams.id);
+      const actor = (request as unknown as { actor?: { userId?: string; role?: string } }).actor;
+      const forceWithOutstandingDues = url.searchParams.get("forceWithOutstandingDues") === "true";
+      await new SisService(database).deleteStudent(tenant, routeParams.id, { forceWithOutstandingDues }, actor);
       sendJson(response, 200, { ok: true });
     }});
 
@@ -227,7 +229,20 @@ export const educationModule: BackendModule = {
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/students/:studentId/transfer", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.studentId, "studentId");
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { enrollment: await new SisService(database).transferStudent(tenant, routeParams.studentId, String(body(request).sectionId ?? "")) });
+      const actor = (request as unknown as { actor?: { userId?: string; role?: string } }).actor;
+      const reqBody = body(request);
+      sendJson(response, 201, {
+        enrollment: await new SisService(database).transferStudent(
+          tenant,
+          routeParams.studentId,
+          String(reqBody.sectionId ?? ""),
+          {
+            gradeId: reqBody.gradeId ? String(reqBody.gradeId) : undefined,
+            academicYear: reqBody.academicYear ? String(reqBody.academicYear) : undefined,
+          },
+          actor
+        ),
+      });
     }});
 
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/attendance/sessions", async handler(request, response, { database, routeParams, url }) {

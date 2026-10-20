@@ -151,19 +151,21 @@ All findings are classified with concrete source-code evidence, root-cause analy
 - **Classification:** Confirmed Defect
 - **Evidence:**
   `apps/api/src/modules/education/sis-admissions.service.ts` lines 971–1085 (`convertApplicationToEnrollment`):
-  Sequential database updates (`createStudent`, `createEnrollment`, `assignFee`, `portalUpdateRequests.update`) execute outside a `withTransaction` block.
-- **Root Cause:** Section is labeled `7. TRANSACTIONAL ENROLLMENT CONVERSION`, but `withTransaction(this.database, ...)` is omitted.
+  Sequential database updates (`createStudent`, `createEnrollment`, `assignFee`, `portalUpdateRequests.update`) executed outside a `withTransaction` block.
+- **Root Cause:** Section was labeled `7. TRANSACTIONAL ENROLLMENT CONVERSION`, but `withTransaction(this.database, ...)` was omitted.
 - **Affected Files:**
   - `apps/api/src/modules/education/sis-admissions.service.ts`
 - **Security / Business Impact:** A failure during enrollment creation or fee assignment leaves a student record in the database while leaving the application in `approved` state. Subsequent conversion attempts fail due to duplicate student detection, permanently stranding the applicant.
-- **Recommended Correction:** Wrap lines 971–1085 in `withTransaction(this.database, async ({ tx }) => { ... })` and pass transaction context down to internal helper queries.
-- **Regression Test Requirements:** Integration test that deliberately simulates a downstream error during enrollment creation; verify rollback of student record.
-- **Implementation Status:** Identified / Ready for Remediation
+- **Recommended Correction:** Wrap conversion workflow in `withTransaction(this.database, async ({ tx }) => { ... })`, re-check application status inside transaction, and ensure idempotent repeat attempts safely return existing student/enrollment.
+- **Regression Test Requirements:** Integration test asserting transactional atomicity, full rollback on enrollment failure, and idempotent re-conversion.
+- **Implementation Status:** **Resolved (Phase 2)**
+- **Remediation Details:** Wrapped `convertApplicationToEnrollment` in `withTransaction`. Implemented transaction-scoped application status re-check for concurrency safety; if already enrolled, existing student and enrollment records are returned idempotently without duplicate writes. Transaction-bound instances of `SisService` and `SisFinanceService` participate in the same transaction, guaranteeing complete atomicity and rollback on any failure.
+- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (INT-001 suite passed, 4/4 tests).
 
 ---
 
 #### Finding ID: `INT-002`
-- **Module:** Student Archival Lifecycle (`apps/api/src/modules/education/sis.service.ts`)
+- **Module:** Student Archival Lifecycle (`apps/api/src/modules/education/sis.service.ts`, `sis-finance.service.ts`)
 - **Severity:** **High**
 - **Classification:** Confirmed Defect
 - **Evidence:**
@@ -176,13 +178,16 @@ All findings are classified with concrete source-code evidence, root-cause analy
       .where(and(eq(students.id, id), eq(students.workspaceId, tenant.workspaceId)));
   }
   ```
-- **Root Cause:** Archiving a student only updates `students.status = 'archived'`. Related records in `enrollments` remain `status: 'active'`.
+- **Root Cause:** Archiving a student only updated `students.status = 'archived'`. Related records in `enrollments` remained `status: 'active'`.
 - **Affected Files:**
   - `apps/api/src/modules/education/sis.service.ts`
-- **Security / Business Impact:** Active class section rosters, attendance sheets, and recurring billing queries continue to include archived students because they filter on `enrollments.status = 'active'`.
-- **Recommended Correction:** Execute coordinated status update in `withTransaction`: when student is archived, update active enrollments to `withdrawn` or `archived`, and check for outstanding unpaid invoices.
-- **Regression Test Requirements:** Archiving a student automatically transitions active enrollment to `archived` and excludes student from active section attendance sheets.
-- **Implementation Status:** Identified / Ready for Remediation
+  - `apps/api/src/modules/education/sis-finance.service.ts`
+- **Security / Business Impact:** Active class section rosters, attendance sheets, and recurring billing queries continued to include archived students because they filtered on `enrollments.status = 'active'`.
+- **Recommended Correction:** Execute coordinated status update in `withTransaction`: when student is archived, transition active enrollments to `dropped`, check for outstanding unpaid invoices (with administrative override guard), and exclude archived students from recurring billing.
+- **Regression Test Requirements:** Archiving a student automatically transitions active enrollment to `dropped`, excludes student from active section attendance sheets and recurring invoices, and rejects archival on unpaid dues without explicit override.
+- **Implementation Status:** **Resolved (Phase 2)**
+- **Remediation Details:** Refactored `deleteStudent` to wrap operations in `withTransaction`. Added pre-flight financial dues check against unpaid/partially paid/overdue invoices, throwing `ApiError(400, "FINANCIAL_DUES_OUTSTANDING")` unless `forceWithOutstandingDues: true` is passed. Atomically transitions student to `archived` and all active enrollments to `dropped`. Structured audit logging safely verifies actor existence against `users`. Updated `generateRecurringInvoices` in `sis-finance.service.ts` to exclude archived students while strictly preserving historical invoices, attendance, and exam marks.
+- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (INT-002 suite passed, 4/4 tests).
 
 ---
 
@@ -199,30 +204,35 @@ All findings are classified with concrete source-code evidence, root-cause analy
     return this.createEnrollment(tenant, { studentId, ... });
   }
   ```
-- **Root Cause:** Mutation is non-transactional, and class assessment marks / gradebook references linked to the previous section are not evaluated.
+- **Root Cause:** Mutation was non-transactional without destination section validation or structured transfer audit trail.
 - **Affected Files:**
   - `apps/api/src/modules/education/sis.service.ts`
-- **Security / Business Impact:** If the second step fails, the student has no active enrollment. Historical assessment marks remain attached to the old section without a transfer history log.
-- **Recommended Correction:** Wrap `transferStudent` in `withTransaction`, record audit log, and preserve historical section linkage.
-- **Regression Test Requirements:** Test section transfer atomicity and confirm student appears in new section roster.
-- **Implementation Status:** Identified / Ready for Remediation
+- **Security / Business Impact:** If the second step failed, the student had no active enrollment. Section transfers lacked grade-level validation and structured audit trails.
+- **Recommended Correction:** Wrap `transferStudent` in `withTransaction`, validate target section and grade alignment, record audit log, and preserve historical section linkage.
+- **Regression Test Requirements:** Test section transfer atomicity, grade level consistency validation, and confirm audit trail creation.
+- **Implementation Status:** **Resolved (Phase 2)**
+- **Remediation Details:** Re-implemented `transferStudent` inside `withTransaction`. Enforces destination section existence within workspace, grade level match, and active student status. Atomically updates previous enrollment to `transferred` and inserts new enrollment with `active` status. Writes comprehensive audit log recording before/after snapshots with safe actor resolution.
+- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (INT-003 suite passed, 3/3 tests).
 
 ---
 
 #### Finding ID: `INT-004`
-- **Module:** Sequential Number Generation (`apps/api/src/modules/education/sis.service.ts`)
+- **Module:** Sequential Number Generation (`apps/api/src/modules/education/sis.service.ts`, `sis-admissions.service.ts`)
 - **Severity:** **Medium**
 - **Classification:** Concurrency Race Condition
 - **Evidence:**
   `apps/api/src/modules/education/sis.service.ts` lines 710–721:
-  `nextEmployeeNumber` and `nextAdmissionNumber` query all rows, compute `max + 1` in Node memory, and return a string.
-- **Root Cause:** Lack of atomic sequence reservation or database-level lock.
+  `nextEmployeeNumber` and `nextAdmissionNumber` computed sequence as `rows.length + 1` in Node memory.
+- **Root Cause:** Sequential numbers relied on row counts rather than true max sequence, causing collisions on deleted/gap records and concurrent calls.
 - **Affected Files:**
   - `apps/api/src/modules/education/sis.service.ts`
-- **Security / Business Impact:** Concurrent student admissions or staff creations generate identical numbers, resulting in unhandled `DATABASE_UNIQUE_CONSTRAINT` collisions.
-- **Recommended Correction:** Implement atomic sequence counter in database or retry loop with collision handling.
-- **Regression Test Requirements:** Concurrent creation test with multiple parallel admissions requests.
-- **Implementation Status:** Identified / Ready for Remediation
+  - `apps/api/src/modules/education/sis-admissions.service.ts`
+- **Security / Business Impact:** Concurrent student admissions or staff creations generated identical numbers, resulting in unhandled `DATABASE_UNIQUE_CONSTRAINT` collisions.
+- **Recommended Correction:** Implement regex-based true sequence max evaluation and bounded retry loops with randomized jitter backoff.
+- **Regression Test Requirements:** Concurrent creation tests with parallel admissions and staff requests.
+- **Implementation Status:** **Resolved (Phase 2)**
+- **Remediation Details:** Refactored `nextAdmissionNumber`, `nextEmployeeNumber`, `nextEnquiryNumber`, and `nextApplicationNumber` to parse the true sequence maximum using regular expressions. Wrapped entity creation methods (`createStudent`, `createStaff`, `createEnquiry`, `createApplication`) in bounded retry loops (up to 12 attempts) with randomized jitter backoff. Broadened `isUniqueConstraintError` to capture MySQL unique constraints (1062 / `ER_DUP_ENTRY`), deadlocks (1213 / `ER_LOCK_DEADLOCK`), and lock timeouts (1205 / `ER_LOCK_WAIT_TIMEOUT`).
+- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (INT-004 suite passed, 4/4 tests).
 
 ---
 

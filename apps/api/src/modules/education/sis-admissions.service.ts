@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { ApiError } from "../../common/errors/api-error.js";
 import type { DatabaseClient } from "../../database/client.js";
 import { mapDatabaseError } from "../../database/errors.js";
+import { withTransaction } from "../../database/transactions.js";
 import {
   portalUpdateRequests,
   students,
@@ -213,6 +214,33 @@ export class SisAdmissionsService {
     return dto<JsonRecord & { id: string }>(tenant, row);
   }
 
+  private async nextEnquiryNumber(workspaceId: string, tx?: DatabaseClient["db"]): Promise<string> {
+    const currentYear = new Date().getFullYear();
+    const client = tx ?? this.database.db;
+    const rows = await client
+      .select({ payload: portalUpdateRequests.payload })
+      .from(portalUpdateRequests)
+      .where(
+        and(
+          eq(portalUpdateRequests.workspaceId, workspaceId),
+          eq(portalUpdateRequests.requestType, "admission_enquiry")
+        )
+      );
+
+    const pattern = new RegExp(`^ENQ-${currentYear}-(\\d+)$`);
+    let max = 0;
+    for (const row of rows) {
+      const p = payloadOf(row.payload);
+      const ref = str(p.referenceNumber);
+      const match = pattern.exec(ref);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > max) max = num;
+      }
+    }
+    return `ENQ-${currentYear}-${String(max + 1).padStart(5, "0")}`;
+  }
+
   async createEnquiry(tenant: Tenant, data: JsonRecord, actor?: Actor) {
     const studentName = assertText(data.studentName, "Student name");
     const guardianName = assertText(data.guardianName, "Guardian name");
@@ -220,57 +248,45 @@ export class SisAdmissionsService {
     const email = str(data.email);
     const desiredGradeId = assertText(data.desiredGradeId, "Desired grade");
 
-    const count = (
-      await this.database.db
-        .select()
-        .from(portalUpdateRequests)
-        .where(
-          and(
-            eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
-            eq(portalUpdateRequests.requestType, "admission_enquiry")
-          )
-        )
-    ).length;
-
-    const currentYear = new Date().getFullYear();
-    const referenceNumber = `ENQ-${currentYear}-${String(count + 1).padStart(5, "0")}`;
-
-    const id = uuid();
-    const enquiryRecord: JsonRecord = {
-      ...data,
-      id,
-      organizationId: tenant.organizationId,
-      referenceNumber,
-      studentName,
-      guardianName,
-      phone,
-      email: email || undefined,
-      desiredGradeId,
-      status: str(data.status) || "new",
-      enquiryDate: str(data.enquiryDate) || now().slice(0, 10),
-      followUpDate: str(data.followUpDate) || undefined,
-      notes: str(data.notes) || undefined,
-      source: str(data.source) || "direct",
-      preferredCampus: str(data.preferredCampus) || "Main Campus",
-      assignedStaffId: str(data.assignedStaffId) || undefined,
-      createdAt: now(),
-      updatedAt: now(),
-    };
-
-    await this.database.db
-      .insert(portalUpdateRequests)
-      .values({
+    return withTransaction(this.database, async ({ tx }) => {
+      const referenceNumber = await this.nextEnquiryNumber(tenant.workspaceId, tx);
+      const id = uuid();
+      const enquiryRecord: JsonRecord = {
+        ...data,
         id,
-        workspaceId: tenant.workspaceId,
-        requesterUserId: str(actor?.userId) || "system",
-        requesterRole: str(actor?.role) || "staff",
-        requestType: "admission_enquiry",
-        status: String(enquiryRecord.status),
-        payload: enquiryRecord,
-      })
-      .catch(dbError);
+        organizationId: tenant.organizationId,
+        referenceNumber,
+        studentName,
+        guardianName,
+        phone,
+        email: email || undefined,
+        desiredGradeId,
+        status: str(data.status) || "new",
+        enquiryDate: str(data.enquiryDate) || now().slice(0, 10),
+        followUpDate: str(data.followUpDate) || undefined,
+        notes: str(data.notes) || undefined,
+        source: str(data.source) || "direct",
+        preferredCampus: str(data.preferredCampus) || "Main Campus",
+        assignedStaffId: str(data.assignedStaffId) || undefined,
+        createdAt: now(),
+        updatedAt: now(),
+      };
 
-    return enquiryRecord;
+      await tx
+        .insert(portalUpdateRequests)
+        .values({
+          id,
+          workspaceId: tenant.workspaceId,
+          requesterUserId: str(actor?.userId) || "system",
+          requesterRole: str(actor?.role) || "staff",
+          requestType: "admission_enquiry",
+          status: String(enquiryRecord.status),
+          payload: enquiryRecord,
+        })
+        .catch(dbError);
+
+      return enquiryRecord;
+    });
   }
 
   async updateEnquiry(tenant: Tenant, id: string, data: JsonRecord, _actor?: Actor) {
@@ -315,61 +331,70 @@ export class SisAdmissionsService {
   }
 
   async convertEnquiryToApplication(tenant: Tenant, enquiryId: string, actor?: Actor) {
-    const enquiry = await this.getEnquiry(tenant, enquiryId);
-    if (enquiry.status === "converted" && enquiry.convertedApplicationId) {
-      return this.getApplication(tenant, String(enquiry.convertedApplicationId));
-    }
+    return withTransaction(this.database, async ({ tx }) => {
+      const txDatabase: DatabaseClient = {
+        ...this.database,
+        db: tx,
+        transaction: (work) => work(tx),
+      };
+      const txAdmissionsService = new SisAdmissionsService(txDatabase);
 
-    const names = String(enquiry.studentName ?? "").trim().split(/\s+/);
-    const firstName = names[0] || "Student";
-    const lastName = names.slice(1).join(" ") || "Applicant";
+      const enquiry = await txAdmissionsService.getEnquiry(tenant, enquiryId);
+      if (enquiry.status === "converted" && enquiry.convertedApplicationId) {
+        return txAdmissionsService.getApplication(tenant, String(enquiry.convertedApplicationId));
+      }
 
-    const guardianNames = String(enquiry.guardianName ?? "").trim().split(/\s+/);
-    const guardianFirstName = guardianNames[0] || "Guardian";
-    const guardianLastName = guardianNames.slice(1).join(" ") || "Contact";
+      const names = String(enquiry.studentName ?? "").trim().split(/\s+/);
+      const firstName = names[0] || "Student";
+      const lastName = names.slice(1).join(" ") || "Applicant";
 
-    const applicationData: JsonRecord = {
-      enquiryId: enquiry.id,
-      enquiryReference: enquiry.referenceNumber,
-      desiredGradeId: enquiry.desiredGradeId,
-      campus: enquiry.preferredCampus || "Main Campus",
-      admissionCategory: "regular",
-      status: "draft",
-      student: {
-        firstName,
-        lastName,
-        dateOfBirth: enquiry.dateOfBirth || "2015-01-01",
-        gender: enquiry.gender || "male",
-        email: enquiry.email,
-        phone: enquiry.phone,
-        address: enquiry.address,
-        previousSchool: enquiry.previousSchool,
-      },
-      guardians: [
-        {
-          id: uuid(),
-          firstName: guardianFirstName,
-          lastName: guardianLastName,
-          relationship: "guardian",
-          email: enquiry.email || "guardian@example.com",
+      const guardianNames = String(enquiry.guardianName ?? "").trim().split(/\s+/);
+      const guardianFirstName = guardianNames[0] || "Guardian";
+      const guardianLastName = guardianNames.slice(1).join(" ") || "Contact";
+
+      const applicationData: JsonRecord = {
+        enquiryId: enquiry.id,
+        enquiryReference: enquiry.referenceNumber,
+        desiredGradeId: enquiry.desiredGradeId,
+        campus: enquiry.preferredCampus || "Main Campus",
+        admissionCategory: "regular",
+        status: "draft",
+        student: {
+          firstName,
+          lastName,
+          dateOfBirth: enquiry.dateOfBirth || "2015-01-01",
+          gender: enquiry.gender || "male",
+          email: enquiry.email,
           phone: enquiry.phone,
-          isPrimaryContact: true,
-          isEmergencyContact: true,
+          address: enquiry.address,
+          previousSchool: enquiry.previousSchool,
         },
-      ],
-      documents: [],
-    };
+        guardians: [
+          {
+            id: uuid(),
+            firstName: guardianFirstName,
+            lastName: guardianLastName,
+            relationship: "guardian",
+            email: enquiry.email || "guardian@example.com",
+            phone: enquiry.phone,
+            isPrimaryContact: true,
+            isEmergencyContact: true,
+          },
+        ],
+        documents: [],
+      };
 
-    const newApplication = await this.createApplication(tenant, applicationData, actor);
+      const newApplication = await txAdmissionsService.createApplication(tenant, applicationData, actor);
 
-    // Update enquiry to converted status
-    await this.updateEnquiry(tenant, enquiryId, {
-      status: "converted",
-      convertedApplicationId: newApplication.id,
-      convertedAt: now(),
-    }, actor);
+      // Update enquiry to converted status inside transaction
+      await txAdmissionsService.updateEnquiry(tenant, enquiryId, {
+        status: "converted",
+        convertedApplicationId: newApplication.id,
+        convertedAt: now(),
+      }, actor);
 
-    return newApplication;
+      return newApplication;
+    });
   }
 
   /* ─────────────────────────────────────────────────────────────
@@ -445,66 +470,83 @@ export class SisAdmissionsService {
     const desiredGradeId = assertText(data.desiredGradeId, "Desired grade");
     const campus = str(data.campus) || "Main Campus";
 
-    const count = (
-      await this.database.db
-        .select()
-        .from(portalUpdateRequests)
-        .where(
-          and(
-            eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
-            eq(portalUpdateRequests.requestType, "admission_application")
-          )
-        )
-    ).length;
+    return withTransaction(this.database, async ({ tx }) => {
+      const currentYear = new Date().getFullYear();
+      const applicationNumber = await this.nextApplicationNumber(tenant.workspaceId, tx);
 
-    const currentYear = new Date().getFullYear();
-    const applicationNumber = `APP-${currentYear}-${String(count + 1).padStart(5, "0")}`;
+      const id = uuid();
+      const status = str(data.status) || "draft";
 
-    const id = uuid();
-    const status = str(data.status) || "draft";
-
-    const appRecord: JsonRecord = {
-      ...data,
-      id,
-      organizationId: tenant.organizationId,
-      applicationNumber,
-      desiredGradeId,
-      campus,
-      status,
-      academicYear: str(data.academicYear) || `${currentYear}-${currentYear + 1}`,
-      student: {
-        ...student,
-        gender: str(student.gender) || "male",
-      },
-      guardians: Array.isArray(data.guardians) ? data.guardians : [],
-      documents: Array.isArray(data.documents) ? data.documents : [],
-      auditTrail: [
-        {
-          action: "created",
-          actorUserId: actor?.userId,
-          actorRole: actor?.role,
-          timestamp: now(),
-          details: `Application created with status ${status}`,
-        },
-      ],
-      createdAt: now(),
-      updatedAt: now(),
-    };
-
-    await this.database.db
-      .insert(portalUpdateRequests)
-      .values({
+      const appRecord: JsonRecord = {
+        ...data,
         id,
-        workspaceId: tenant.workspaceId,
-        requesterUserId: str(actor?.userId) || "system",
-        requesterRole: str(actor?.role) || "applicant",
-        requestType: "admission_application",
+        organizationId: tenant.organizationId,
+        applicationNumber,
+        desiredGradeId,
+        campus,
         status,
-        payload: appRecord,
-      })
-      .catch(dbError);
+        academicYear: str(data.academicYear) || `${currentYear}-${currentYear + 1}`,
+        student: {
+          ...student,
+          gender: str(student.gender) || "male",
+        },
+        guardians: Array.isArray(data.guardians) ? data.guardians : [],
+        documents: Array.isArray(data.documents) ? data.documents : [],
+        auditTrail: [
+          {
+            action: "created",
+            actorUserId: actor?.userId,
+            actorRole: actor?.role,
+            timestamp: now(),
+            details: `Application created with status ${status}`,
+          },
+        ],
+        createdAt: now(),
+        updatedAt: now(),
+      };
 
-    return appRecord;
+      await tx
+        .insert(portalUpdateRequests)
+        .values({
+          id,
+          workspaceId: tenant.workspaceId,
+          requesterUserId: str(actor?.userId) || "system",
+          requesterRole: str(actor?.role) || "applicant",
+          requestType: "admission_application",
+          status,
+          payload: appRecord,
+        })
+        .catch(dbError);
+
+      return appRecord;
+    });
+  }
+
+  private async nextApplicationNumber(workspaceId: string, tx?: DatabaseClient["db"]): Promise<string> {
+    const currentYear = new Date().getFullYear();
+    const client = tx ?? this.database.db;
+    const rows = await client
+      .select({ payload: portalUpdateRequests.payload })
+      .from(portalUpdateRequests)
+      .where(
+        and(
+          eq(portalUpdateRequests.workspaceId, workspaceId),
+          eq(portalUpdateRequests.requestType, "admission_application")
+        )
+      );
+
+    const pattern = new RegExp(`^APP-${currentYear}-(\\d+)$`);
+    let max = 0;
+    for (const row of rows) {
+      const p = payloadOf(row.payload);
+      const numStr = str(p.applicationNumber);
+      const match = pattern.exec(numStr);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > max) max = num;
+      }
+    }
+    return `APP-${currentYear}-${String(max + 1).padStart(5, "0")}`;
   }
 
   async updateApplication(tenant: Tenant, id: string, data: JsonRecord, actor?: Actor) {
@@ -964,135 +1006,187 @@ export class SisAdmissionsService {
     const studentData = app.student as JsonRecord;
     const guardiansData = (Array.isArray(app.guardians) ? app.guardians : []) as JsonRecord[];
 
-    const sisService = new SisService(this.database);
-    const financeService = new SisFinanceService(this.database);
+    return withTransaction(this.database, async ({ tx }) => {
+      const txDatabase: DatabaseClient = {
+        ...this.database,
+        db: tx,
+        transaction: (work) => work(tx),
+      };
+      const txSisService = new SisService(txDatabase);
+      const txFinanceService = new SisFinanceService(txDatabase);
 
-    let studentId: string;
-
-    if (options.reuseExistingStudentId) {
-      // Reuse existing student record
-      const existing = await sisService.getStudent(tenant, options.reuseExistingStudentId);
-      if (!existing) {
-        throw new ApiError(404, "NOT_FOUND", "Specified existing student to reuse was not found.");
+      // Re-read application under transaction to guard against concurrent duplicate conversion
+      const freshRows = await tx
+        .select()
+        .from(portalUpdateRequests)
+        .where(
+          and(
+            eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
+            eq(portalUpdateRequests.id, applicationId)
+          )
+        );
+      const freshAppRow = freshRows[0];
+      if (!freshAppRow) {
+        throw new ApiError(404, "NOT_FOUND", "Application not found.");
       }
-      studentId = existing.id;
-      // Update status to active if was applicant/inactive
-      await this.database.db.update(students).set({ status: "active", updatedAt: new Date() }).where(and(eq(students.id, studentId), eq(students.workspaceId, tenant.workspaceId)));
-    } else {
-      // Check for duplicate students by name and date of birth
-      const allStudents = await sisService.listStudents(tenant);
-      const dup = allStudents.find(
-        (s) =>
-          s.firstName.toLowerCase() === String(studentData.firstName).toLowerCase() &&
-          s.lastName.toLowerCase() === String(studentData.lastName).toLowerCase() &&
-          s.dateOfBirth === studentData.dateOfBirth &&
-          s.status !== "archived"
+      const freshApp = dto<JsonRecord & { status: string; enrolledStudentId?: string; enrolledEnrollmentId?: string }>(
+        tenant,
+        freshAppRow
       );
-      if (dup) {
+      if (freshApp.status === "enrolled" && freshApp.enrolledStudentId && freshApp.enrolledEnrollmentId) {
+        const student = await txSisService.getStudent(tenant, String(freshApp.enrolledStudentId));
+        const enrollmentRows = await txSisService.listEnrollments(tenant, { studentId: String(freshApp.enrolledStudentId) });
+        const enrollment = enrollmentRows.find((e) => e.id === freshApp.enrolledEnrollmentId) || enrollmentRows[0];
+        return {
+          success: true,
+          isExisting: true,
+          applicationId,
+          student,
+          enrollment,
+          message: "Application is already enrolled. Idempotent result returned.",
+        };
+      }
+      if (freshApp.status !== "approved") {
         throw new ApiError(
-          409,
-          "DATABASE_UNIQUE_CONSTRAINT",
-          `Duplicate student detected: '${dup.firstName} ${dup.lastName}' (DOB: ${dup.dateOfBirth}) already exists with admission number ${dup.admissionNumber}.`
+          400,
+          "VALIDATION_FAILED",
+          `Only approved applications can be converted into active enrollments. Current status: ${freshApp.status}`
         );
       }
 
-      // Create student record
-      const createdStudent = await sisService.createStudent(tenant, {
-        firstName: studentData.firstName,
-        middleName: studentData.middleName,
-        lastName: studentData.lastName,
-        dateOfBirth: studentData.dateOfBirth,
-        gender: studentData.gender || "male",
-        email: studentData.email || undefined,
-        phone: studentData.phone || undefined,
-        address: studentData.address || undefined,
-        photoUrl: studentData.photoUrl || undefined,
-        admissionDate: options.admissionDate || now().slice(0, 10),
+      let studentId: string;
+
+      if (options.reuseExistingStudentId) {
+        // Reuse existing student record
+        const existing = await txSisService.getStudent(tenant, options.reuseExistingStudentId);
+        if (!existing) {
+          throw new ApiError(404, "NOT_FOUND", "Specified existing student to reuse was not found.");
+        }
+        studentId = existing.id;
+        // Update status to active if was applicant/inactive
+        await tx
+          .update(students)
+          .set({ status: "active", updatedAt: new Date() })
+          .where(and(eq(students.id, studentId), eq(students.workspaceId, tenant.workspaceId)));
+      } else {
+        // Check for duplicate students by name and date of birth
+        const allStudents = await txSisService.listStudents(tenant);
+        const dup = allStudents.find(
+          (s) =>
+            s.firstName.toLowerCase() === String(studentData.firstName).toLowerCase() &&
+            s.lastName.toLowerCase() === String(studentData.lastName).toLowerCase() &&
+            s.dateOfBirth === studentData.dateOfBirth &&
+            s.status !== "archived"
+        );
+        if (dup) {
+          throw new ApiError(
+            409,
+            "DATABASE_UNIQUE_CONSTRAINT",
+            `Duplicate student detected: '${dup.firstName} ${dup.lastName}' (DOB: ${dup.dateOfBirth}) already exists with admission number ${dup.admissionNumber}.`
+          );
+        }
+
+        // Create student record inside transaction
+        const createdStudent = await txSisService.createStudent(tenant, {
+          firstName: studentData.firstName,
+          middleName: studentData.middleName,
+          lastName: studentData.lastName,
+          dateOfBirth: studentData.dateOfBirth,
+          gender: studentData.gender || "male",
+          email: studentData.email || undefined,
+          phone: studentData.phone || undefined,
+          address: studentData.address || undefined,
+          photoUrl: studentData.photoUrl || undefined,
+          admissionDate: options.admissionDate || now().slice(0, 10),
+          status: "active",
+          guardians: guardiansData.map((g) => ({
+            firstName: g.firstName,
+            lastName: g.lastName,
+            relationship: g.relationship || "guardian",
+            email: g.email,
+            phone: g.phone,
+            address: g.address,
+            occupation: g.occupation,
+            isPrimaryContact: Boolean(g.isPrimaryContact),
+            isEmergencyContact: Boolean(g.isEmergencyContact),
+            portalAccessEnabled: true,
+            authorizedForPortal: true,
+          })),
+        });
+        if (!createdStudent) {
+          throw new ApiError(500, "INTERNAL_SERVER_ERROR", "Failed to create student during admission conversion.");
+        }
+        studentId = createdStudent.id;
+      }
+
+      // Create enrollment record inside transaction
+      const createdEnrollment = await txSisService.createEnrollment(tenant, {
+        studentId,
+        academicYear: options.academicYear,
+        gradeId: options.gradeId,
+        sectionId: options.sectionId,
+        enrollmentDate: options.admissionDate || now().slice(0, 10),
         status: "active",
-        guardians: guardiansData.map((g) => ({
-          firstName: g.firstName,
-          lastName: g.lastName,
-          relationship: g.relationship || "guardian",
-          email: g.email,
-          phone: g.phone,
-          address: g.address,
-          occupation: g.occupation,
-          isPrimaryContact: Boolean(g.isPrimaryContact),
-          isEmergencyContact: Boolean(g.isEmergencyContact),
-          portalAccessEnabled: true,
-          authorizedForPortal: true,
-        })),
       });
-      studentId = createdStudent.id;
-    }
 
-    // Create enrollment record
-    const createdEnrollment = await sisService.createEnrollment(tenant, {
-      studentId,
-      academicYear: options.academicYear,
-      gradeId: options.gradeId,
-      sectionId: options.sectionId,
-      enrollmentDate: options.admissionDate || now().slice(0, 10),
-      status: "active",
-    });
-
-    // Integrate Fee Package Assignments if configured
-    const feePackage = app.feePackage as { feeStructureIds?: string[] } | undefined;
-    if (feePackage?.feeStructureIds && Array.isArray(feePackage.feeStructureIds)) {
-      for (const structureId of feePackage.feeStructureIds) {
-        try {
-          await financeService.assignFee(tenant, studentId, createdEnrollment.id, structureId, actor);
-        } catch {
-          // Continue gracefully if structure assignment succeeds or already assigned
+      // Integrate Fee Package Assignments if configured
+      const feePackage = freshApp.feePackage as { feeStructureIds?: string[] } | undefined;
+      if (feePackage?.feeStructureIds && Array.isArray(feePackage.feeStructureIds)) {
+        for (const structureId of feePackage.feeStructureIds) {
+          try {
+            await txFinanceService.assignFee(tenant, studentId, createdEnrollment.id, structureId, actor);
+          } catch {
+            // Continue gracefully if structure assignment succeeds or already assigned
+          }
         }
       }
-    }
 
-    // Update application state to enrolled
-    const auditTrail = Array.isArray(app.auditTrail) ? [...app.auditTrail] : [];
-    auditTrail.push({
-      action: "converted_to_enrollment",
-      actorUserId: actor?.userId,
-      actorRole: actor?.role,
-      timestamp: now(),
-      details: `Converted to active student ${studentId} and enrollment ${createdEnrollment.id}`,
-    });
+      // Update application state to enrolled inside transaction
+      const auditTrail = Array.isArray(freshApp.auditTrail) ? [...freshApp.auditTrail] : [];
+      auditTrail.push({
+        action: "converted_to_enrollment",
+        actorUserId: actor?.userId,
+        actorRole: actor?.role,
+        timestamp: now(),
+        details: `Converted to active student ${studentId} and enrollment ${createdEnrollment.id}`,
+      });
 
-    const updatedRecord: JsonRecord = {
-      ...app,
-      status: "enrolled",
-      enrolledStudentId: studentId,
-      enrolledEnrollmentId: createdEnrollment.id,
-      enrolledAt: now(),
-      auditTrail,
-      updatedAt: now(),
-    };
-
-    await this.database.db
-      .update(portalUpdateRequests)
-      .set({
+      const updatedRecord: JsonRecord = {
+        ...freshApp,
         status: "enrolled",
-        studentId,
-        payload: updatedRecord,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
-          eq(portalUpdateRequests.id, applicationId)
-        )
-      );
+        enrolledStudentId: studentId,
+        enrolledEnrollmentId: createdEnrollment.id,
+        enrolledAt: now(),
+        auditTrail,
+        updatedAt: now(),
+      };
 
-    const finalStudent = await sisService.getStudent(tenant, studentId);
+      await tx
+        .update(portalUpdateRequests)
+        .set({
+          status: "enrolled",
+          studentId,
+          payload: updatedRecord,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
+            eq(portalUpdateRequests.id, applicationId)
+          )
+        );
 
-    return {
-      success: true,
-      isExisting: false,
-      applicationId,
-      student: finalStudent,
-      enrollment: createdEnrollment,
-      message: "Student successfully enrolled.",
-    };
+      const finalStudent = await txSisService.getStudent(tenant, studentId);
+
+      return {
+        success: true,
+        isExisting: false,
+        applicationId,
+        student: finalStudent,
+        enrollment: createdEnrollment,
+        message: "Student successfully enrolled.",
+      };
+    });
   }
 
   /* ─────────────────────────────────────────────────────────────

@@ -538,6 +538,15 @@ export class SisFinanceService {
       const st = studentMap.get(enr.studentId);
       const studentName = st ? `${st.firstName} ${st.lastName}` : enr.studentId;
 
+      if (st && st.status === 'archived') {
+        skippedDetails.push({
+          studentId: enr.studentId,
+          studentName,
+          reason: `Student is archived`,
+        });
+        continue;
+      }
+
       const duplicate = existingInvoices.find((inv) => {
         if (inv.studentId !== enr.studentId) return false;
         if (inv.billingPeriod === data.billingPeriod) return true;

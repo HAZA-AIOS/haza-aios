@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, ne, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { ApiError } from "../../common/errors/api-error.js";
 import type { DatabaseClient } from "../../database/client.js";
@@ -415,46 +415,62 @@ export class SisService {
     options?: { forceWithOutstandingDues?: boolean },
     actor?: Actor
   ) {
-    const student = await this.getStudent(tenant, id);
-    if (!student) this.notFound("Student");
+    return withTransaction(this.database, async ({ tx }) => {
+      // 1. Lock the student row with FOR UPDATE to serialize concurrent operations
+      const [studentRows] = (await tx.execute(
+        sql`SELECT id, student_status as status FROM students WHERE workspace_id = ${tenant.workspaceId} AND id = ${id} FOR UPDATE`
+      )) as unknown as [Array<{ id: string; status: string }>];
 
-    // Idempotency: If already archived, return safely without modifying data
-    if (student.status === "archived") {
-      return { success: true, isExisting: true, id, message: "Student is already archived." };
-    }
+      const student = studentRows[0];
+      if (!student) this.notFound("Student");
 
-    // Check for outstanding financial obligations before archival
-    const financeService = new SisFinanceService(this.database);
-    const invoices = (await financeService.listInvoices(tenant, { studentId: id })) as Array<{
-      status: string;
-      balanceCents?: number;
-      id: string;
-    }>;
-    const unpaidInvoices = invoices.filter(
-      (inv) => !["cancelled", "voided", "paid"].includes(inv.status) && Number(inv.balanceCents ?? 0) > 0
-    );
-    const outstandingBalanceCents = unpaidInvoices.reduce(
-      (sum, inv) => sum + Number(inv.balanceCents ?? 0),
-      0
-    );
+      // Idempotency: If already archived, return safely without modifying data
+      if (student.status === "archived") {
+        return { success: true, isExisting: true, id, status: "archived", message: "Student is already archived." };
+      }
 
-    if (outstandingBalanceCents > 0 && !options?.forceWithOutstandingDues) {
-      throw new ApiError(
-        400,
-        "VALIDATION_FAILED",
-        `Cannot archive student with outstanding balance of ${outstandingBalanceCents} cents across ${unpaidInvoices.length} unpaid invoice(s). Settle dues or explicitly authorize archival with outstanding balance.`
+      // 2. Check for outstanding financial obligations before archival inside the lock
+      const txDatabase: DatabaseClient = {
+        ...this.database,
+        db: tx,
+        transaction: (work) => work(tx),
+      };
+      const financeService = new SisFinanceService(txDatabase);
+      const invoices = (await financeService.listInvoices(tenant, { studentId: id })) as Array<{
+        status: string;
+        balanceCents?: number;
+        id: string;
+      }>;
+      const unpaidInvoices = invoices.filter(
+        (inv) => !["cancelled", "voided", "paid"].includes(inv.status) && Number(inv.balanceCents ?? 0) > 0
       );
-    }
+      const outstandingBalanceCents = unpaidInvoices.reduce(
+        (sum, inv) => sum + Number(inv.balanceCents ?? 0),
+        0
+      );
 
-    // Execute student archival, active enrollment cancellation, and audit trail atomically
-    await withTransaction(this.database, async ({ tx }) => {
-      // 1. Transition student status to archived
-      await tx
-        .update(students)
-        .set({ status: "archived", updatedAt: new Date() })
-        .where(and(eq(students.id, id), eq(students.workspaceId, tenant.workspaceId)));
+      if (outstandingBalanceCents > 0 && !options?.forceWithOutstandingDues) {
+        throw new ApiError(
+          400,
+          "VALIDATION_FAILED",
+          `Cannot archive student with outstanding balance of ${outstandingBalanceCents} cents across ${unpaidInvoices.length} unpaid invoice(s). Settle dues or explicitly authorize archival with outstanding balance.`
+        );
+      }
 
-      // 2. Transition active enrollments to dropped
+      // 3. Conditionally transition student status to archived and verify affectedRows
+      const [updateResult] = (await tx.execute(sql`
+        UPDATE students
+        SET student_status = 'archived', updated_at = NOW()
+        WHERE workspace_id = ${tenant.workspaceId}
+          AND id = ${id}
+          AND student_status != 'archived'
+      `)) as unknown as [ { affectedRows?: number } ];
+
+      if (!updateResult || updateResult.affectedRows !== 1) {
+        return { success: true, isExisting: true, id, status: "archived", message: "Student is already archived." };
+      }
+
+      // 4. Transition active enrollments to dropped
       await tx
         .update(enrollments)
         .set({ status: "dropped", updatedAt: new Date() })
@@ -466,7 +482,7 @@ export class SisService {
           )
         );
 
-      // 3. Write structured audit log
+      // 5. Write structured audit log
       let validActorUserId: string | undefined = undefined;
       if (actor?.userId) {
         const [u] = await tx
@@ -498,14 +514,14 @@ export class SisService {
           forcedWithDues: Boolean(options?.forceWithOutstandingDues),
         },
       });
-    });
 
-    return {
-      success: true,
-      id,
-      status: "archived",
-      message: "Student archived and active enrollments transitioned successfully.",
-    };
+      return {
+        success: true,
+        id,
+        status: "archived",
+        message: "Student archived and active enrollments transitioned successfully.",
+      };
+    });
   }
 
   async listEnrollments(tenant: Tenant, filters: { studentId?: string; academicYear?: string; gradeId?: string; sectionId?: string; status?: string }) {
@@ -534,57 +550,70 @@ export class SisService {
     options?: { academicYear?: string; gradeId?: string },
     actor?: Actor
   ) {
-    const student = await this.getStudent(tenant, studentId);
-    if (!student) this.notFound("Student");
-    if (student.status !== "active") {
-      throw new ApiError(
-        400,
-        "VALIDATION_FAILED",
-        `Cannot transfer student with status '${student.status}'. Student must be active.`
-      );
-    }
+    return withTransaction(this.database, async ({ tx }) => {
+      // 1. Lock student row with FOR UPDATE
+      const [studentRows] = (await tx.execute(
+        sql`SELECT id, student_status as status FROM students WHERE workspace_id = ${tenant.workspaceId} AND id = ${studentId} FOR UPDATE`
+      )) as unknown as [Array<{ id: string; status: string }>];
 
-    // Validate destination section exists in the tenant's workspace
-    const targetSection = (
-      await this.database.db
+      const student = studentRows[0];
+      if (!student) this.notFound("Student");
+      if (student.status !== "active") {
+        throw new ApiError(
+          400,
+          "VALIDATION_FAILED",
+          `Cannot transfer student with status '${student.status}'. Student must be active.`
+        );
+      }
+
+      // 2. Validate destination section exists in the tenant's workspace
+      const targetSectionRows = await tx
         .select()
         .from(sections)
         .where(and(eq(sections.workspaceId, tenant.workspaceId), eq(sections.id, newSectionId)))
-        .limit(1)
-    )[0];
-    if (!targetSection) {
-      throw new ApiError(404, "NOT_FOUND", "Destination section not found in this organization.");
-    }
+        .limit(1);
+      const targetSection = targetSectionRows[0];
+      if (!targetSection) {
+        throw new ApiError(404, "NOT_FOUND", "Destination section not found in this organization.");
+      }
 
-    const activeEnrollments = await this.listEnrollments(tenant, { studentId, status: "active" });
-    const current = activeEnrollments[0];
-    if (!current) {
-      throw new ApiError(400, "VALIDATION_FAILED", "Student does not have an active enrollment to transfer from.");
-    }
-    if (current.sectionId === newSectionId) {
-      throw new ApiError(400, "VALIDATION_FAILED", "Student is already in this section.");
-    }
+      // 3. Lock active enrollment with FOR UPDATE to serialize concurrent section transfers
+      const [activeRows] = (await tx.execute(
+        sql`SELECT id, workspace_id as workspaceId, student_id as studentId, academic_year as academicYear, grade_id as gradeId, section_id as sectionId, enrollment_status as status FROM enrollments WHERE workspace_id = ${tenant.workspaceId} AND student_id = ${studentId} AND enrollment_status = 'active' FOR UPDATE`
+      )) as unknown as [Array<{ id: string; workspaceId: string; studentId: string; academicYear: string; gradeId: string; sectionId: string; status: string }>];
 
-    const targetGradeId = options?.gradeId ?? targetSection.gradeId;
-    if (targetSection.gradeId !== targetGradeId) {
-      throw new ApiError(400, "VALIDATION_FAILED", "Destination section does not belong to the target grade level.");
-    }
-    const targetAcademicYear = options?.academicYear ?? current.academicYear;
+      const current = activeRows[0];
+      if (!current) {
+        throw new ApiError(400, "VALIDATION_FAILED", "Student does not have an active enrollment to transfer from.");
+      }
+      if (current.sectionId === newSectionId) {
+        throw new ApiError(400, "VALIDATION_FAILED", "Student is already in this section.");
+      }
 
-    return withTransaction(this.database, async ({ tx }) => {
-      // 1. Transition previous active enrollment to transferred
-      await tx
-        .update(enrollments)
-        .set({ status: "transferred", updatedAt: new Date() })
-        .where(
-          and(
-            eq(enrollments.workspaceId, tenant.workspaceId),
-            eq(enrollments.id, current.id),
-            eq(enrollments.status, "active")
-          )
+      const targetGradeId = options?.gradeId ?? targetSection.gradeId;
+      if (targetSection.gradeId !== targetGradeId) {
+        throw new ApiError(400, "VALIDATION_FAILED", "Destination section does not belong to the target grade level.");
+      }
+      const targetAcademicYear = options?.academicYear ?? current.academicYear;
+
+      // 4. Transition previous active enrollment to transferred and verify affectedRows === 1
+      const [updateResult] = (await tx.execute(sql`
+        UPDATE enrollments
+        SET enrollment_status = 'transferred', updated_at = NOW()
+        WHERE workspace_id = ${tenant.workspaceId}
+          AND id = ${current.id}
+          AND enrollment_status = 'active'
+      `)) as unknown as [ { affectedRows?: number } ];
+
+      if (!updateResult || updateResult.affectedRows !== 1) {
+        throw new ApiError(
+          409,
+          "DATABASE_TRANSACTION_FAILED",
+          "Source active enrollment has been concurrently modified or already transferred. Transfer aborted."
         );
+      }
 
-      // 2. Create destination enrollment inside transaction
+      // 5. Create destination enrollment inside transaction
       const newEnrollmentId = uuid();
       const enrollmentDate = new Date().toISOString().slice(0, 10);
       await tx
@@ -601,7 +630,7 @@ export class SisService {
         } as typeof enrollments.$inferInsert)
         .catch(databaseError);
 
-      // 3. Record transfer in audit log
+      // 6. Record transfer in audit log
       let validActorUserId: string | undefined = undefined;
       if (actor?.userId) {
         const [u] = await tx
@@ -1044,10 +1073,9 @@ export class SisService {
 
   private async nextEmployeeNumber(workspaceId: string, tx?: DatabaseClient["db"]): Promise<string> {
     const client = tx ?? this.database.db;
-    const rows = await client
-      .select({ employeeNumber: staffMembers.employeeNumber })
-      .from(staffMembers)
-      .where(eq(staffMembers.workspaceId, workspaceId));
+    const [rows] = (await client.execute(
+      sql`SELECT employee_number as employeeNumber FROM staff_members WHERE workspace_id = ${workspaceId} FOR UPDATE`
+    )) as unknown as [Array<{ employeeNumber: string }>];
 
     let max = 0;
     for (const row of rows) {
@@ -1063,10 +1091,9 @@ export class SisService {
   private async nextAdmissionNumber(workspaceId: string, tx?: DatabaseClient["db"]): Promise<string> {
     const year = new Date().getFullYear();
     const client = tx ?? this.database.db;
-    const rows = await client
-      .select({ admissionNumber: students.admissionNumber })
-      .from(students)
-      .where(eq(students.workspaceId, workspaceId));
+    const [rows] = (await client.execute(
+      sql`SELECT admission_number as admissionNumber FROM students WHERE workspace_id = ${workspaceId} FOR UPDATE`
+    )) as unknown as [Array<{ admissionNumber: string }>];
 
     const pattern = new RegExp(`^(?:TMS|ADM)-${year}-(\\d+)$`);
     let max = 0;

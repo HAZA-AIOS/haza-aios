@@ -277,6 +277,114 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
       const currentApp = await admissions.getApplication(tenant, String(app.id));
       expect(currentApp.status).toBe("approved");
     });
+
+    it("safely handles two competing simultaneous conversion requests without duplicate students or enrollments", async () => {
+      const { tenant, auth } = await createSisTenant(database, "int001-concurrent");
+      const admissions = new SisAdmissionsService(database);
+      const sis = new SisService(database);
+      const finance = new SisFinanceService(database);
+      const fixture = await createClassFixture(sis, tenant);
+      const adminActor = { userId: auth.user.id, role: "Owner" };
+
+      const feeCategory = await finance.createCategory(tenant, { name: "Tuition", code: "TUIT" }, adminActor);
+      const feeStructure = await finance.createStructure(
+        tenant,
+        {
+          name: "Term Tuition",
+          feeCategoryId: feeCategory.id,
+          academicYearId: fixture.year.id,
+          gradeId: fixture.grade.id,
+          amountCents: 12000,
+          paymentFrequency: "one_time",
+          dueDate: "2026-10-31",
+          status: "active",
+        },
+        adminActor
+      );
+
+      const app = await admissions.createApplication(
+        tenant,
+        {
+          desiredGradeId: fixture.grade.id,
+          campus: "Main Campus",
+          student: {
+            firstName: "Concurrent",
+            lastName: "Applicant",
+            dateOfBirth: "2015-06-16",
+            gender: "female",
+            email: "concurrent@example.com",
+          },
+          guardians: [
+            {
+              firstName: "Parent",
+              lastName: "Applicant",
+              relationship: "mother",
+              email: "mother@example.com",
+              phone: "555-8888",
+              isPrimaryContact: true,
+            },
+          ],
+        },
+        adminActor
+      );
+
+      await admissions.submitApplication(tenant, String(app.id));
+      await admissions.recordDecision(tenant, String(app.id), { status: "approved" }, adminActor);
+      await admissions.assignFeePackage(
+        tenant,
+        String(app.id),
+        {
+          feeStructureIds: [feeStructure.id],
+          admissionFeeCents: 3000,
+        },
+        adminActor
+      );
+
+      // Launch two simultaneous competing conversion requests
+      const conversionOptions = {
+        academicYear: fixture.year.name,
+        gradeId: fixture.grade.id,
+        sectionId: fixture.section.id,
+        admissionDate: "2026-10-20",
+      };
+
+      const [res1, res2] = await Promise.all([
+        admissions.convertApplicationToEnrollment(tenant, String(app.id), conversionOptions, adminActor),
+        admissions.convertApplicationToEnrollment(tenant, String(app.id), conversionOptions, adminActor),
+      ]);
+
+      // Both must succeed
+      expect(res1.success).toBe(true);
+      expect(res2.success).toBe(true);
+
+      // One must be the original conversion (isExisting: false), the other the idempotent result (isExisting: true)
+      const existingFlags = [res1.isExisting, res2.isExisting].sort();
+      expect(existingFlags).toEqual([false, true]);
+
+      // Both results must point to the identical student and enrollment ID
+      expect(res1.student?.id).toBe(res2.student?.id);
+      expect(res1.enrollment.id).toBe(res2.enrollment.id);
+
+      // Directly verify database state: exactly 1 student, exactly 1 enrollment, exactly 1 fee assignment
+      const allMatchingStudents = (await sis.listStudents(tenant)).filter(
+        (s) => s.firstName === "Concurrent" && s.lastName === "Applicant"
+      );
+      expect(allMatchingStudents.length).toBe(1);
+
+      const enrollmentsInDb = await database.db
+        .select()
+        .from(enrollments)
+        .where(
+          and(
+            eq(enrollments.workspaceId, tenant.workspaceId),
+            eq(enrollments.studentId, allMatchingStudents[0].id)
+          )
+        );
+      expect(enrollmentsInDb.length).toBe(1);
+
+      const feeAssignments = await finance.listAssignments(tenant, allMatchingStudents[0].id);
+      expect(feeAssignments.length).toBe(1);
+    });
   });
 
   /* ─────────────────────────────────────────────────────────────
@@ -491,6 +599,49 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
       expect(second.success).toBe(true);
       expect(second.isExisting).toBe(true);
     });
+
+    it("safely handles concurrent archival requests without race conditions", async () => {
+      const { tenant, auth } = await createSisTenant(database, "int002-concurrent-archive");
+      const sis = new SisService(database);
+      const fixture = await createClassFixture(sis, tenant);
+      const actor = { userId: auth.user.id, role: "Owner" };
+
+      const student = await sis.createStudent(tenant, {
+        firstName: "Concurrent",
+        lastName: "Archival",
+        dateOfBirth: "2015-08-18",
+        status: "active",
+      });
+
+      await sis.createEnrollment(tenant, {
+        studentId: student.id,
+        academicYear: fixture.year.name,
+        gradeId: fixture.grade.id,
+        sectionId: fixture.section.id,
+        enrollmentDate: "2026-10-01",
+        status: "active",
+      });
+
+      // Fire two simultaneous archival requests
+      const [res1, res2] = await Promise.all([
+        sis.deleteStudent(tenant, student.id, {}, actor),
+        sis.deleteStudent(tenant, student.id, {}, actor),
+      ]);
+
+      expect(res1.success).toBe(true);
+      expect(res2.success).toBe(true);
+
+      const existingFlags = [res1.isExisting, res2.isExisting];
+      expect(existingFlags).toContain(true);
+
+      // Student is archived in database
+      const reloaded = await sis.getStudent(tenant, student.id);
+      expect(reloaded?.status).toBe("archived");
+
+      // Zero active enrollments exist
+      const activeEnrollments = await sis.listEnrollments(tenant, { studentId: student.id, status: "active" });
+      expect(activeEnrollments.length).toBe(0);
+    });
   });
 
   /* ─────────────────────────────────────────────────────────────
@@ -653,6 +804,79 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         sis.transferStudent(tenant, student.id, sectionB.id)
       ).rejects.toThrow(/Cannot transfer student with status 'archived'/);
     });
+
+    it("safely handles two competing simultaneous section transfers preventing duplicate active enrollments", async () => {
+      const { tenant, auth } = await createSisTenant(database, "int003-concurrent-transfer");
+      const sis = new SisService(database);
+      const fixture = await createClassFixture(sis, tenant);
+      const actor = { userId: auth.user.id, role: "Owner" };
+
+      // Create Section B and Section C in the same grade
+      const sectionB = await sis.createSection(tenant, {
+        gradeId: fixture.grade.id,
+        name: "B",
+        capacity: 25,
+        status: "active",
+      });
+      const sectionC = await sis.createSection(tenant, {
+        gradeId: fixture.grade.id,
+        name: "C",
+        capacity: 25,
+        status: "active",
+      });
+
+      const student = await sis.createStudent(tenant, {
+        firstName: "Concurrent",
+        lastName: "Transfer",
+        dateOfBirth: "2015-09-19",
+        status: "active",
+      });
+
+      await sis.createEnrollment(tenant, {
+        studentId: student.id,
+        academicYear: fixture.year.name,
+        gradeId: fixture.grade.id,
+        sectionId: fixture.section.id,
+        enrollmentDate: "2026-10-01",
+        status: "active",
+      });
+
+      // Fire two competing section transfers simultaneously
+      const [transfer1, transfer2] = await Promise.allSettled([
+        sis.transferStudent(tenant, student.id, sectionB.id, {}, actor),
+        sis.transferStudent(tenant, student.id, sectionB.id, {}, actor),
+      ]);
+
+      // Exactly one must succeed and one must be rejected (cannot transfer student already in this section / concurrent conflict)
+      const statuses = [transfer1.status, transfer2.status].sort();
+      expect(statuses).toEqual(["fulfilled", "rejected"]);
+
+      // Verify that in the database, exactly ONE active enrollment exists
+      const activeEnrollments = await database.db
+        .select()
+        .from(enrollments)
+        .where(
+          and(
+            eq(enrollments.workspaceId, tenant.workspaceId),
+            eq(enrollments.studentId, student.id),
+            eq(enrollments.status, "active")
+          )
+        );
+      expect(activeEnrollments.length).toBe(1);
+
+      // Verify previous source enrollment was transitioned to transferred
+      const transferredEnrollments = await database.db
+        .select()
+        .from(enrollments)
+        .where(
+          and(
+            eq(enrollments.workspaceId, tenant.workspaceId),
+            eq(enrollments.studentId, student.id),
+            eq(enrollments.status, "transferred")
+          )
+        );
+      expect(transferredEnrollments.length).toBe(1);
+    });
   });
 
   /* ─────────────────────────────────────────────────────────────
@@ -757,6 +981,64 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
       // Both tenants can start their numbering sequence independently
       expect(studentA.admissionNumber).toMatch(/^TMS-\d{4}-00001$/);
       expect(studentB.admissionNumber).toMatch(/^TMS-\d{4}-00001$/);
+    });
+
+    it("allocates unique non-colliding enquiry reference numbers under parallel creation", async () => {
+      const { tenant } = await createSisTenant(database, "int004-parallel-enquiries");
+      const admissions = new SisAdmissionsService(database);
+      const sis = new SisService(database);
+      const fixture = await createClassFixture(sis, tenant);
+
+      const enquiryCount = 10;
+      const creationPromises = Array.from({ length: enquiryCount }, (_, i) =>
+        admissions.createEnquiry(tenant, {
+          studentName: `Enquiry Child ${i}`,
+          guardianName: `Parent ${i}`,
+          phone: `555-010${i}`,
+          desiredGradeId: fixture.grade.id,
+        })
+      );
+
+      const created = await Promise.all(creationPromises);
+      expect(created.length).toBe(enquiryCount);
+
+      const refNumbers = created.map((e) => String(e.referenceNumber));
+      const uniqueRefs = new Set(refNumbers);
+      expect(uniqueRefs.size).toBe(enquiryCount);
+
+      for (const ref of refNumbers) {
+        expect(ref).toMatch(/^ENQ-\d{4}-\d{5}$/);
+      }
+    });
+
+    it("allocates unique non-colliding application numbers under parallel creation", async () => {
+      const { tenant } = await createSisTenant(database, "int004-parallel-applications");
+      const admissions = new SisAdmissionsService(database);
+      const sis = new SisService(database);
+      const fixture = await createClassFixture(sis, tenant);
+
+      const appCount = 10;
+      const creationPromises = Array.from({ length: appCount }, (_, i) =>
+        admissions.createApplication(tenant, {
+          desiredGradeId: fixture.grade.id,
+          student: {
+            firstName: `AppStudent${i}`,
+            lastName: "Parallel",
+            dateOfBirth: "2016-01-01",
+          },
+        })
+      );
+
+      const created = await Promise.all(creationPromises);
+      expect(created.length).toBe(appCount);
+
+      const appNumbers = created.map((a) => String(a.applicationNumber));
+      const uniqueApps = new Set(appNumbers);
+      expect(uniqueApps.size).toBe(appCount);
+
+      for (const num of appNumbers) {
+        expect(num).toMatch(/^APP-\d{4}-\d{5}$/);
+      }
     });
   });
 });

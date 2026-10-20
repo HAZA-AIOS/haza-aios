@@ -2552,11 +2552,21 @@ export const portalUpdateRequests = mysqlTable(
     }),
     requestType: varchar("request_type", { length: 80 }).notNull(),
     status: varchar("status", { length: 40 }).notNull().default("submitted"),
+    referenceNumber: varchar("reference_number", { length: 80 }),
+    applicationNumber: varchar("application_number", { length: 80 }),
     payload: json("payload").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
   },
   (table) => [
+    uniqueIndex("portal_requests_workspace_ref_num_unique").on(
+      table.workspaceId,
+      table.referenceNumber,
+    ),
+    uniqueIndex("portal_requests_workspace_app_num_unique").on(
+      table.workspaceId,
+      table.applicationNumber,
+    ),
     index("portal_requests_user_idx").on(
       table.workspaceId,
       table.requesterUserId,

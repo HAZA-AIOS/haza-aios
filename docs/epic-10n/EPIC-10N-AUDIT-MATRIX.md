@@ -158,9 +158,9 @@ All findings are classified with concrete source-code evidence, root-cause analy
 - **Security / Business Impact:** A failure during enrollment creation or fee assignment leaves a student record in the database while leaving the application in `approved` state. Subsequent conversion attempts fail due to duplicate student detection, permanently stranding the applicant.
 - **Recommended Correction:** Wrap conversion workflow in `withTransaction(this.database, async ({ tx }) => { ... })`, re-check application status inside transaction, and ensure idempotent repeat attempts safely return existing student/enrollment.
 - **Regression Test Requirements:** Integration test asserting transactional atomicity, full rollback on enrollment failure, and idempotent re-conversion.
-- **Implementation Status:** **Resolved (Phase 2)**
-- **Remediation Details:** Wrapped `convertApplicationToEnrollment` in `withTransaction`. Implemented transaction-scoped application status re-check for concurrency safety; if already enrolled, existing student and enrollment records are returned idempotently without duplicate writes. Transaction-bound instances of `SisService` and `SisFinanceService` participate in the same transaction, guaranteeing complete atomicity and rollback on any failure.
-- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (INT-001 suite passed, 4/4 tests).
+- **Implementation Status:** **Resolved (Phase 2 Hardened)**
+- **Remediation Details:** Wrapped `convertApplicationToEnrollment` in `withTransaction`. Implemented row-level locking via `SELECT ... FOR UPDATE` on the application record to serialize competing conversion workers. Introduced in-transaction idempotency detection: if application status is already `enrolled` and points to an `enrolledStudentId`, the existing student and enrollment records are returned idempotently without redundant writes. Applied atomic conditional status transition `UPDATE portal_update_requests SET status = 'enrolled' WHERE id = ? AND status != 'enrolled'` with strict affected-row verification (`affectedRows === 1`), rejecting conflicting conversion attempts with HTTP 409 Conflict. Transaction-bound instances of `SisService` and `SisFinanceService` participate in the same transaction, guaranteeing complete atomicity and rollback on any failure.
+- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (INT-001 suite passed, 5/5 tests including parallel competing conversion race test).
 
 ---
 
@@ -185,9 +185,9 @@ All findings are classified with concrete source-code evidence, root-cause analy
 - **Security / Business Impact:** Active class section rosters, attendance sheets, and recurring billing queries continued to include archived students because they filtered on `enrollments.status = 'active'`.
 - **Recommended Correction:** Execute coordinated status update in `withTransaction`: when student is archived, transition active enrollments to `dropped`, check for outstanding unpaid invoices (with administrative override guard), and exclude archived students from recurring billing.
 - **Regression Test Requirements:** Archiving a student automatically transitions active enrollment to `dropped`, excludes student from active section attendance sheets and recurring invoices, and rejects archival on unpaid dues without explicit override.
-- **Implementation Status:** **Resolved (Phase 2)**
-- **Remediation Details:** Refactored `deleteStudent` to wrap operations in `withTransaction`. Added pre-flight financial dues check against unpaid/partially paid/overdue invoices, throwing `ApiError(400, "FINANCIAL_DUES_OUTSTANDING")` unless `forceWithOutstandingDues: true` is passed. Atomically transitions student to `archived` and all active enrollments to `dropped`. Structured audit logging safely verifies actor existence against `users`. Updated `generateRecurringInvoices` in `sis-finance.service.ts` to exclude archived students while strictly preserving historical invoices, attendance, and exam marks.
-- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (INT-002 suite passed, 4/4 tests).
+- **Implementation Status:** **Resolved (Phase 2 Hardened)**
+- **Remediation Details:** Wrapped `deleteStudent` entirely in `withTransaction`. Enforced row-level locking via `SELECT id, student_status as status FROM students WHERE ... FOR UPDATE` to serialize concurrent requests. Ran pre-flight financial dues check against unpaid/partially paid/overdue invoices under row lock, throwing `ApiError(400, "FINANCIAL_DUES_OUTSTANDING")` unless `forceWithOutstandingDues: true` is provided. Conditionally transitioned student status `SET student_status = 'archived' WHERE student_status != 'archived'` with strict affected-row verification (`affectedRows === 1`), operating idempotently on redundant calls. Atomically transitioned active enrollments to `dropped`. Structured audit logging safely verifies actor existence against `users`. Updated `generateRecurringInvoices` in `sis-finance.service.ts` to exclude archived students while strictly preserving historical invoices, attendance, and exam marks.
+- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (INT-002 suite passed, 5/5 tests including parallel concurrent archival race test).
 
 ---
 
@@ -210,9 +210,9 @@ All findings are classified with concrete source-code evidence, root-cause analy
 - **Security / Business Impact:** If the second step failed, the student had no active enrollment. Section transfers lacked grade-level validation and structured audit trails.
 - **Recommended Correction:** Wrap `transferStudent` in `withTransaction`, validate target section and grade alignment, record audit log, and preserve historical section linkage.
 - **Regression Test Requirements:** Test section transfer atomicity, grade level consistency validation, and confirm audit trail creation.
-- **Implementation Status:** **Resolved (Phase 2)**
-- **Remediation Details:** Re-implemented `transferStudent` inside `withTransaction`. Enforces destination section existence within workspace, grade level match, and active student status. Atomically updates previous enrollment to `transferred` and inserts new enrollment with `active` status. Writes comprehensive audit log recording before/after snapshots with safe actor resolution.
-- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (INT-003 suite passed, 3/3 tests).
+- **Implementation Status:** **Resolved (Phase 2 Hardened)**
+- **Remediation Details:** Re-implemented `transferStudent` entirely inside `withTransaction`. Enforces row-level locking on the student (`SELECT id, student_status as status FROM students ... FOR UPDATE`) and the active enrollment (`SELECT ... FROM enrollments ... WHERE ... AND enrollment_status = 'active' FOR UPDATE`). Validates destination section existence within workspace, grade level match, and active student status. Atomically transitions existing active enrollment to `transferred` with conditional `WHERE enrollment_status = 'active'` and verifies `affectedRows === 1`, aborting before destination insertion if a concurrent transfer modified the record. Creates new active enrollment, maintaining the strict single active enrollment invariant. Emits comprehensive audit log recording before/after snapshots with safe actor resolution.
+- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (INT-003 suite passed, 4/4 tests including competing concurrent section transfer race test).
 
 ---
 
@@ -223,16 +223,19 @@ All findings are classified with concrete source-code evidence, root-cause analy
 - **Evidence:**
   `apps/api/src/modules/education/sis.service.ts` lines 710–721:
   `nextEmployeeNumber` and `nextAdmissionNumber` computed sequence as `rows.length + 1` in Node memory.
-- **Root Cause:** Sequential numbers relied on row counts rather than true max sequence, causing collisions on deleted/gap records and concurrent calls.
+- **Root Cause:** Sequential numbers relied on row counts rather than true max sequence, causing collisions on deleted/gap records and concurrent calls. In admissions, numbers stored in JSON payloads lacked database unique constraints.
 - **Affected Files:**
+  - `apps/api/src/database/schema.ts`
+  - `apps/api/src/database/migrations/0019_portal_requests_unique_identifiers.sql` (Created)
+  - `apps/api/src/database/migrations/meta/_journal.json`
   - `apps/api/src/modules/education/sis.service.ts`
   - `apps/api/src/modules/education/sis-admissions.service.ts`
-- **Security / Business Impact:** Concurrent student admissions or staff creations generated identical numbers, resulting in unhandled `DATABASE_UNIQUE_CONSTRAINT` collisions.
-- **Recommended Correction:** Implement regex-based true sequence max evaluation and bounded retry loops with randomized jitter backoff.
-- **Regression Test Requirements:** Concurrent creation tests with parallel admissions and staff requests.
-- **Implementation Status:** **Resolved (Phase 2)**
-- **Remediation Details:** Refactored `nextAdmissionNumber`, `nextEmployeeNumber`, `nextEnquiryNumber`, and `nextApplicationNumber` to parse the true sequence maximum using regular expressions. Wrapped entity creation methods (`createStudent`, `createStaff`, `createEnquiry`, `createApplication`) in bounded retry loops (up to 12 attempts) with randomized jitter backoff. Broadened `isUniqueConstraintError` to capture MySQL unique constraints (1062 / `ER_DUP_ENTRY`), deadlocks (1213 / `ER_LOCK_DEADLOCK`), and lock timeouts (1205 / `ER_LOCK_WAIT_TIMEOUT`).
-- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (INT-004 suite passed, 4/4 tests).
+- **Security / Business Impact:** Concurrent student admissions, staff creations, enquiries, or applications generated identical numbers, risking unhandled `DATABASE_UNIQUE_CONSTRAINT` collisions or duplicate identifiers.
+- **Recommended Correction:** Additive migration introducing first-class unique columns on `portal_update_requests`, sequence query row-level locking (`FOR UPDATE`), regex-based true sequence max evaluation, and bounded retry loops with randomized jitter backoff.
+- **Regression Test Requirements:** Concurrent creation tests with parallel admissions, staff, enquiry, and application requests.
+- **Implementation Status:** **Resolved (Phase 2 Hardened)**
+- **Remediation Details:** Introduced additive migration `0019_portal_requests_unique_identifiers.sql` adding `reference_number varchar(80)` and `application_number varchar(80)` to `portal_update_requests` with workspace-scoped unique indexes `portal_requests_workspace_ref_num_unique` and `portal_requests_workspace_app_num_unique`. Refactored `nextAdmissionNumber`, `nextEmployeeNumber`, `nextEnquiryNumber`, and `nextApplicationNumber` to lock sequence rows via `FOR UPDATE` and evaluate true numerical maximums via regex. Wrapped entity creation methods (`createStudent`, `createStaff`, `createEnquiry`, `createApplication`) in bounded retry loops (up to 12 attempts) with randomized jitter backoff. Broadened `isUniqueConstraintError` to capture MySQL unique constraints (1062 / `ER_DUP_ENTRY`), deadlocks (1213 / `ER_LOCK_DEADLOCK`), and lock timeouts (1205 / `ER_LOCK_WAIT_TIMEOUT`).
+- **Verification Evidence:** `apps/api/tests/epic10n-transactional-integrity.integration.test.ts` (INT-004 suite passed, 6/6 tests covering parallel creation across all 4 numbering workflows).
 
 ---
 

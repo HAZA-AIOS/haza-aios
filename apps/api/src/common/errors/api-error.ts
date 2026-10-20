@@ -20,6 +20,7 @@ export class ApiError extends Error {
   readonly statusCode: number;
   readonly code: ApiErrorCode;
   readonly details?: unknown;
+  readonly cause?: unknown;
 
   constructor(statusCode: number, code: ApiErrorCode, message: string, details?: unknown) {
     super(message);
@@ -27,5 +28,6 @@ export class ApiError extends Error {
     this.statusCode = statusCode;
     this.code = code;
     this.details = details;
+    this.cause = { statusCode, code, message };
   }
 }

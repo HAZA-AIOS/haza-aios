@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, ne, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { ApiError } from "../../common/errors/api-error.js";
+import type { PaginationParams } from "../../common/pagination/pagination.js";
 import type { DatabaseClient } from "../../database/client.js";
 import { mapDatabaseError } from "../../database/errors.js";
 import { createRepositoryContext } from "../../database/repositories/repository-context.js";
@@ -140,18 +141,23 @@ export class SisService {
   }
 
   async getGrade(tenant: Tenant, id: string) {
-    return (await this.listGrades(tenant)).find((row) => row.id === id) ?? null;
+    const [row] = await this.database.db
+      .select()
+      .from(gradeLevels)
+      .where(and(eq(gradeLevels.workspaceId, tenant.workspaceId), eq(gradeLevels.id, id)))
+      .limit(1);
+    return row ? { ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) } : null;
   }
 
   async createGrade(tenant: Tenant, data: JsonRecord) {
     const id = uuid();
     await this.database.db.insert(gradeLevels).values({ id, workspaceId: tenant.workspaceId, ...clean(data) } as typeof gradeLevels.$inferInsert).catch(databaseError);
-    return (await this.listGrades(tenant)).find((row) => row.id === id)!;
+    return (await this.getGrade(tenant, id))!;
   }
 
   async updateGrade(tenant: Tenant, id: string, data: JsonRecord) {
     await this.database.db.update(gradeLevels).set({ ...clean(data), updatedAt: new Date() }).where(and(eq(gradeLevels.id, id), eq(gradeLevels.workspaceId, tenant.workspaceId))).catch(databaseError);
-    return (await this.listGrades(tenant)).find((row) => row.id === id) ?? this.notFound("Grade");
+    return (await this.getGrade(tenant, id)) ?? this.notFound("Grade");
   }
 
   async listSections(tenant: Tenant, gradeId?: string) {
@@ -161,7 +167,12 @@ export class SisService {
   }
 
   async getSection(tenant: Tenant, id: string) {
-    return (await this.listSections(tenant)).find((row) => row.id === id) ?? null;
+    const [row] = await this.database.db
+      .select()
+      .from(sections)
+      .where(and(eq(sections.workspaceId, tenant.workspaceId), eq(sections.id, id)))
+      .limit(1);
+    return row ? { ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) } : null;
   }
 
   async createSection(tenant: Tenant, data: JsonRecord) {
@@ -221,13 +232,34 @@ export class SisService {
     return (await this.listDepartments(tenant)).find((row) => row.id === id)!;
   }
 
-  async listStaff(tenant: Tenant) {
-    const rows = await this.database.db.select().from(staffMembers).where(eq(staffMembers.workspaceId, tenant.workspaceId)).orderBy(asc(staffMembers.lastName), asc(staffMembers.firstName));
+  async listStaff(tenant: Tenant, pagination?: PaginationParams) {
+    let query = this.database.db
+      .select()
+      .from(staffMembers)
+      .where(eq(staffMembers.workspaceId, tenant.workspaceId))
+      .orderBy(asc(staffMembers.lastName), asc(staffMembers.firstName), asc(staffMembers.id));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+    const rows = await query;
     return rows.map((row) => ({ ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) }));
   }
 
+  async countStaff(tenant: Tenant): Promise<number> {
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(staffMembers)
+      .where(eq(staffMembers.workspaceId, tenant.workspaceId));
+    return Number(result?.count ?? 0);
+  }
+
   async getStaff(tenant: Tenant, id: string) {
-    return (await this.listStaff(tenant)).find((row) => row.id === id) ?? null;
+    const [row] = await this.database.db
+      .select()
+      .from(staffMembers)
+      .where(and(eq(staffMembers.workspaceId, tenant.workspaceId), eq(staffMembers.id, id)))
+      .limit(1);
+    return row ? { ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) } : null;
   }
 
   async createStaff(tenant: Tenant, data: JsonRecord) {
@@ -259,7 +291,7 @@ export class SisService {
             } as typeof staffMembers.$inferInsert)
             .catch(databaseError);
 
-          return (await service.listStaff(tenant)).find((row) => row.id === id)!;
+          return (await service.getStaff(tenant, id))!;
         });
       } catch (error) {
         const isUniqueConstraint = isUniqueConstraintError(error);
@@ -288,14 +320,72 @@ export class SisService {
     delete updates.id;
     delete updates.organizationId;
     await this.database.db.update(staffMembers).set({ ...clean(updates), updatedAt: new Date() }).where(and(eq(staffMembers.id, id), eq(staffMembers.workspaceId, tenant.workspaceId))).catch(databaseError);
-    return (await this.listStaff(tenant)).find((row) => row.id === id) ?? this.notFound("Staff member");
+    return (await this.getStaff(tenant, id)) ?? this.notFound("Staff member");
   }
 
-  async listTeachingAssignments(tenant: Tenant, filters: { staffId?: string; academicYear?: string; gradeId?: string; sectionId?: string }) {
-    const rows = await this.database.db.select().from(teachingAssignments).where(eq(teachingAssignments.workspaceId, tenant.workspaceId));
-    return rows
-      .filter((row) => (!filters.staffId || row.staffId === filters.staffId) && (!filters.academicYear || row.academicYear === filters.academicYear) && (!filters.gradeId || row.gradeId === filters.gradeId) && (!filters.sectionId || row.sectionId === filters.sectionId))
-      .map((row) => ({ ...row, organizationId: tenant.organizationId, sectionId: row.sectionId ?? undefined, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) }));
+  async listTeachingAssignments(
+    tenant: Tenant,
+    filters: { staffId?: string; academicYear?: string; gradeId?: string; sectionId?: string; isActive?: boolean },
+    pagination?: PaginationParams
+  ) {
+    const conditions = [eq(teachingAssignments.workspaceId, tenant.workspaceId)];
+    if (filters.staffId) conditions.push(eq(teachingAssignments.staffId, filters.staffId));
+    if (filters.academicYear) conditions.push(eq(teachingAssignments.academicYear, filters.academicYear));
+    if (filters.gradeId) conditions.push(eq(teachingAssignments.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(teachingAssignments.sectionId, filters.sectionId));
+    if (filters.isActive !== undefined) conditions.push(eq(teachingAssignments.isActive, filters.isActive));
+
+    let query = this.database.db
+      .select()
+      .from(teachingAssignments)
+      .where(and(...conditions))
+      .orderBy(asc(teachingAssignments.createdAt), asc(teachingAssignments.id));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+    const rows = await query;
+    return rows.map((row) => ({
+      ...row,
+      organizationId: tenant.organizationId,
+      sectionId: row.sectionId ?? undefined,
+      createdAt: iso(row.createdAt),
+      updatedAt: iso(row.updatedAt),
+    }));
+  }
+
+  async countTeachingAssignments(
+    tenant: Tenant,
+    filters: { staffId?: string; academicYear?: string; gradeId?: string; sectionId?: string; isActive?: boolean }
+  ): Promise<number> {
+    const conditions = [eq(teachingAssignments.workspaceId, tenant.workspaceId)];
+    if (filters.staffId) conditions.push(eq(teachingAssignments.staffId, filters.staffId));
+    if (filters.academicYear) conditions.push(eq(teachingAssignments.academicYear, filters.academicYear));
+    if (filters.gradeId) conditions.push(eq(teachingAssignments.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(teachingAssignments.sectionId, filters.sectionId));
+    if (filters.isActive !== undefined) conditions.push(eq(teachingAssignments.isActive, filters.isActive));
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(teachingAssignments)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
+  }
+
+  async getTeachingAssignment(tenant: Tenant, id: string) {
+    const [row] = await this.database.db
+      .select()
+      .from(teachingAssignments)
+      .where(and(eq(teachingAssignments.workspaceId, tenant.workspaceId), eq(teachingAssignments.id, id)))
+      .limit(1);
+    return row
+      ? {
+          ...row,
+          organizationId: tenant.organizationId,
+          sectionId: row.sectionId ?? undefined,
+          createdAt: iso(row.createdAt),
+          updatedAt: iso(row.updatedAt),
+        }
+      : null;
   }
 
   async createTeachingAssignment(tenant: Tenant, data: JsonRecord) {
@@ -306,17 +396,48 @@ export class SisService {
     if (data.sectionId) await this.assertSection(tenant.workspaceId, String(data.sectionId));
     const id = uuid();
     await this.database.db.insert(teachingAssignments).values({ id, workspaceId: tenant.workspaceId, ...clean(data) } as typeof teachingAssignments.$inferInsert).catch(databaseError);
-    return (await this.listTeachingAssignments(tenant, {})).find((row) => row.id === id)!;
+    return (await this.getTeachingAssignment(tenant, id))!;
   }
 
   async updateTeachingAssignment(tenant: Tenant, id: string, data: JsonRecord) {
     await this.database.db.update(teachingAssignments).set({ ...clean(data), updatedAt: new Date() }).where(and(eq(teachingAssignments.id, id), eq(teachingAssignments.workspaceId, tenant.workspaceId))).catch(databaseError);
-    return (await this.listTeachingAssignments(tenant, {})).find((row) => row.id === id) ?? this.notFound("Teaching assignment");
+    return (await this.getTeachingAssignment(tenant, id)) ?? this.notFound("Teaching assignment");
   }
 
-  async listStudents(tenant: Tenant) {
-    const rows = await this.database.db.select().from(students).where(eq(students.workspaceId, tenant.workspaceId)).orderBy(asc(students.lastName), asc(students.firstName));
+  async listStudents(
+    tenant: Tenant,
+    filters?: { status?: string; admissionNumber?: string },
+    pagination?: PaginationParams
+  ) {
+    const conditions = [eq(students.workspaceId, tenant.workspaceId)];
+    if (filters?.status) conditions.push(eq(students.status, filters.status as NonNullable<typeof students.$inferInsert.status>));
+    if (filters?.admissionNumber) conditions.push(eq(students.admissionNumber, filters.admissionNumber));
+
+    let query = this.database.db
+      .select()
+      .from(students)
+      .where(and(...conditions))
+      .orderBy(asc(students.lastName), asc(students.firstName), asc(students.id));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+    const rows = await query;
     return Promise.all(rows.map((row) => this.studentDto(tenant, row)));
+  }
+
+  async countStudents(
+    tenant: Tenant,
+    filters?: { status?: string; admissionNumber?: string }
+  ): Promise<number> {
+    const conditions = [eq(students.workspaceId, tenant.workspaceId)];
+    if (filters?.status) conditions.push(eq(students.status, filters.status as NonNullable<typeof students.$inferInsert.status>));
+    if (filters?.admissionNumber) conditions.push(eq(students.admissionNumber, filters.admissionNumber));
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(students)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
 
   async getStudent(tenant: Tenant, id: string) {
@@ -524,23 +645,67 @@ export class SisService {
     });
   }
 
-  async listEnrollments(tenant: Tenant, filters: { studentId?: string; academicYear?: string; gradeId?: string; sectionId?: string; status?: string }) {
-    const rows = await this.database.db.select().from(enrollments).where(eq(enrollments.workspaceId, tenant.workspaceId)).orderBy(desc(enrollments.enrollmentDate));
-    return rows
-      .filter((row) => (!filters.studentId || row.studentId === filters.studentId) && (!filters.academicYear || row.academicYear === filters.academicYear) && (!filters.gradeId || row.gradeId === filters.gradeId) && (!filters.sectionId || row.sectionId === filters.sectionId) && (!filters.status || row.status === filters.status))
-      .map((row) => ({ ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) }));
+  async listEnrollments(
+    tenant: Tenant,
+    filters: { studentId?: string; academicYear?: string; gradeId?: string; sectionId?: string; status?: string },
+    pagination?: PaginationParams
+  ) {
+    const conditions = [eq(enrollments.workspaceId, tenant.workspaceId)];
+    if (filters.studentId) conditions.push(eq(enrollments.studentId, filters.studentId));
+    if (filters.academicYear) conditions.push(eq(enrollments.academicYear, filters.academicYear));
+    if (filters.gradeId) conditions.push(eq(enrollments.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(enrollments.sectionId, filters.sectionId));
+    if (filters.status) conditions.push(eq(enrollments.status, filters.status as NonNullable<typeof enrollments.$inferInsert.status>));
+
+    let query = this.database.db
+      .select()
+      .from(enrollments)
+      .where(and(...conditions))
+      .orderBy(desc(enrollments.enrollmentDate), asc(enrollments.id));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+    const rows = await query;
+    return rows.map((row) => ({ ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) }));
+  }
+
+  async countEnrollments(
+    tenant: Tenant,
+    filters: { studentId?: string; academicYear?: string; gradeId?: string; sectionId?: string; status?: string }
+  ): Promise<number> {
+    const conditions = [eq(enrollments.workspaceId, tenant.workspaceId)];
+    if (filters.studentId) conditions.push(eq(enrollments.studentId, filters.studentId));
+    if (filters.academicYear) conditions.push(eq(enrollments.academicYear, filters.academicYear));
+    if (filters.gradeId) conditions.push(eq(enrollments.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(enrollments.sectionId, filters.sectionId));
+    if (filters.status) conditions.push(eq(enrollments.status, filters.status as NonNullable<typeof enrollments.$inferInsert.status>));
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(enrollments)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
+  }
+
+  async getEnrollment(tenant: Tenant, id: string) {
+    const [row] = await this.database.db
+      .select()
+      .from(enrollments)
+      .where(and(eq(enrollments.workspaceId, tenant.workspaceId), eq(enrollments.id, id)))
+      .limit(1);
+    return row ? { ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) } : null;
   }
 
   async createEnrollment(tenant: Tenant, data: JsonRecord) {
     await Promise.all([this.assertStudent(tenant.workspaceId, String(data.studentId)), this.assertGrade(tenant.workspaceId, String(data.gradeId)), this.assertSection(tenant.workspaceId, String(data.sectionId))]);
     const id = uuid();
     await this.database.db.insert(enrollments).values({ id, workspaceId: tenant.workspaceId, ...clean(data) } as typeof enrollments.$inferInsert).catch(databaseError);
-    return (await this.listEnrollments(tenant, {})).find((row) => row.id === id)!;
+    return (await this.getEnrollment(tenant, id))!;
   }
 
   async updateEnrollment(tenant: Tenant, id: string, data: JsonRecord) {
     await this.database.db.update(enrollments).set({ ...clean(data), updatedAt: new Date() }).where(and(eq(enrollments.id, id), eq(enrollments.workspaceId, tenant.workspaceId))).catch(databaseError);
-    return (await this.listEnrollments(tenant, {})).find((row) => row.id === id) ?? this.notFound("Enrollment");
+    return (await this.getEnrollment(tenant, id)) ?? this.notFound("Enrollment");
   }
 
   async transferStudent(
@@ -683,11 +848,48 @@ export class SisService {
     });
   }
 
-  async listAttendanceSessions(tenant: Tenant, filters: { academicYearId?: string; date?: string; gradeId?: string; sectionId?: string }) {
-    const rows = await this.database.db.select().from(attendanceSessions).where(eq(attendanceSessions.workspaceId, tenant.workspaceId)).orderBy(desc(attendanceSessions.attendanceDate));
-    return rows
-      .filter((row) => (!filters.academicYearId || row.academicYearId === filters.academicYearId) && (!filters.date || row.attendanceDate === filters.date) && (!filters.gradeId || row.gradeId === filters.gradeId) && (!filters.sectionId || row.sectionId === filters.sectionId))
-      .map((row) => this.attendanceSessionDto(tenant, row));
+  async listAttendanceSessions(
+    tenant: Tenant,
+    filters: { academicYearId?: string; date?: string; gradeId?: string; sectionId?: string; sessionType?: string; status?: string },
+    pagination?: PaginationParams
+  ) {
+    const conditions = [eq(attendanceSessions.workspaceId, tenant.workspaceId)];
+    if (filters.academicYearId) conditions.push(eq(attendanceSessions.academicYearId, filters.academicYearId));
+    if (filters.date) conditions.push(eq(attendanceSessions.attendanceDate, filters.date));
+    if (filters.gradeId) conditions.push(eq(attendanceSessions.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(attendanceSessions.sectionId, filters.sectionId));
+    if (filters.sessionType) conditions.push(eq(attendanceSessions.sessionType, filters.sessionType as "daily" | "period" | "subject"));
+    if (filters.status) conditions.push(eq(attendanceSessions.status, filters.status as "draft" | "completed"));
+
+    let query = this.database.db
+      .select()
+      .from(attendanceSessions)
+      .where(and(...conditions))
+      .orderBy(desc(attendanceSessions.attendanceDate), asc(attendanceSessions.id));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+    const rows = await query;
+    return rows.map((row) => this.attendanceSessionDto(tenant, row));
+  }
+
+  async countAttendanceSessions(
+    tenant: Tenant,
+    filters: { academicYearId?: string; date?: string; gradeId?: string; sectionId?: string; sessionType?: string; status?: string }
+  ): Promise<number> {
+    const conditions = [eq(attendanceSessions.workspaceId, tenant.workspaceId)];
+    if (filters.academicYearId) conditions.push(eq(attendanceSessions.academicYearId, filters.academicYearId));
+    if (filters.date) conditions.push(eq(attendanceSessions.attendanceDate, filters.date));
+    if (filters.gradeId) conditions.push(eq(attendanceSessions.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(attendanceSessions.sectionId, filters.sectionId));
+    if (filters.sessionType) conditions.push(eq(attendanceSessions.sessionType, filters.sessionType as "daily" | "period" | "subject"));
+    if (filters.status) conditions.push(eq(attendanceSessions.status, filters.status as "draft" | "completed"));
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(attendanceSessions)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
 
   async getAttendanceSession(tenant: Tenant, id: string) {
@@ -852,12 +1054,28 @@ export class SisService {
     await this.database.db.delete(timePeriods).where(and(eq(timePeriods.workspaceId, tenant.workspaceId), eq(timePeriods.id, id)));
   }
 
-  async listTimetableEntries(tenant: Tenant, filters: { academicYearId?: string; termId?: string; gradeId?: string; sectionId?: string; teacherId?: string; dayOfWeek?: string; periodId?: string }) {
-    const rows = await this.database.db.select().from(timetableEntries).where(eq(timetableEntries.workspaceId, tenant.workspaceId));
-    return rows
-      .filter((row) => (!filters.academicYearId || row.academicYearId === filters.academicYearId) && (!filters.termId || row.termId === filters.termId) && (!filters.gradeId || row.gradeId === filters.gradeId) && (!filters.sectionId || row.sectionId === filters.sectionId) && (!filters.teacherId || row.teacherId === filters.teacherId) && (filters.dayOfWeek === undefined || row.dayOfWeek === Number(filters.dayOfWeek)) && (!filters.periodId || row.periodId === filters.periodId))
-      .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.periodId.localeCompare(b.periodId))
-      .map((row) => this.timetableEntryDto(tenant, row));
+  async listTimetableEntries(
+    tenant: Tenant,
+    filters: { academicYearId?: string; termId?: string; gradeId?: string; sectionId?: string; teacherId?: string; dayOfWeek?: string | number; periodId?: string }
+  ) {
+    const conditions = [eq(timetableEntries.workspaceId, tenant.workspaceId)];
+    if (filters.academicYearId) conditions.push(eq(timetableEntries.academicYearId, filters.academicYearId));
+    if (filters.termId) conditions.push(eq(timetableEntries.termId, filters.termId));
+    if (filters.gradeId) conditions.push(eq(timetableEntries.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(timetableEntries.sectionId, filters.sectionId));
+    if (filters.teacherId) conditions.push(eq(timetableEntries.teacherId, filters.teacherId));
+    if (filters.dayOfWeek !== undefined && filters.dayOfWeek !== null && String(filters.dayOfWeek).trim() !== "") {
+      conditions.push(eq(timetableEntries.dayOfWeek, Number(filters.dayOfWeek)));
+    }
+    if (filters.periodId) conditions.push(eq(timetableEntries.periodId, filters.periodId));
+
+    const rows = await this.database.db
+      .select()
+      .from(timetableEntries)
+      .where(and(...conditions))
+      .orderBy(asc(timetableEntries.dayOfWeek), asc(timetableEntries.periodId), asc(timetableEntries.id));
+
+    return rows.map((row) => this.timetableEntryDto(tenant, row));
   }
 
   async saveTimetableEntry(tenant: Tenant, data: JsonRecord) {

@@ -1,6 +1,7 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { ApiError } from '../../common/errors/api-error.js';
+import type { PaginationParams } from '../../common/pagination/pagination.js';
 import type { DatabaseClient } from '../../database/client.js';
 import { mapDatabaseError } from '../../database/errors.js';
 import { withTransaction } from '../../database/transactions.js';
@@ -494,8 +495,9 @@ export class SisFinanceService {
       billingPeriod: string;
       gradeId?: string;
       sectionId?: string;
-      feeStructureIds: string[];
-      issueDate: string;
+      feeStructureIds?: string[];
+      feeStructureId?: string;
+      issueDate?: string;
       dueDate: string;
       issueNow?: boolean;
     },
@@ -503,104 +505,210 @@ export class SisFinanceService {
   ) {
     assertFinance(actor, 'invoice.create');
     if (!data.billingPeriod) throw new ApiError(400, 'VALIDATION_FAILED', 'Billing period is required (e.g. 2026-10).');
-    if (!Array.isArray(data.feeStructureIds) || !data.feeStructureIds.length) {
+    const feeStructureIds = Array.isArray(data.feeStructureIds) && data.feeStructureIds.length
+      ? data.feeStructureIds
+      : data.feeStructureId
+      ? [data.feeStructureId]
+      : [];
+    if (!feeStructureIds.length) {
       throw new ApiError(400, 'VALIDATION_FAILED', 'At least one fee structure is required for recurring billing.');
     }
-    if (new Date(data.issueDate) > new Date(data.dueDate)) {
+    const issueDate = data.issueDate ?? new Date().toISOString().slice(0, 10);
+    if (new Date(issueDate) > new Date(data.dueDate)) {
       throw new ApiError(400, 'VALIDATION_FAILED', 'Issue date must be before due date.');
     }
 
     await this.assertRow(academicYears, academicYears.id, tenant.workspaceId, data.academicYearId, 'Academic year');
 
-    const enrollmentRows = await this.database.db.select().from(enrollments).where(eq(enrollments.workspaceId, tenant.workspaceId));
-    const activeEnrollments = enrollmentRows.filter((e) => {
-      if (e.status !== 'active') return false;
-      if (data.gradeId && e.gradeId !== data.gradeId) return false;
-      if (data.sectionId && e.sectionId !== data.sectionId) return false;
-      return true;
-    });
+    // DB-001: SQL-level filtering for active enrollments instead of full-table retrieval
+    const conditions = [
+      eq(enrollments.workspaceId, tenant.workspaceId),
+      eq(enrollments.status, 'active'),
+    ];
+    if (data.gradeId) conditions.push(eq(enrollments.gradeId, data.gradeId));
+    if (data.sectionId) conditions.push(eq(enrollments.sectionId, data.sectionId));
+
+    const activeEnrollments = await this.database.db
+      .select()
+      .from(enrollments)
+      .where(and(...conditions))
+      .orderBy(asc(enrollments.studentId), asc(enrollments.id));
 
     if (!activeEnrollments.length) {
       throw new ApiError(400, 'VALIDATION_FAILED', 'No active student enrollments found matching selected criteria.');
     }
 
-    const existingInvoices = ((await this.listInvoices(tenant, { academicYearId: data.academicYearId })) as Invoice[]).filter(
-      (i) => !['cancelled', 'voided'].includes(i.status)
-    );
-
-    const studentsList = await this.database.db.select().from(students).where(eq(students.workspaceId, tenant.workspaceId));
-    const studentMap = new Map(studentsList.map((s) => [s.id, s]));
-
+    // DB-004: Per-student transactional atomicity with row-level locks
     const generated: Invoice[] = [];
     const skippedDetails: Array<{ studentId: string; studentName: string; reason: string }> = [];
+    const failedItems: Array<{ studentId: string; studentName: string; error: string }> = [];
+    let archivedExcludedCount = 0;
+    let skippedDuplicatesCount = 0;
 
     for (const enr of activeEnrollments) {
-      const st = studentMap.get(enr.studentId);
-      const studentName = st ? `${st.firstName} ${st.lastName}` : enr.studentId;
+      let studentName = enr.studentId;
+      try {
+        await withTransaction(this.database, async ({ tx }) => {
+          // 1. Lock student row with FOR UPDATE to serialize operations and check status
+          const [studentRows] = (await tx.execute(
+            sql`SELECT id, student_status as status, first_name as firstName, last_name as lastName FROM students WHERE workspace_id = ${tenant.workspaceId} AND id = ${enr.studentId} FOR UPDATE`
+          )) as unknown as [Array<{ id: string; status: string; firstName: string; lastName: string }>];
+          const st = studentRows[0];
+          if (st) {
+            studentName = `${st.firstName} ${st.lastName}`.trim() || enr.studentId;
+          }
 
-      if (st && st.status === 'archived') {
-        skippedDetails.push({
+          // 2. Check if student is archived under lock
+          if (st && st.status === 'archived') {
+            archivedExcludedCount++;
+            skippedDetails.push({
+              studentId: enr.studentId,
+              studentName,
+              reason: 'Student is archived',
+            });
+            return;
+          }
+
+          // 3. Check for existing invoice for this billing period under lock
+          const [existingRows] = (await tx.execute(
+            sql`SELECT id, invoice_number as invoiceNumber, status FROM finance_invoices WHERE workspace_id = ${tenant.workspaceId} AND student_id = ${enr.studentId} AND json_unquote(json_extract(payload, '$.billingPeriod')) = ${data.billingPeriod} FOR UPDATE`
+          )) as unknown as [Array<{ id: string; invoiceNumber: string; status: string }>];
+
+          const activeExisting = existingRows.find((i) => !['cancelled', 'voided'].includes(i.status));
+          if (activeExisting) {
+            skippedDuplicatesCount++;
+            skippedDetails.push({
+              studentId: enr.studentId,
+              studentName,
+              reason: `Invoice ${activeExisting.invoiceNumber} already exists for billing period ${data.billingPeriod}`,
+            });
+            return;
+          }
+
+          // 4. Create the invoice using the transaction-scoped service client
+          const txService = new SisFinanceService({
+            ...this.database,
+            db: tx,
+            transaction: (work) => work(tx),
+          });
+          const invoice = await txService.createInvoice(
+            tenant,
+            {
+              studentId: enr.studentId,
+              enrollmentId: enr.id,
+              academicYearId: data.academicYearId,
+              billingPeriod: data.billingPeriod,
+              feeStructureIds: feeStructureIds,
+              issueDate: issueDate,
+              dueDate: data.dueDate,
+              status: data.issueNow ? 'issued' : 'draft',
+            },
+            actor
+          );
+          generated.push(invoice);
+        });
+      } catch (err) {
+        failedItems.push({
           studentId: enr.studentId,
           studentName,
-          reason: `Student is archived`,
+          error: err instanceof Error ? err.message : String(err),
         });
-        continue;
       }
+    }
 
-      const duplicate = existingInvoices.find((inv) => {
-        if (inv.studentId !== enr.studentId) return false;
-        if (inv.billingPeriod === data.billingPeriod) return true;
-        return false;
-      });
-
-      if (duplicate) {
-        skippedDetails.push({
-          studentId: enr.studentId,
-          studentName,
-          reason: `Invoice ${duplicate.invoiceNumber} already exists for billing period ${data.billingPeriod}`,
-        });
-        continue;
-      }
-
-      const invoice = await this.createInvoice(
-        tenant,
-        {
-          studentId: enr.studentId,
-          enrollmentId: enr.id,
-          academicYearId: data.academicYearId,
-          billingPeriod: data.billingPeriod,
-          feeStructureIds: data.feeStructureIds,
-          issueDate: data.issueDate,
-          dueDate: data.dueDate,
-          status: data.issueNow ? 'issued' : 'draft',
-        },
-        actor
-      );
-      generated.push(invoice);
+    let batchStatus: 'completed' | 'skipped' | 'partial_success' | 'failed' = 'completed';
+    if (generated.length === 0 && failedItems.length === 0) {
+      batchStatus = 'skipped';
+    } else if (generated.length > 0 && failedItems.length > 0) {
+      batchStatus = 'partial_success';
+    } else if (generated.length === 0 && failedItems.length > 0) {
+      batchStatus = 'failed';
     }
 
     return {
-      success: true,
+      success: failedItems.length === 0,
       billingPeriod: data.billingPeriod,
+      eligibleStudentsCount: activeEnrollments.length,
       createdInvoicesCount: generated.length,
       generatedCount: generated.length,
-      skippedDuplicatesCount: skippedDetails.length,
+      skippedDuplicatesCount,
       skippedCount: skippedDetails.length,
+      archivedExcludedCount,
+      failedCount: failedItems.length,
+      failedItems,
+      batchStatus,
       totalBilledCents: generated.reduce((s, i) => s + i.totalCents, 0),
       invoices: generated,
       skippedDetails,
     };
   }
 
-  async listInvoices(tenant: Tenant, filters: URLSearchParams | JsonRecord = {}) {
-    const rows = await this.database.db.select().from(financeInvoices).where(eq(financeInvoices.workspaceId, tenant.workspaceId)).orderBy(desc(financeInvoices.issueDate));
+  async listInvoices(tenant: Tenant, filters: URLSearchParams | JsonRecord = {}, pagination?: PaginationParams) {
     const get = (k: string) => (filters instanceof URLSearchParams ? filters.get(k) ?? undefined : (filters[k] as string | undefined));
-    return rows
+    const conditions = [eq(financeInvoices.workspaceId, tenant.workspaceId)];
+    const academicYearId = get('academicYearId');
+    const studentId = get('studentId');
+    const dateFrom = get('dateFrom');
+    const dateTo = get('dateTo');
+
+    if (academicYearId) conditions.push(eq(financeInvoices.academicYearId, academicYearId));
+    if (studentId) conditions.push(eq(financeInvoices.studentId, studentId));
+    if (dateFrom) conditions.push(gte(financeInvoices.issueDate, String(dateFrom)));
+    if (dateTo) conditions.push(lte(financeInvoices.issueDate, String(dateTo)));
+
+    let query = this.database.db
+      .select()
+      .from(financeInvoices)
+      .where(and(...conditions))
+      .orderBy(desc(financeInvoices.issueDate), asc(financeInvoices.id));
+
+    if (pagination && !get('status') && !get('billingPeriod') && !get('feeCategoryId')) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+
+    const rows = await query;
+    let list = rows
       .map((r) => {
         const invoice = dto<Invoice & { items?: JsonRecord[] }>(tenant, r);
         return { ...invoice, status: status(invoice) };
       })
-      .filter((i) => (!get('academicYearId') || i.academicYearId === get('academicYearId')) && (!get('studentId') || i.studentId === get('studentId')) && (!get('status') || i.status === get('status')) && (!get('billingPeriod') || i.billingPeriod === get('billingPeriod')) && (!get('dateFrom') || i.issueDate >= String(get('dateFrom'))) && (!get('dateTo') || i.issueDate <= String(get('dateTo'))) && (!get('feeCategoryId') || (Array.isArray(i.items) && i.items.some((item: JsonRecord) => item.feeCategoryId === get('feeCategoryId')))));
+      .filter((i) => {
+        if (get('status') && i.status !== get('status')) return false;
+        if (get('billingPeriod') && i.billingPeriod !== get('billingPeriod')) return false;
+        if (get('feeCategoryId') && (!Array.isArray(i.items) || !i.items.some((item: JsonRecord) => item.feeCategoryId === get('feeCategoryId')))) return false;
+        return true;
+      });
+
+    if (pagination && (get('status') || get('billingPeriod') || get('feeCategoryId'))) {
+      list = list.slice(pagination.offset, pagination.offset + pagination.limit);
+    }
+
+    return list;
+  }
+
+  async countInvoices(tenant: Tenant, filters: URLSearchParams | JsonRecord = {}): Promise<number> {
+    const get = (k: string) => (filters instanceof URLSearchParams ? filters.get(k) ?? undefined : (filters[k] as string | undefined));
+    if (get('status') || get('billingPeriod') || get('feeCategoryId')) {
+      const all = await this.listInvoices(tenant, filters);
+      return all.length;
+    }
+
+    const conditions = [eq(financeInvoices.workspaceId, tenant.workspaceId)];
+    const academicYearId = get('academicYearId');
+    const studentId = get('studentId');
+    const dateFrom = get('dateFrom');
+    const dateTo = get('dateTo');
+
+    if (academicYearId) conditions.push(eq(financeInvoices.academicYearId, academicYearId));
+    if (studentId) conditions.push(eq(financeInvoices.studentId, studentId));
+    if (dateFrom) conditions.push(gte(financeInvoices.issueDate, String(dateFrom)));
+    if (dateTo) conditions.push(lte(financeInvoices.issueDate, String(dateTo)));
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(financeInvoices)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
 
   // --- Payments & Reconciliation ---
@@ -760,9 +868,57 @@ export class SisFinanceService {
     return updatedPayment;
   }
 
-  async listPayments(tenant: Tenant, studentId?: string) {
-    const rows = studentId ? await this.database.db.select().from(financePayments).where(and(eq(financePayments.workspaceId, tenant.workspaceId), eq(financePayments.studentId, studentId))) : await this.database.db.select().from(financePayments).where(eq(financePayments.workspaceId, tenant.workspaceId));
-    return rows.map((r) => dto(tenant, r));
+  async listPayments(tenant: Tenant, filters?: URLSearchParams | JsonRecord | string, pagination?: PaginationParams) {
+    const get = (k: string) => {
+      if (typeof filters === 'string') return k === 'studentId' ? filters : undefined;
+      if (filters instanceof URLSearchParams) return filters.get(k) ?? undefined;
+      return filters ? (filters[k] as string | undefined) : undefined;
+    };
+
+    const conditions = [eq(financePayments.workspaceId, tenant.workspaceId)];
+    const studentId = get('studentId');
+    const invoiceId = get('invoiceId');
+    const payStatus = get('status');
+
+    if (studentId) conditions.push(eq(financePayments.studentId, studentId));
+    if (invoiceId) conditions.push(eq(financePayments.invoiceId, invoiceId));
+    if (payStatus) conditions.push(eq(financePayments.status, payStatus));
+
+    let query = this.database.db
+      .select()
+      .from(financePayments)
+      .where(and(...conditions))
+      .orderBy(desc(financePayments.paymentDate), asc(financePayments.id));
+
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+
+    const rows = await query;
+    return rows.map((r) => dto<Payment>(tenant, r));
+  }
+
+  async countPayments(tenant: Tenant, filters?: URLSearchParams | JsonRecord | string): Promise<number> {
+    const get = (k: string) => {
+      if (typeof filters === 'string') return k === 'studentId' ? filters : undefined;
+      if (filters instanceof URLSearchParams) return filters.get(k) ?? undefined;
+      return filters ? (filters[k] as string | undefined) : undefined;
+    };
+
+    const conditions = [eq(financePayments.workspaceId, tenant.workspaceId)];
+    const studentId = get('studentId');
+    const invoiceId = get('invoiceId');
+    const payStatus = get('status');
+
+    if (studentId) conditions.push(eq(financePayments.studentId, studentId));
+    if (invoiceId) conditions.push(eq(financePayments.invoiceId, invoiceId));
+    if (payStatus) conditions.push(eq(financePayments.status, payStatus));
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(financePayments)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
   async listReceipts(tenant: Tenant, studentId?: string) {
     const rows = studentId ? await this.database.db.select().from(financeReceipts).where(and(eq(financeReceipts.workspaceId, tenant.workspaceId), eq(financeReceipts.studentId, studentId))) : await this.database.db.select().from(financeReceipts).where(eq(financeReceipts.workspaceId, tenant.workspaceId));
@@ -973,22 +1129,67 @@ export class SisFinanceService {
     return { success: true, id };
   }
 
-  async listExpenses(tenant: Tenant, filters: URLSearchParams | JsonRecord = {}) {
-    const rows = await this.database.db.select().from(financeExpenses).where(eq(financeExpenses.workspaceId, tenant.workspaceId)).orderBy(desc(financeExpenses.expenseDate));
+  async listExpenses(tenant: Tenant, filters: URLSearchParams | JsonRecord = {}, pagination?: PaginationParams) {
     const get = (k: string) => (filters instanceof URLSearchParams ? filters.get(k) ?? undefined : (filters[k] as string | undefined));
-    return rows
-      .map((r) => dto<JsonRecord & { status: string; categoryId: string; expenseDate: string; payee: string; title: string }>(tenant, r))
-      .filter((e) => {
-        if (get('status') && e.status !== get('status')) return false;
-        if (get('categoryId') && e.categoryId !== get('categoryId')) return false;
-        if (get('dateFrom') && e.expenseDate < String(get('dateFrom'))) return false;
-        if (get('dateTo') && e.expenseDate > String(get('dateTo'))) return false;
-        if (get('search')) {
-          const q = String(get('search')).toLowerCase();
-          if (!e.title.toLowerCase().includes(q) && !e.payee.toLowerCase().includes(q)) return false;
-        }
-        return true;
-      });
+    const conditions = [eq(financeExpenses.workspaceId, tenant.workspaceId)];
+    const statusVal = get('status');
+    const categoryId = get('categoryId');
+    const dateFrom = get('dateFrom');
+    const dateTo = get('dateTo');
+
+    if (statusVal) conditions.push(eq(financeExpenses.status, statusVal));
+    if (categoryId) conditions.push(eq(financeExpenses.categoryId, categoryId));
+    if (dateFrom) conditions.push(gte(financeExpenses.expenseDate, String(dateFrom)));
+    if (dateTo) conditions.push(lte(financeExpenses.expenseDate, String(dateTo)));
+
+    let query = this.database.db
+      .select()
+      .from(financeExpenses)
+      .where(and(...conditions))
+      .orderBy(desc(financeExpenses.expenseDate), asc(financeExpenses.id));
+
+    if (pagination && !get('search')) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+
+    const rows = await query;
+    let list = rows
+      .map((r) => dto<JsonRecord & { status: string; categoryId: string; expenseDate: string; payee: string; title: string }>(tenant, r));
+
+    if (get('search')) {
+      const q = String(get('search')).toLowerCase();
+      list = list.filter((e) => e.title.toLowerCase().includes(q) || e.payee.toLowerCase().includes(q));
+      if (pagination) {
+        list = list.slice(pagination.offset, pagination.offset + pagination.limit);
+      }
+    }
+
+    return list;
+  }
+
+  async countExpenses(tenant: Tenant, filters: URLSearchParams | JsonRecord = {}): Promise<number> {
+    const get = (k: string) => (filters instanceof URLSearchParams ? filters.get(k) ?? undefined : (filters[k] as string | undefined));
+    if (get('search')) {
+      const all = await this.listExpenses(tenant, filters);
+      return all.length;
+    }
+
+    const conditions = [eq(financeExpenses.workspaceId, tenant.workspaceId)];
+    const statusVal = get('status');
+    const categoryId = get('categoryId');
+    const dateFrom = get('dateFrom');
+    const dateTo = get('dateTo');
+
+    if (statusVal) conditions.push(eq(financeExpenses.status, statusVal));
+    if (categoryId) conditions.push(eq(financeExpenses.categoryId, categoryId));
+    if (dateFrom) conditions.push(gte(financeExpenses.expenseDate, String(dateFrom)));
+    if (dateTo) conditions.push(lte(financeExpenses.expenseDate, String(dateTo)));
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(financeExpenses)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
 
   async createExpense(tenant: Tenant, data: JsonRecord, actor?: Actor) {
@@ -1142,22 +1343,67 @@ export class SisFinanceService {
     return { success: true, id };
   }
 
-  // --- Other Incomes ---
-  async listIncomes(tenant: Tenant, filters: URLSearchParams | JsonRecord = {}) {
-    const rows = await this.database.db.select().from(financeIncomes).where(eq(financeIncomes.workspaceId, tenant.workspaceId)).orderBy(desc(financeIncomes.receivedDate));
+  async listIncomes(tenant: Tenant, filters: URLSearchParams | JsonRecord = {}, pagination?: PaginationParams) {
     const get = (k: string) => (filters instanceof URLSearchParams ? filters.get(k) ?? undefined : (filters[k] as string | undefined));
-    return rows
-      .map((r) => dto<JsonRecord & { category: string; receivedDate: string; source: string }>(tenant, r))
-      .filter((inc) => {
-        if (get('category') && inc.category !== get('category')) return false;
-        if (get('dateFrom') && inc.receivedDate < String(get('dateFrom'))) return false;
-        if (get('dateTo') && inc.receivedDate > String(get('dateTo'))) return false;
-        if (get('search')) {
-          const q = String(get('search')).toLowerCase();
-          if (!inc.source.toLowerCase().includes(q)) return false;
-        }
-        return true;
-      });
+    const conditions = [eq(financeIncomes.workspaceId, tenant.workspaceId)];
+    const category = get('category');
+    const statusVal = get('status');
+    const dateFrom = get('dateFrom');
+    const dateTo = get('dateTo');
+
+    if (category) conditions.push(eq(financeIncomes.category, category));
+    if (statusVal) conditions.push(eq(financeIncomes.status, statusVal));
+    if (dateFrom) conditions.push(gte(financeIncomes.receivedDate, String(dateFrom)));
+    if (dateTo) conditions.push(lte(financeIncomes.receivedDate, String(dateTo)));
+
+    let query = this.database.db
+      .select()
+      .from(financeIncomes)
+      .where(and(...conditions))
+      .orderBy(desc(financeIncomes.receivedDate), asc(financeIncomes.id));
+
+    if (pagination && !get('search')) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+
+    const rows = await query;
+    let list = rows
+      .map((r) => dto<JsonRecord & { category: string; receivedDate: string; source: string; status: string }>(tenant, r));
+
+    if (get('search')) {
+      const q = String(get('search')).toLowerCase();
+      list = list.filter((inc) => inc.source.toLowerCase().includes(q));
+      if (pagination) {
+        list = list.slice(pagination.offset, pagination.offset + pagination.limit);
+      }
+    }
+
+    return list;
+  }
+
+  async countIncomes(tenant: Tenant, filters: URLSearchParams | JsonRecord = {}): Promise<number> {
+    const get = (k: string) => (filters instanceof URLSearchParams ? filters.get(k) ?? undefined : (filters[k] as string | undefined));
+    if (get('search')) {
+      const all = await this.listIncomes(tenant, filters);
+      return all.length;
+    }
+
+    const conditions = [eq(financeIncomes.workspaceId, tenant.workspaceId)];
+    const category = get('category');
+    const statusVal = get('status');
+    const dateFrom = get('dateFrom');
+    const dateTo = get('dateTo');
+
+    if (category) conditions.push(eq(financeIncomes.category, category));
+    if (statusVal) conditions.push(eq(financeIncomes.status, statusVal));
+    if (dateFrom) conditions.push(gte(financeIncomes.receivedDate, String(dateFrom)));
+    if (dateTo) conditions.push(lte(financeIncomes.receivedDate, String(dateTo)));
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(financeIncomes)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
 
   async createIncome(tenant: Tenant, data: JsonRecord, actor?: Actor) {

@@ -122,7 +122,9 @@ function handleError(
       message: apiError.message,
       requestId,
       ...(typeof retryAfter === "number" ? { retryAfter } : {}),
-      ...(nodeEnv !== "production" && apiError.details ? { details: apiError.details } : {}),
+      ...((apiError.code === "VALIDATION_FAILED" || nodeEnv !== "production") && apiError.details
+        ? { details: apiError.details }
+        : {}),
     },
   });
 }

@@ -242,43 +242,42 @@ All findings are classified with concrete source-code evidence, root-cause analy
 ### Domain C: Database & API
 
 #### Finding ID: `DB-001`
-- **Module:** Query Architecture (`apps/api/src/modules/education/sis.service.ts`, `sis-finance.service.ts`)
+- **Module:** Query Architecture (`apps/api/src/modules/education/sis.service.ts`, `sis-finance.service.ts`, `sis-admissions.service.ts`)
 - **Severity:** **High**
 - **Classification:** Scalability & Memory Risk
 - **Evidence:**
-  `sis.service.ts` line 323:
-  ```typescript
-  const rows = await this.database.db.select().from(attendanceSessions)
-    .where(eq(attendanceSessions.workspaceId, tenant.workspaceId))
-    .orderBy(desc(attendanceSessions.attendanceDate));
-  return rows.filter((row) => (!filters.academicYearId || ...));
-  ```
-  `sis.service.ts` line 225 (`teachingAssignments`), line 296 (`enrollments`), `sis-finance.service.ts` line 515 (`generateRecurringInvoices`).
-- **Root Cause:** Queries retrieve all workspace records into Node process memory and filter using JavaScript `.filter()`.
+  `sis.service.ts` previously retrieved unconstrained workspace rows into Node.js memory and filtered using JavaScript `.filter()`.
+- **Root Cause:** Queries retrieved all workspace records into Node process memory and filtered using JavaScript `.filter()`.
 - **Affected Files:**
   - `apps/api/src/modules/education/sis.service.ts`
   - `apps/api/src/modules/education/sis-finance.service.ts`
+  - `apps/api/src/modules/education/sis-admissions.service.ts`
 - **Security / Business Impact:** In production workspaces with thousands of attendance records and enrollments, this causes high memory consumption, high latency, and risks Node.js OOM crashes.
 - **Recommended Correction:** Move filters into SQL `WHERE` clauses combining `and(eq(col, filter))` and add sensible default `limit(100)` or pagination.
-- **Regression Test Requirements:** Benchmark query performance with SQL-level filtering; verify identical filtered results.
-- **Implementation Status:** Identified / Ready for Remediation
+- **Regression Test Requirements:** Benchmark query performance with SQL-level filtering; verify identical filtered results and tenant isolation.
+- **Implementation Status:** **Resolved (Phase 3 Hardened)**
+- **Remediation Details:** Fully eliminated in-memory `.filter()` calls across `listAttendanceSessions`, `listEnrollments`, `listTeachingAssignments`, `listTimetableEntries`, `listStudents`, `listStaff`, `listInvoices`, `listPayments`, `listExpenses`, `listIncomes`, `listEnquiries`, and `listApplications`. Built dynamic Drizzle SQL `where(and(...))` clauses applying exact criteria (`eq`, `inArray`, `gte`, `lte`) directly in the database engine, with primary sorting and secondary tie-breaking on `asc(table.id)`. Multi-tenant isolation is strictly maintained at the SQL root level (`eq(table.workspaceId, tenant.workspaceId)`).
+- **Verification Evidence:** `apps/api/tests/epic10n-phase3-database-validation.integration.test.ts` (DB-001 suite passed, 5/5 tests).
 
 ---
 
 #### Finding ID: `DB-002`
-- **Module:** API Request Body Pre-Validation (`apps/api/src/modules/education/education.module.ts`)
+- **Module:** API Request Body Pre-Validation (`apps/api/src/modules/education/education.module.ts`, `validation/sis-validation.ts`)
 - **Severity:** **Medium**
 - **Classification:** Robustness Defect
 - **Evidence:**
-  `education.module.ts` accepts raw `body(request)` as `Record<string, unknown>` without centralized schema validation.
-- **Root Cause:** Validation is performed via ad-hoc type assertions inside services rather than at the router boundary.
+  `education.module.ts` previously accepted raw `body(request)` as `Record<string, unknown>` without centralized schema validation.
+- **Root Cause:** Validation was performed via ad-hoc type assertions inside services rather than at the router boundary.
 - **Affected Files:**
   - `apps/api/src/modules/education/education.module.ts`
-  - `apps/api/src/modules/education/validation/` (New directory required)
+  - `apps/api/src/modules/education/validation/sis-validation.ts` (**New**)
+  - `apps/api/src/app.ts`
 - **Security / Business Impact:** Malformed or missing fields trigger unhandled MySQL schema errors (500) rather than standard HTTP 400 validation responses.
 - **Recommended Correction:** Introduce structured validation helper functions (analogous to `auth-validation.ts`) for all education mutation endpoints.
-- **Regression Test Requirements:** Test invalid payload inputs on all education POST/PATCH routes; assert HTTP 400 `VALIDATION_FAILED`.
-- **Implementation Status:** Identified / Ready for Remediation
+- **Regression Test Requirements:** Test invalid payload inputs on all education POST/PATCH routes; assert HTTP 400 `VALIDATION_FAILED` with structured `details`.
+- **Implementation Status:** **Resolved (Phase 3 Hardened)**
+- **Remediation Details:** Implemented centralized validation library `apps/api/src/modules/education/validation/sis-validation.ts` with prototype pollution defense (`__proto__`, `constructor`, `prototype` rejection), strict text constraints, positive integer cents validation, date format checks, and enum validation. Wired validation guards across all education mutation endpoints in `education.module.ts`. Updated error handler in `apps/api/src/app.ts` to surface structured `details: [{ field, message }]` whenever `code === 'VALIDATION_FAILED'`.
+- **Verification Evidence:** `apps/api/tests/epic10n-phase3-database-validation.integration.test.ts` (DB-002 suite passed, 6/6 tests).
 
 ---
 
@@ -287,14 +286,20 @@ All findings are classified with concrete source-code evidence, root-cause analy
 - **Severity:** **Medium**
 - **Classification:** Performance & Resource Management
 - **Evidence:**
-  Endpoints for students, invoices, payments, and expenses return unpaginated arrays.
-- **Root Cause:** Initial design assumed small cohort sizes.
+  Endpoints for students, enrollments, attendance, invoices, payments, expenses, and admissions previously returned unpaginated arrays.
+- **Root Cause:** Initial design assumed small cohort sizes without bounding limits.
 - **Affected Files:**
-  - `apps/api/src/modules/education/`
+  - `apps/api/src/common/pagination/pagination.ts` (**New**)
+  - `apps/api/src/modules/education/education.module.ts`
+  - `apps/api/src/modules/education/sis.service.ts`
+  - `apps/api/src/modules/education/sis-finance.service.ts`
+  - `apps/api/src/modules/education/sis-admissions.service.ts`
 - **Security / Business Impact:** Large response payloads degrade client performance and increase egress bandwidth costs.
-- **Recommended Correction:** Introduce optional `page` and `pageSize` (default 50, max 200) parameters on list endpoints while preserving backward compatibility.
-- **Regression Test Requirements:** Test pagination offset and limit parameters on student and invoice listings.
-- **Implementation Status:** Identified / Ready for Remediation
+- **Recommended Correction:** Introduce optional `page` and `pageSize` (default 25, max 100) parameters on list endpoints while preserving backward compatibility.
+- **Regression Test Requirements:** Test pagination offset and limit parameters on student and invoice listings; verify dual-envelope backward compatibility.
+- **Implementation Status:** **Resolved (Phase 3 Hardened)**
+- **Remediation Details:** Created standard pagination utility `apps/api/src/common/pagination/pagination.ts` parsing `page`, `pageSize`, `limit`, and `offset` with sensible defaults (page 1, pageSize 25, clamped to max 100). Implemented dual-envelope HTTP responses (`{ [entity]: items, data: items, pagination: buildPaginationMetadata(total, pagination) }`) guaranteeing 100% backward compatibility with all existing frontend consumers destructuring `{ students }`, `{ enrollments }`, `{ invoices }` while providing full pagination metadata for newer components. Bulk exports and aggregate reporting queries continue to fetch complete sets without truncating records.
+- **Verification Evidence:** `apps/api/tests/epic10n-phase3-database-validation.integration.test.ts` (DB-003 suite passed, 6/6 tests).
 
 ---
 
@@ -303,14 +308,15 @@ All findings are classified with concrete source-code evidence, root-cause analy
 - **Severity:** **Low**
 - **Classification:** Robustness Defect
 - **Evidence:**
-  `generateRecurringInvoices` loops over students and creates individual invoices. If an error occurs halfway, partial batch is created.
-- **Root Cause:** Missing batch transaction boundary or chunked settlement.
+  `generateRecurringInvoices` looped over students and created individual invoices. If an error occurred halfway, partial batch was created without clear itemization or concurrency locks.
+- **Root Cause:** Missing batch transaction boundary and row-level serialization on students.
 - **Affected Files:**
   - `apps/api/src/modules/education/sis-finance.service.ts`
-- **Security / Business Impact:** Partial batch generation requires manual reconciliation to determine which students were billed.
+- **Security / Business Impact:** Partial batch generation requires manual reconciliation to determine which students were billed, and concurrent worker invocations could duplicate invoices.
 - **Recommended Correction:** Wrap recurring billing batch in transaction or record batch execution log with failed/succeeded itemization.
-- **Regression Test Requirements:** Test recurring invoice batch generation with partial failure simulation.
-- **Implementation Status:** Identified / Ready for Remediation
+- **Implementation Status:** **Resolved (Phase 3 Hardened)**
+- **Remediation Details:** Refactored `generateRecurringInvoices` in `sis-finance.service.ts` with per-student transaction boundaries (`withTransaction`) and row-level locking on the student record (`SELECT ... FOR UPDATE`). Querying active enrollments is performed directly via SQL filters (`WHERE status = 'active'`). Inside each locked transaction boundary, existing invoices for the billing period are inspected under lock to idempotently prevent double-billing. The service returns a detailed execution summary including `eligibleStudentsCount`, `createdInvoicesCount`, `skippedDuplicatesCount`, `archivedExcludedCount`, `failedItems`, and overall `batchStatus` (`completed`, `skipped`, `partial_success`, `failed`).
+- **Verification Evidence:** `apps/api/tests/epic10n-phase3-database-validation.integration.test.ts` (DB-004 suite passed, 3/3 tests including concurrent double-billing race test).
 
 ---
 

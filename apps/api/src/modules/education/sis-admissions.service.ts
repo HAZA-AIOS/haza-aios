@@ -1,6 +1,7 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { ApiError } from "../../common/errors/api-error.js";
+import type { PaginationParams } from "../../common/pagination/pagination.js";
 import type { DatabaseClient } from "../../database/client.js";
 import { mapDatabaseError } from "../../database/errors.js";
 import { withTransaction } from "../../database/transactions.js";
@@ -178,23 +179,32 @@ export class SisAdmissionsService {
   /* ─────────────────────────────────────────────────────────────
    * 2. ENQUIRY MANAGEMENT (CRUD & CONVERT)
    * ───────────────────────────────────────────────────────────── */
-  async listEnquiries(tenant: Tenant, filters?: { status?: string; search?: string; gradeId?: string; campus?: string }) {
-    const rows = await this.database.db
+  async listEnquiries(
+    tenant: Tenant,
+    filters?: { status?: string; search?: string; gradeId?: string; campus?: string },
+    pagination?: PaginationParams
+  ) {
+    const conditions = [
+      eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
+      eq(portalUpdateRequests.requestType, "admission_enquiry"),
+    ];
+    if (filters?.status) {
+      conditions.push(eq(portalUpdateRequests.status, filters.status));
+    }
+
+    let query = this.database.db
       .select()
       .from(portalUpdateRequests)
-      .where(
-        and(
-          eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
-          eq(portalUpdateRequests.requestType, "admission_enquiry")
-        )
-      )
-      .orderBy(desc(portalUpdateRequests.createdAt));
+      .where(and(...conditions))
+      .orderBy(desc(portalUpdateRequests.createdAt), asc(portalUpdateRequests.id));
 
+    if (pagination && !filters?.gradeId && !filters?.campus && !filters?.search) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+
+    const rows = await query;
     let list = rows.map((r) => dto<JsonRecord & { id: string; status: string; studentName: string; referenceNumber: string; desiredGradeId?: string; preferredCampus?: string }>(tenant, r));
 
-    if (filters?.status) {
-      list = list.filter((e) => e.status === filters.status);
-    }
     if (filters?.gradeId) {
       list = list.filter((e) => e.desiredGradeId === filters.gradeId);
     }
@@ -212,7 +222,35 @@ export class SisAdmissionsService {
       );
     }
 
+    if (pagination && (filters?.gradeId || filters?.campus || filters?.search)) {
+      list = list.slice(pagination.offset, pagination.offset + pagination.limit);
+    }
+
     return list;
+  }
+
+  async countEnquiries(
+    tenant: Tenant,
+    filters?: { status?: string; search?: string; gradeId?: string; campus?: string }
+  ): Promise<number> {
+    if (filters?.gradeId || filters?.campus || filters?.search) {
+      const all = await this.listEnquiries(tenant, filters);
+      return all.length;
+    }
+
+    const conditions = [
+      eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
+      eq(portalUpdateRequests.requestType, "admission_enquiry"),
+    ];
+    if (filters?.status) {
+      conditions.push(eq(portalUpdateRequests.status, filters.status));
+    }
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(portalUpdateRequests)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
 
   async getEnquiry(tenant: Tenant, id: string) {
@@ -473,23 +511,32 @@ export class SisAdmissionsService {
   /* ─────────────────────────────────────────────────────────────
    * 3. APPLICATION MANAGEMENT (CRUD, DRAFT, SUBMIT, WITHDRAW)
    * ───────────────────────────────────────────────────────────── */
-  async listApplications(tenant: Tenant, filters?: { status?: string; search?: string; gradeId?: string; academicYear?: string; campus?: string }) {
-    const rows = await this.database.db
+  async listApplications(
+    tenant: Tenant,
+    filters?: { status?: string; search?: string; gradeId?: string; academicYear?: string; campus?: string },
+    pagination?: PaginationParams
+  ) {
+    const conditions = [
+      eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
+      eq(portalUpdateRequests.requestType, "admission_application"),
+    ];
+    if (filters?.status) {
+      conditions.push(eq(portalUpdateRequests.status, filters.status));
+    }
+
+    let query = this.database.db
       .select()
       .from(portalUpdateRequests)
-      .where(
-        and(
-          eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
-          eq(portalUpdateRequests.requestType, "admission_application")
-        )
-      )
-      .orderBy(desc(portalUpdateRequests.createdAt));
+      .where(and(...conditions))
+      .orderBy(desc(portalUpdateRequests.createdAt), asc(portalUpdateRequests.id));
 
+    if (pagination && !filters?.gradeId && !filters?.academicYear && !filters?.campus && !filters?.search) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+
+    const rows = await query;
     let list = rows.map((r) => dto<JsonRecord & { id: string; status: string; applicationNumber: string; desiredGradeId?: string; academicYear?: string; campus?: string; student?: JsonRecord }>(tenant, r));
 
-    if (filters?.status) {
-      list = list.filter((a) => a.status === filters.status);
-    }
     if (filters?.gradeId) {
       list = list.filter((a) => a.desiredGradeId === filters.gradeId);
     }
@@ -512,7 +559,35 @@ export class SisAdmissionsService {
       });
     }
 
+    if (pagination && (filters?.gradeId || filters?.academicYear || filters?.campus || filters?.search)) {
+      list = list.slice(pagination.offset, pagination.offset + pagination.limit);
+    }
+
     return list;
+  }
+
+  async countApplications(
+    tenant: Tenant,
+    filters?: { status?: string; search?: string; gradeId?: string; academicYear?: string; campus?: string }
+  ): Promise<number> {
+    if (filters?.gradeId || filters?.academicYear || filters?.campus || filters?.search) {
+      const all = await this.listApplications(tenant, filters);
+      return all.length;
+    }
+
+    const conditions = [
+      eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
+      eq(portalUpdateRequests.requestType, "admission_application"),
+    ];
+    if (filters?.status) {
+      conditions.push(eq(portalUpdateRequests.status, filters.status));
+    }
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(portalUpdateRequests)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
 
   async getApplication(tenant: Tenant, id: string) {

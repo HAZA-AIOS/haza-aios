@@ -98,21 +98,27 @@ graph TD
 ---
 
 ### Phase 3: Database Query Optimization & API Pre-Validation
-- **Objective:** Eliminate full-table scans with in-memory filtering, introduce SQL-level filters, and pre-validate mutation payloads.
+- **Objective:** Eliminate full-table scans with in-memory filtering, introduce SQL-level filters, pre-validate mutation payloads, bound pagination safely, and serialize recurring billing batches.
 - **Tasks:**
-  1. **Fix `DB-001` (SQL-Level Where Clauses):**
-     - Refactor `listAttendanceSessions`, `listEnrollments`, `teachingAssignments` in [`apps/api/src/modules/education/sis.service.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/sis.service.ts).
-     - Construct dynamic Drizzle SQL `where(and(...))` clauses combining all passed filter criteria (`academicYearId`, `gradeId`, `sectionId`, `status`, `date`).
-     - Remove in-memory `.filter()` passes over unconstrained table scans.
-  2. **Fix `DB-002` (Structured Request Body Validation):**
-     - Create `apps/api/src/modules/education/validation/sis-validation.ts`.
-     - Implement validation functions for `CreateStudentInput`, `CreateEnrollmentInput`, `CreateAcademicYearInput`, `CreateAttendanceSessionInput`.
-     - Validate before service calls; return HTTP 400 `VALIDATION_FAILED` on missing/invalid properties.
-  3. **Fix `DB-003` & `DB-004` (Safe Pagination Defaults & Recurring Billing Batch Safety):**
-     - Add default `limit: 100` with optional pagination parameters to student and enrollment queries.
-     - Wrap recurring invoice generation in batched transaction chunks (e.g. 50 students per chunk) with execution summaries.
-- **Dependencies:** Phase 2 complete.
-- **Estimated Effort:** Moderate; requires updating test fixtures if payload validation catches previously loose dummy objects.
+  1. **Fix `DB-001` (SQL-Level Where Clauses & Query Optimization):**
+     - Refactored `listAttendanceSessions`, `listEnrollments`, `listTeachingAssignments`, `listTimetableEntries`, `listStudents`, `listStaff` in [`apps/api/src/modules/education/sis.service.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/sis.service.ts).
+     - Refactored `listInvoices`, `listPayments`, `listExpenses`, `listIncomes` in [`apps/api/src/modules/education/sis-finance.service.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/sis-finance.service.ts).
+     - Refactored `listEnquiries`, `listApplications` in [`apps/api/src/modules/education/sis-admissions.service.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/sis-admissions.service.ts).
+     - Eliminated in-memory `.filter()` passes; constructed dynamic Drizzle SQL `where(and(...))` clauses combining all filter criteria directly in the database.
+  2. **Fix `DB-002` (Structured Request Body Validation & Prototype Pollution Defense):**
+     - Created [`apps/api/src/modules/education/validation/sis-validation.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/validation/sis-validation.ts).
+     - Implemented strict input validation across all education mutations (`academicYear`, `grade`, `section`, `student`, `enrollment`, `transfer`, `attendanceSession`, `attendanceRecords`, `staff`, `teachingAssignment`, `enquiry`, `application`, `invoice`, `payment`, `recurringInvoices`, `expense`, `income`).
+     - Hardened against prototype pollution (`__proto__`, `constructor`, `prototype`).
+     - Wired validation across all education mutation routes in [`apps/api/src/modules/education/education.module.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/education.module.ts) and surfaced structured `details: [{ field, message }]` on `VALIDATION_FAILED` (HTTP 400).
+  3. **Fix `DB-003` (Bounded Pagination & Dual-Envelope Backward Compatibility):**
+     - Created [`apps/api/src/common/pagination/pagination.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/common/pagination/pagination.ts) standardizing page/pageSize parsing (default page 1, pageSize 25, clamped to max 100) and limit/offset.
+     - Dual-envelope response pattern `{ [entity]: items, data: items, pagination: buildPaginationMetadata(total, pagination) }` maintains 100% backward compatibility with all frontend consumers while providing paginated data to new consumers.
+  4. **Fix `DB-004` (Recurring Billing Batch Atomicity & Row Locking):**
+     - Refactored `generateRecurringInvoices` in `sis-finance.service.ts` to execute with per-student transaction boundaries under row-level locks on `students` (`FOR UPDATE`).
+     - Verified duplicate prevention under lock, excluded archived students, and provided complete execution summaries (`eligibleStudentsCount`, `createdInvoicesCount`, `skippedDuplicatesCount`, `archivedExcludedCount`, `failedItems`, `batchStatus`).
+- **Verification Evidence:** `apps/api/tests/epic10n-phase3-database-validation.integration.test.ts` (20/20 tests passing, 100%).
+- **Quality Gates:** `typecheck:api` (0 errors), `typecheck:web` (0 errors), `build:api` (passed), `build:web` (passed), `db:check` (clean).
+- **Report:** [`docs/epic-10n/EPIC-10N-PHASE-3-DATABASE-VALIDATION.md`](file:///c:/HAZA-APPS/HAZA-AIOS/docs/epic-10n/EPIC-10N-PHASE-3-DATABASE-VALIDATION.md).
 
 ---
 

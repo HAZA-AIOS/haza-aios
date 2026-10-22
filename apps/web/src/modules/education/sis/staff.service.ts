@@ -21,8 +21,20 @@ export class StaffService {
     return AcademicService.createSubject(subject.organizationId, subject);
   }
 
-  static async getStaffList(organizationId: string): Promise<Staff[]> {
-    const body = await sisRequest<{ staff: Staff[] }>(organizationId, "/staff");
+  static async getStaffList(
+    organizationId: string,
+    options?: { page?: number; pageSize?: number; all?: boolean; status?: string; staffType?: string }
+  ): Promise<Staff[]> {
+    const params = new URLSearchParams();
+    if (options?.status) params.set("status", options.status);
+    if (options?.staffType) params.set("staffType", options.staffType);
+    if (options?.page) params.set("page", String(options.page));
+    if (options?.pageSize) params.set("pageSize", String(options.pageSize));
+    if (!options?.page && !options?.pageSize && options?.all !== false) {
+      params.set("all", "true");
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    const body = await sisRequest<{ staff: Staff[] }>(organizationId, `/staff${query}`);
     return body.staff;
   }
 

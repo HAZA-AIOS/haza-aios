@@ -1,10 +1,44 @@
 import type { Student } from "./sis.types";
 import { jsonBody, sisRequest } from "./sis-api";
 
+export interface PaginationMetadata {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
 export class StudentServiceClass {
-  async getStudents(organizationId: string): Promise<Student[]> {
-    const body = await sisRequest<{ students: Student[] }>(organizationId, "/students");
+  async getStudents(
+    organizationId: string,
+    options?: { page?: number; pageSize?: number; all?: boolean; status?: string; admissionNumber?: string }
+  ): Promise<Student[]> {
+    const params = new URLSearchParams();
+    if (options?.status) params.set("status", options.status);
+    if (options?.admissionNumber) params.set("admissionNumber", options.admissionNumber);
+    if (options?.page) params.set("page", String(options.page));
+    if (options?.pageSize) params.set("pageSize", String(options.pageSize));
+    if (!options?.page && !options?.pageSize && options?.all !== false) {
+      params.set("all", "true");
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    const body = await sisRequest<{ students: Student[] }>(organizationId, `/students${query}`);
     return body.students;
+  }
+
+  async getPaginatedStudents(
+    organizationId: string,
+    options?: { page?: number; pageSize?: number; status?: string }
+  ): Promise<{ students: Student[]; pagination: PaginationMetadata }> {
+    const params = new URLSearchParams();
+    if (options?.status) params.set("status", options.status);
+    params.set("page", String(options?.page ?? 1));
+    params.set("pageSize", String(options?.pageSize ?? 25));
+    const query = params.toString() ? `?${params.toString()}` : "";
+    const body = await sisRequest<{ students: Student[]; pagination: PaginationMetadata }>(organizationId, `/students${query}`);
+    return { students: body.students, pagination: body.pagination };
   }
 
   async getStudent(id: string, organizationId: string): Promise<Student | null> {

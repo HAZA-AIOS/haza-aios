@@ -3,17 +3,17 @@ import { jsonBody, sisRequest } from "./sis-api";
 
 export class TeachingAssignmentService {
   static async getAssignments(organizationId: string): Promise<TeachingAssignment[]> {
-    const body = await sisRequest<{ assignments: TeachingAssignment[] }>(organizationId, "/teaching-assignments");
+    const body = await sisRequest<{ assignments: TeachingAssignment[] }>(organizationId, "/teaching-assignments?all=true");
     return body.assignments;
   }
 
   static async getAssignmentsByStaff(staffId: string, organizationId: string): Promise<TeachingAssignment[]> {
-    const body = await sisRequest<{ assignments: TeachingAssignment[] }>(organizationId, `/teaching-assignments?staffId=${encodeURIComponent(staffId)}`);
+    const body = await sisRequest<{ assignments: TeachingAssignment[] }>(organizationId, `/teaching-assignments?staffId=${encodeURIComponent(staffId)}&all=true`);
     return body.assignments;
   }
 
   static async getAssignmentsByClass(academicYear: string, gradeId: string, sectionId: string, organizationId: string): Promise<TeachingAssignment[]> {
-    const params = new URLSearchParams({ academicYear, gradeId });
+    const params = new URLSearchParams({ academicYear, gradeId, all: "true" });
     if (sectionId) params.set("sectionId", sectionId);
     const body = await sisRequest<{ assignments: TeachingAssignment[] }>(organizationId, `/teaching-assignments?${params.toString()}`);
     return body.assignments;

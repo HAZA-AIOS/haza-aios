@@ -11,10 +11,20 @@ export class EnrollmentServiceClass {
     return enrollments.filter((enrollment) => enrollment.status === "active").sort((a, b) => new Date(b.enrollmentDate).getTime() - new Date(a.enrollmentDate).getTime())[0] ?? null;
   }
 
-  async getEnrollments(organizationId: string, filters?: Partial<Pick<Enrollment, "studentId" | "academicYear" | "gradeId" | "sectionId" | "status">>): Promise<Enrollment[]> {
+  async getEnrollments(
+    organizationId: string,
+    filters?: Partial<Pick<Enrollment, "studentId" | "academicYear" | "gradeId" | "sectionId" | "status">> & {
+      page?: number;
+      pageSize?: number;
+      all?: boolean;
+    }
+  ): Promise<Enrollment[]> {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(filters ?? {})) {
-      if (value) params.set(key, value);
+      if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+    }
+    if (!filters?.page && !filters?.pageSize && filters?.all !== false) {
+      params.set("all", "true");
     }
     const query = params.toString() ? `?${params.toString()}` : "";
     const body = await sisRequest<{ enrollments: Enrollment[] }>(organizationId, `/enrollments${query}`);

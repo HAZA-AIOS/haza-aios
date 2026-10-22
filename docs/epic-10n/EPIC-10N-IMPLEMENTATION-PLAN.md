@@ -110,13 +110,24 @@ graph TD
      - Implemented strict input validation across all education mutations (`academicYear`, `grade`, `section`, `student`, `enrollment`, `transfer`, `attendanceSession`, `attendanceRecords`, `staff`, `teachingAssignment`, `enquiry`, `application`, `invoice`, `payment`, `recurringInvoices`, `expense`, `income`).
      - Hardened against prototype pollution (`__proto__`, `constructor`, `prototype`).
      - Wired validation across all education mutation routes in [`apps/api/src/modules/education/education.module.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/modules/education/education.module.ts) and surfaced structured `details: [{ field, message }]` on `VALIDATION_FAILED` (HTTP 400).
-  3. **Fix `DB-003` (Bounded Pagination & Dual-Envelope Backward Compatibility):**
+  3. **Fix `DB-003` (Bounded Pagination, Strict Integer Parsing & Complete Dataset Workflows):**
      - Created [`apps/api/src/common/pagination/pagination.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/src/common/pagination/pagination.ts) standardizing page/pageSize parsing (default page 1, pageSize 25, clamped to max 100) and limit/offset.
-     - Dual-envelope response pattern `{ [entity]: items, data: items, pagination: buildPaginationMetadata(total, pagination) }` maintains 100% backward compatibility with all frontend consumers while providing paginated data to new consumers.
+     - Implemented strict integer parsing rejecting fractional numbers, partially numeric strings (`25abc`), negative values, zero page numbers, NaN, Infinity, and unsafe integers.
+     - Implemented multiplication overflow protection for derived offset `(page - 1) * pageSize`.
+     - Deterministic precedence rules: `pageSize` takes precedence over `limit`; `page` takes precedence over `offset`.
+     - Documented bounded compatibility mechanism `all=true` / `unbounded=true` with safe upper ceiling (`limit: 2000`), protecting memory while guaranteeing complete operational datasets for class attendance rosters, examinations gradebooks, and financial reports.
+     - Dual-envelope response pattern `{ [entity]: items, data: items, pagination: buildPaginationMetadata(total, pagination) }` maintains 100% backward compatibility with all frontend consumers destructuring `{ students }`, `{ enrollments }`, `{ invoices }`.
+     - Updated frontend services (`StudentService`, `EnrollmentService`, `StaffService`, `FinanceService`, `AttendanceService`, `AdmissionsService`) with `all=true` defaults for operational queries.
+     - Created reusable `Pagination` UI component in `@haza-aios/ui` and wired interactive pagination into `StudentDirectoryPage.tsx`.
   4. **Fix `DB-004` (Recurring Billing Batch Atomicity & Row Locking):**
      - Refactored `generateRecurringInvoices` in `sis-finance.service.ts` to execute with per-student transaction boundaries under row-level locks on `students` (`FOR UPDATE`).
      - Verified duplicate prevention under lock, excluded archived students, and provided complete execution summaries (`eligibleStudentsCount`, `createdInvoicesCount`, `skippedDuplicatesCount`, `archivedExcludedCount`, `failedItems`, `batchStatus`).
-- **Verification Evidence:** `apps/api/tests/epic10n-phase3-database-validation.integration.test.ts` (20/20 tests passing, 100%).
+  5. **Correction A (Historical Identifier Backfill & Data Integrity):**
+     - Added additive migration `0020_backfill_portal_request_identifiers.sql` and repeatable procedure `apps/api/src/database/backfills/backfill-portal-identifiers.ts`.
+     - Idempotently and safely backfills legacy JSON-only enquiry and application identifiers while evaluating intra-workspace duplicate conflicts and preserving multi-tenant isolation.
+- **Verification Evidence:**
+  - `apps/api/tests/epic10n-phase3-database-validation.integration.test.ts` (20/20 tests passing, 100%).
+  - `apps/api/tests/epic10n-phase3-corrections.integration.test.ts` (20/20 tests passing, 100%).
 - **Quality Gates:** `typecheck:api` (0 errors), `typecheck:web` (0 errors), `build:api` (passed), `build:web` (passed), `db:check` (clean).
 - **Report:** [`docs/epic-10n/EPIC-10N-PHASE-3-DATABASE-VALIDATION.md`](file:///c:/HAZA-APPS/HAZA-AIOS/docs/epic-10n/EPIC-10N-PHASE-3-DATABASE-VALIDATION.md).
 

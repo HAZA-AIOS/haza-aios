@@ -32,10 +32,17 @@ interface ActorContext { userId: string; role: ActorRole }
 interface CreateInvoiceInput { studentId: string; enrollmentId: string; academicYearId: string; issueDate: string; dueDate: string; currency: string; feeStructureIds?: string[]; assignmentIds?: string[]; discountIds?: string[]; adjustments?: Array<Omit<InvoiceAdjustment, "id" | "createdAt">>; status?: Extract<InvoiceStatus, "draft" | "issued"> }
 interface RecordPaymentInput { invoiceId: string; amountCents: number; paymentDate: string; paymentMethod: PaymentMethod; referenceNumber?: string; receivedBy: string; notes?: string }
 
-function query(filters?: FeeReportFilters | Record<string, unknown>): string {
-  if (!filters) return "";
+function query(filters?: FeeReportFilters | Record<string, unknown>, defaultAll = true): string {
   const params = new URLSearchParams();
-  Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") params.set(key, String(value)); });
+  if (filters) {
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+    });
+  }
+  const hasPage = params.has("page") || params.has("pageSize") || params.has("limit") || params.has("offset");
+  if (!hasPage && defaultAll && !params.has("all")) {
+    params.set("all", "true");
+  }
   const text = params.toString();
   return text ? `?${text}` : "";
 }
@@ -75,8 +82,8 @@ export class FinanceServiceClass {
   async voidPayment(organizationId: string, paymentId: string, reason: string, authorizedBy: string, actor?: ActorContext): Promise<FeePayment> { return (await sisRequest<{ payment: FeePayment }>(organizationId, `/finance/payments/${paymentId}/void`, { method: "POST", ...jsonBody({ reason, authorizedBy, actor }) })).payment; }
   async reconcilePayment(organizationId: string, paymentId: string, input: { bankStatementRef?: string; notes?: string; reconciledBy: string }, actor?: ActorContext): Promise<FeePayment> { return (await sisRequest<{ payment: FeePayment }>(organizationId, `/finance/payments/${paymentId}/reconcile`, { method: "POST", ...jsonBody(actorBody(input, actor)) })).payment; }
   async unreconcilePayment(organizationId: string, paymentId: string, input: { reason: string; authorizedBy: string }, actor?: ActorContext): Promise<FeePayment> { return (await sisRequest<{ payment: FeePayment }>(organizationId, `/finance/payments/${paymentId}/unreconcile`, { method: "POST", ...jsonBody(actorBody(input, actor)) })).payment; }
-  async getPayments(organizationId: string, studentId?: string): Promise<FeePayment[]> { return (await sisRequest<{ payments: FeePayment[] }>(organizationId, `/finance/payments${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ""}`)).payments; }
-  async getReceipts(organizationId: string, studentId?: string): Promise<FeeReceipt[]> { return (await sisRequest<{ receipts: FeeReceipt[] }>(organizationId, `/finance/receipts${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ""}`)).receipts; }
+  async getPayments(organizationId: string, studentId?: string, options?: { page?: number; pageSize?: number }): Promise<FeePayment[]> { return (await sisRequest<{ payments: FeePayment[] }>(organizationId, `/finance/payments${query({ studentId, ...options })}`)).payments; }
+  async getReceipts(organizationId: string, studentId?: string, options?: { page?: number; pageSize?: number }): Promise<FeeReceipt[]> { return (await sisRequest<{ receipts: FeeReceipt[] }>(organizationId, `/finance/receipts${query({ studentId, ...options })}`)).receipts; }
 
   // Student Ledger & Reconciliation
   async getStudentLedger(organizationId: string, studentId: string): Promise<StudentFeeLedgerEntry[]> { return (await sisRequest<{ ledger: StudentFeeLedgerEntry[] }>(organizationId, `/finance/ledger/${studentId}`)).ledger; }

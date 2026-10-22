@@ -1,5 +1,5 @@
 import type { SchoolSchedule, TimePeriod, TimetableEntry } from "./sis.types";
-import { jsonBody, sisRequest } from "./sis-api";
+import { fetchCompleteSisDataset, jsonBody, sisRequest } from "./sis-api";
 
 type TimetableEntryFilters = Partial<
   Pick<
@@ -83,8 +83,7 @@ class TimetableService {
     organizationId: string,
     filters: TimetableEntryFilters = {},
   ): Promise<TimetableEntry[]> {
-    const response = await sisRequest<{ entries: TimetableEntry[] }>(organizationId, `/timetable/entries${query(filters)}`);
-    return response.entries;
+    return fetchCompleteSisDataset<TimetableEntry>(organizationId, `/timetable/entries${query(filters, false)}`);
   }
 
   async saveTimetableEntry(

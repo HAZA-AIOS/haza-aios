@@ -698,8 +698,11 @@ function update<T extends Row>(rows: T[], orgId: string, id: string | undefined,
   return rows[index];
 }
 
+const PAGINATION_QUERY_KEYS = new Set(["all", "unbounded", "page", "pageSize", "limit", "offset"]);
+
 function matches(row: Record<string, unknown>, url: URL): boolean {
   for (const [key, value] of url.searchParams.entries()) {
+    if (PAGINATION_QUERY_KEYS.has(key)) continue;
     if (String(row[key]) !== value) return false;
   }
   return true;

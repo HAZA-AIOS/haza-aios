@@ -1,6 +1,6 @@
 import type { Staff, Department, Subject } from "./sis.types";
 import { AcademicService } from "./academic.service";
-import { jsonBody, sisRequest } from "./sis-api";
+import { fetchCompleteSisDataset, jsonBody, sisRequest } from "./sis-api";
 
 export class StaffService {
   static async getDepartments(organizationId: string): Promise<Department[]> {
@@ -23,19 +23,22 @@ export class StaffService {
 
   static async getStaffList(
     organizationId: string,
-    options?: { page?: number; pageSize?: number; all?: boolean; status?: string; staffType?: string }
+    options?: { page?: number; pageSize?: number; all?: boolean; status?: string; staffType?: string; signal?: AbortSignal }
   ): Promise<Staff[]> {
     const params = new URLSearchParams();
     if (options?.status) params.set("status", options.status);
     if (options?.staffType) params.set("staffType", options.staffType);
-    if (options?.page) params.set("page", String(options.page));
-    if (options?.pageSize) params.set("pageSize", String(options.pageSize));
-    if (!options?.page && !options?.pageSize && options?.all !== false) {
-      params.set("all", "true");
+
+    if (options?.page || options?.pageSize) {
+      if (options.page) params.set("page", String(options.page));
+      if (options.pageSize) params.set("pageSize", String(options.pageSize));
+      const query = params.toString() ? `?${params.toString()}` : "";
+      const body = await sisRequest<{ staff?: Staff[]; data?: Staff[] }>(organizationId, `/staff${query}`, { signal: options?.signal });
+      return body.staff ?? body.data ?? [];
     }
+
     const query = params.toString() ? `?${params.toString()}` : "";
-    const body = await sisRequest<{ staff: Staff[] }>(organizationId, `/staff${query}`);
-    return body.staff;
+    return fetchCompleteSisDataset<Staff>(organizationId, `/staff${query}`, { signal: options?.signal });
   }
 
   static async getStaffById(id: string, organizationId: string): Promise<Staff | null> {

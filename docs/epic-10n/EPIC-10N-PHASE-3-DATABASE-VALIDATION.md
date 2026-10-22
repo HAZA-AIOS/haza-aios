@@ -367,7 +367,7 @@ All 40 Phase 3 integration tests execute against MySQL 9.4 and pass cleanly:
 
 | File Path | Change Type | Purpose |
 | :--- | :---: | :--- |
-| `apps/api/src/common/pagination/pagination.ts` | **New / Hardened** | Strict integer parser, overflow defense, deterministic precedence, bounded compatibility, dual envelope. |
+| `apps/api/src/common/pagination/pagination.ts` | **New / Hardened** | Strict integer parser, overflow defense, deterministic precedence, truthful metadata (eliminated defective `totalPages: 1` forced override), semantic aliases, and `fetchAllBatches<T>`. |
 | `apps/api/src/modules/education/validation/sis-validation.ts` | **New** | Centralized pre-validation library with prototype pollution defense and education domain schemas. |
 | `apps/api/src/database/migrations/0020_backfill_portal_request_identifiers.sql` | **New** | Idempotent, conflict-free backfill migration for historical portal identifiers. |
 | `apps/api/src/database/migrations/meta/_journal.json` | Modified | Registered migration 0020 in Drizzle migration journal. |
@@ -379,26 +379,33 @@ All 40 Phase 3 integration tests execute against MySQL 9.4 and pass cleanly:
 | `apps/api/src/modules/education/education.module.ts` | Modified | Wired request validation guards into mutation routes and dual-envelope pagination into listing routes. |
 | `apps/api/tests/epic10n-phase3-database-validation.integration.test.ts` | **New** | Dedicated 20-test integration suite verifying DB-001, DB-002, DB-003, and DB-004. |
 | `apps/api/tests/epic10n-phase3-corrections.integration.test.ts` | **New** | Dedicated 20-test integration suite verifying Corrections A, B, and C. |
+| `apps/api/tests/epic10n-phase3-pagination-completeness.integration.test.ts` | **New** | Dedicated 14-test integration suite verifying truthful metadata for 0, 1, 25, 100, 2000, 2001, 5000 records and real MySQL 2,050 records bounded retrieval. |
 | `packages/ui/src/components/pagination.tsx` | **New** | Shared reusable pagination UI component. |
 | `packages/ui/src/index.ts` | Modified | Exported pagination component in UI package. |
-| `apps/web/src/modules/education/sis/student.service.ts` | Modified | Added `all=true` compatibility and `getPaginatedStudents` helper. |
-| `apps/web/src/modules/education/sis/enrollment.service.ts` | Modified | Added `all=true` compatibility for section roster completeness. |
-| `apps/web/src/modules/education/sis/staff.service.ts` | Modified | Added `all=true` compatibility for staff/teacher directory and selection dropdowns. |
-| `apps/web/src/modules/education/sis/finance.service.ts` | Modified | Added `all=true` compatibility to query builder for reports and ledgers. |
-| `apps/web/src/modules/education/sis/attendance.service.ts` | Modified | Added `all=true` compatibility to session query builder. |
-| `apps/web/src/modules/education/sis/admissions.service.ts` | Modified | Added `all=true` compatibility for enquiry and application lists and reports. |
-| `apps/web/src/modules/education/sis/teaching-assignment.service.ts` | Modified | Added `all=true` parameter to ensure complete assignment rosters. |
-| `apps/web/src/modules/education/sis/timetable.service.ts` | Modified | Added `all=true` compatibility for timetable entries. |
+| `apps/web/src/modules/education/sis/complete-retrieval.ts` | **New** | Shared client-side bounded complete dataset retrieval engine (`fetchCompleteDataset`, `fetchCompleteSisDataset`) with loop protection, key deduplication, and error isolation. |
+| `apps/web/src/modules/education/sis/sis-api.ts` | Modified | Re-exported complete retrieval utilities. |
+| `apps/web/src/modules/education/sis/__tests__/complete-retrieval.test.ts` | **New** | Dedicated 11-test frontend suite verifying complete retrieval across pages, error boundaries, retries, and cancellation. |
+| `apps/web/src/test/setup.ts` | Modified | Enhanced mock server router to ignore pagination query keys when matching entity attributes. |
+| `apps/web/src/modules/education/sis/student.service.ts` | Modified | Wired `fetchCompleteSisDataset` for complete queries and bounded pagination for directory. |
+| `apps/web/src/modules/education/sis/enrollment.service.ts` | Modified | Wired `fetchCompleteSisDataset` for complete section enrollment rosters. |
+| `apps/web/src/modules/education/sis/staff.service.ts` | Modified | Wired `fetchCompleteSisDataset` for complete staff rosters and dropdown selection lists. |
+| `apps/web/src/modules/education/sis/finance.service.ts` | Modified | Wired `fetchCompleteSisDataset` for complete invoice, payment, expense, and income reports and ledgers. |
+| `apps/web/src/modules/education/sis/attendance.service.ts` | Modified | Refined query defaults to avoid redundant `all=true` parameter appends on history and summaries. |
+| `apps/web/src/modules/education/sis/admissions.service.ts` | Modified | Wired `fetchCompleteSisDataset` for complete enquiry and application listings and exports. |
+| `apps/web/src/modules/education/sis/teaching-assignment.service.ts` | Modified | Wired `fetchCompleteSisDataset` for complete teaching assignment rosters. |
+| `apps/web/src/modules/education/sis/timetable.service.ts` | Modified | Wired `fetchCompleteSisDataset` for complete timetable entries. |
 | `apps/web/src/pages/workspace/education/students/StudentDirectoryPage.tsx` | Modified | Wired interactive pagination controls into student directory table. |
 | `docs/epic-10n/EPIC-10N-AUDIT-MATRIX.md` | Modified | Updated INT-004 and DB-001..DB-004 findings with full remediation evidence. |
 | `docs/epic-10n/EPIC-10N-IMPLEMENTATION-PLAN.md` | Modified | Updated Phase 3 plan with completed tasks and quality gates. |
 | `docs/epic-10n/EPIC-10N-PHASE-3-DATABASE-VALIDATION.md` | **New** | Comprehensive Phase 3 implementation and hardening report. |
+| `docs/epic-10n/EPIC-10N-PHASE-3-PAGINATION-COMPLETENESS.md` | **New** | Detailed report on complete dataset retrieval architecture and truthful metadata. |
 
 ---
 
 ## 7. Next Phase Readiness & Recommendations for ChatGPT
 
-Phase 3 is 100% complete, fully verified, and ready for operator review.
+Phase 3 and the Phase 3 Final Correction are 100% complete, fully verified, and ready for operator review.
+For the complete technical specification of the pagination metadata and multi-batch retrieval architecture, see [`docs/epic-10n/EPIC-10N-PHASE-3-PAGINATION-COMPLETENESS.md`](file:///c:/HAZA-APPS/HAZA-AIOS/docs/epic-10n/EPIC-10N-PHASE-3-PAGINATION-COMPLETENESS.md).
 
 ### Recommendations for Phase 4 (Frontend UX Robustness & Route Cleanup)
 - **Target Items:** `UX-001` (remove duplicate route cases in `apps/web/src/App.tsx`), `UX-002` (modal form double-submit protection in `apps/web/src/pages/workspace/education/`).

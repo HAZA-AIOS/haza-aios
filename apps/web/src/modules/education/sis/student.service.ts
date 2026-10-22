@@ -1,5 +1,5 @@
 import type { Student } from "./sis.types";
-import { jsonBody, sisRequest } from "./sis-api";
+import { fetchCompleteSisDataset, jsonBody, sisRequest } from "./sis-api";
 
 export interface PaginationMetadata {
   page: number;
@@ -13,19 +13,24 @@ export interface PaginationMetadata {
 export class StudentServiceClass {
   async getStudents(
     organizationId: string,
-    options?: { page?: number; pageSize?: number; all?: boolean; status?: string; admissionNumber?: string }
+    options?: { page?: number; pageSize?: number; all?: boolean; status?: string; admissionNumber?: string; signal?: AbortSignal }
   ): Promise<Student[]> {
     const params = new URLSearchParams();
     if (options?.status) params.set("status", options.status);
     if (options?.admissionNumber) params.set("admissionNumber", options.admissionNumber);
-    if (options?.page) params.set("page", String(options.page));
-    if (options?.pageSize) params.set("pageSize", String(options.pageSize));
-    if (!options?.page && !options?.pageSize && options?.all !== false) {
-      params.set("all", "true");
+
+    // If specific page requested, execute single bounded page request
+    if (options?.page || options?.pageSize) {
+      if (options.page) params.set("page", String(options.page));
+      if (options.pageSize) params.set("pageSize", String(options.pageSize));
+      const query = params.toString() ? `?${params.toString()}` : "";
+      const body = await sisRequest<{ students?: Student[]; data?: Student[] }>(organizationId, `/students${query}`, { signal: options?.signal });
+      return body.students ?? body.data ?? [];
     }
+
+    // Operational complete retrieval: iterate bounded pages until 100% complete
     const query = params.toString() ? `?${params.toString()}` : "";
-    const body = await sisRequest<{ students: Student[] }>(organizationId, `/students${query}`);
-    return body.students;
+    return fetchCompleteSisDataset<Student>(organizationId, `/students${query}`, { signal: options?.signal });
   }
 
   async getPaginatedStudents(

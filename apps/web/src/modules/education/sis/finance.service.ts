@@ -1,4 +1,4 @@
-import { jsonBody, sisRequest } from "./sis-api";
+import { fetchCompleteSisDataset, jsonBody, sisRequest } from "./sis-api";
 import type {
   CashFlowReport,
   ExpenseCategory,
@@ -74,7 +74,13 @@ export class FinanceServiceClass {
   async createInvoice(organizationId: string, input: CreateInvoiceInput, actor?: ActorContext): Promise<StudentInvoice> { return (await sisRequest<{ invoice: StudentInvoice }>(organizationId, "/finance/invoices", { method: "POST", ...jsonBody(actorBody(input, actor)) })).invoice; }
   async issueInvoice(organizationId: string, invoiceId: string, actor?: ActorContext): Promise<StudentInvoice> { return (await sisRequest<{ invoice: StudentInvoice }>(organizationId, `/finance/invoices/${invoiceId}/issue`, { method: "POST", ...jsonBody({ actor }) })).invoice; }
   async voidInvoice(organizationId: string, invoiceId: string, reason: string, authorizedBy?: string, actor?: ActorContext): Promise<StudentInvoice> { return (await sisRequest<{ invoice: StudentInvoice }>(organizationId, `/finance/invoices/${invoiceId}/void`, { method: "POST", ...jsonBody(actorBody({ reason, authorizedBy }, actor)) })).invoice; }
-  async getInvoices(organizationId: string, filters?: FeeReportFilters): Promise<StudentInvoice[]> { return (await sisRequest<{ invoices: StudentInvoice[] }>(organizationId, `/finance/invoices${query(filters)}`)).invoices; }
+  async getInvoices(organizationId: string, filters?: FeeReportFilters & { page?: number; pageSize?: number }): Promise<StudentInvoice[]> {
+    if (filters?.page || filters?.pageSize) {
+      const body = await sisRequest<{ invoices?: StudentInvoice[]; data?: StudentInvoice[] }>(organizationId, `/finance/invoices${query(filters, false)}`);
+      return body.invoices ?? body.data ?? [];
+    }
+    return fetchCompleteSisDataset<StudentInvoice>(organizationId, `/finance/invoices${query(filters, false)}`);
+  }
   async generateRecurringInvoices(organizationId: string, input: { academicYearId: string; billingPeriod: string; gradeId?: string; sectionId?: string; feeStructureIds: string[]; issueDate: string; dueDate: string; issueNow?: boolean }, actor?: ActorContext): Promise<RecurringInvoiceGenerationResult> { return sisRequest(organizationId, "/finance/invoices/generate-recurring", { method: "POST", ...jsonBody(actorBody(input, actor)) }); }
 
   // Payments & Receipts & Reconciliation
@@ -82,7 +88,13 @@ export class FinanceServiceClass {
   async voidPayment(organizationId: string, paymentId: string, reason: string, authorizedBy: string, actor?: ActorContext): Promise<FeePayment> { return (await sisRequest<{ payment: FeePayment }>(organizationId, `/finance/payments/${paymentId}/void`, { method: "POST", ...jsonBody({ reason, authorizedBy, actor }) })).payment; }
   async reconcilePayment(organizationId: string, paymentId: string, input: { bankStatementRef?: string; notes?: string; reconciledBy: string }, actor?: ActorContext): Promise<FeePayment> { return (await sisRequest<{ payment: FeePayment }>(organizationId, `/finance/payments/${paymentId}/reconcile`, { method: "POST", ...jsonBody(actorBody(input, actor)) })).payment; }
   async unreconcilePayment(organizationId: string, paymentId: string, input: { reason: string; authorizedBy: string }, actor?: ActorContext): Promise<FeePayment> { return (await sisRequest<{ payment: FeePayment }>(organizationId, `/finance/payments/${paymentId}/unreconcile`, { method: "POST", ...jsonBody(actorBody(input, actor)) })).payment; }
-  async getPayments(organizationId: string, studentId?: string, options?: { page?: number; pageSize?: number }): Promise<FeePayment[]> { return (await sisRequest<{ payments: FeePayment[] }>(organizationId, `/finance/payments${query({ studentId, ...options })}`)).payments; }
+  async getPayments(organizationId: string, studentId?: string, options?: { page?: number; pageSize?: number }): Promise<FeePayment[]> {
+    if (options?.page || options?.pageSize) {
+      const body = await sisRequest<{ payments?: FeePayment[]; data?: FeePayment[] }>(organizationId, `/finance/payments${query({ studentId, ...options }, false)}`);
+      return body.payments ?? body.data ?? [];
+    }
+    return fetchCompleteSisDataset<FeePayment>(organizationId, `/finance/payments${query({ studentId, ...options }, false)}`);
+  }
   async getReceipts(organizationId: string, studentId?: string, options?: { page?: number; pageSize?: number }): Promise<FeeReceipt[]> { return (await sisRequest<{ receipts: FeeReceipt[] }>(organizationId, `/finance/receipts${query({ studentId, ...options })}`)).receipts; }
 
   // Student Ledger & Reconciliation
@@ -103,7 +115,13 @@ export class FinanceServiceClass {
   async updateExpenseCategory(organizationId: string, id: string, updates: Partial<ExpenseCategory>, actor?: ActorContext): Promise<ExpenseCategory> { return (await sisRequest<{ category: ExpenseCategory }>(organizationId, `/finance/expense-categories/${id}`, { method: "PATCH", ...jsonBody(actorBody(updates, actor)) })).category; }
   async deleteExpenseCategory(organizationId: string, id: string, actor?: ActorContext): Promise<{ success: boolean; id: string }> { return (await sisRequest<{ category: { success: boolean; id: string } }>(organizationId, `/finance/expense-categories/${id}`, { method: "DELETE", ...jsonBody({ actor }) })).category; }
 
-  async getExpenses(organizationId: string, filters?: { categoryId?: string; status?: string; dateFrom?: string; dateTo?: string }): Promise<ExpenseRecord[]> { return (await sisRequest<{ expenses: ExpenseRecord[] }>(organizationId, `/finance/expenses${query(filters)}`)).expenses; }
+  async getExpenses(organizationId: string, filters?: { categoryId?: string; status?: string; dateFrom?: string; dateTo?: string; page?: number; pageSize?: number }): Promise<ExpenseRecord[]> {
+    if (filters?.page || filters?.pageSize) {
+      const body = await sisRequest<{ expenses?: ExpenseRecord[]; data?: ExpenseRecord[] }>(organizationId, `/finance/expenses${query(filters, false)}`);
+      return body.expenses ?? body.data ?? [];
+    }
+    return fetchCompleteSisDataset<ExpenseRecord>(organizationId, `/finance/expenses${query(filters, false)}`);
+  }
   async createExpense(organizationId: string, data: Omit<ExpenseRecord, "id" | "organizationId" | "expenseNumber" | "status" | "createdAt" | "updatedAt">, actor?: ActorContext): Promise<ExpenseRecord> { return (await sisRequest<{ expense: ExpenseRecord }>(organizationId, "/finance/expenses", { method: "POST", ...jsonBody(actorBody(data, actor)) })).expense; }
   async updateExpense(organizationId: string, id: string, updates: Partial<ExpenseRecord>, actor?: ActorContext): Promise<ExpenseRecord> { return (await sisRequest<{ expense: ExpenseRecord }>(organizationId, `/finance/expenses/${id}`, { method: "PATCH", ...jsonBody(actorBody(updates, actor)) })).expense; }
   async deleteExpense(organizationId: string, id: string, actor?: ActorContext): Promise<{ success: boolean; id: string }> { return (await sisRequest<{ expense: { success: boolean; id: string } }>(organizationId, `/finance/expenses/${id}`, { method: "DELETE", ...jsonBody({ actor }) })).expense; }
@@ -113,7 +131,13 @@ export class FinanceServiceClass {
   async disburseExpense(organizationId: string, id: string, data: { paymentMethod: PaymentMethod; referenceNumber?: string; disbursedBy: string }, actor?: ActorContext): Promise<ExpenseRecord> { return (await sisRequest<{ expense: ExpenseRecord }>(organizationId, `/finance/expenses/${id}/disburse`, { method: "POST", ...jsonBody(actorBody(data, actor)) })).expense; }
 
   // Other Incomes
-  async getIncomes(organizationId: string, filters?: { category?: string; dateFrom?: string; dateTo?: string }): Promise<IncomeRecord[]> { return (await sisRequest<{ incomes: IncomeRecord[] }>(organizationId, `/finance/incomes${query(filters)}`)).incomes; }
+  async getIncomes(organizationId: string, filters?: { category?: string; dateFrom?: string; dateTo?: string; page?: number; pageSize?: number }): Promise<IncomeRecord[]> {
+    if (filters?.page || filters?.pageSize) {
+      const body = await sisRequest<{ incomes?: IncomeRecord[]; data?: IncomeRecord[] }>(organizationId, `/finance/incomes${query(filters, false)}`);
+      return body.incomes ?? body.data ?? [];
+    }
+    return fetchCompleteSisDataset<IncomeRecord>(organizationId, `/finance/incomes${query(filters, false)}`);
+  }
   async createIncome(organizationId: string, data: Omit<IncomeRecord, "id" | "organizationId" | "receiptNumber" | "createdAt" | "updatedAt">, actor?: ActorContext): Promise<IncomeRecord> { return (await sisRequest<{ income: IncomeRecord }>(organizationId, "/finance/incomes", { method: "POST", ...jsonBody(actorBody(data, actor)) })).income; }
   async updateIncome(organizationId: string, id: string, updates: Partial<IncomeRecord>, actor?: ActorContext): Promise<IncomeRecord> { return (await sisRequest<{ income: IncomeRecord }>(organizationId, `/finance/incomes/${id}`, { method: "PATCH", ...jsonBody(actorBody(updates, actor)) })).income; }
   async deleteIncome(organizationId: string, id: string, actor?: ActorContext): Promise<{ success: boolean; id: string }> { return (await sisRequest<{ income: { success: boolean; id: string } }>(organizationId, `/finance/incomes/${id}`, { method: "DELETE", ...jsonBody({ actor }) })).income; }

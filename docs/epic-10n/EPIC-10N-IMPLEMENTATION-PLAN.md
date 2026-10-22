@@ -125,11 +125,21 @@ graph TD
   5. **Correction A (Historical Identifier Backfill & Data Integrity):**
      - Added additive migration `0020_backfill_portal_request_identifiers.sql` and repeatable procedure `apps/api/src/database/backfills/backfill-portal-identifiers.ts`.
      - Idempotently and safely backfills legacy JSON-only enquiry and application identifiers while evaluating intra-workspace duplicate conflicts and preserving multi-tenant isolation.
+   6. **Phase 3 Final Correction (Complete Dataset Retrieval & Accurate Pagination Metadata):**
+      - Truthful Pagination Metadata: Eliminated legacy short-circuit in `buildPaginationMetadata` that forced `totalPages: 1` and `hasNextPage: false` when `isUnbounded` was active. Accurately reports `totalPages = Math.max(1, Math.ceil(safeTotal / pageSize))` and `hasNextPage = page < totalPages` for all dataset sizes (25, 100, 2,000, 2,001, 5,000+).
+      - Semantic Aliases: Added `fetchAllRequested`, `boundedFullDatasetMode`, and `compatibilityBatch` while preserving public query parameters `all=true` / `unbounded=true` with bounded batch limits (`limit: 2000`).
+      - Server Bounded Batch Retrieval: Implemented `fetchAllBatches<T>` in `apps/api/src/common/pagination/pagination.ts` with loop protection (`maxPages: 100`), abort signal handling, and deduplication.
+      - Frontend Complete Retrieval: Implemented `fetchCompleteDataset<T>` and `fetchCompleteSisDataset<T>` in `apps/web/src/modules/education/sis/complete-retrieval.ts` with error isolation, loop bounds, and abort support.
+      - Consumer Wiring: Re-wired `student.service.ts`, `staff.service.ts`, `enrollment.service.ts`, `teaching-assignment.service.ts`, `timetable.service.ts`, `finance.service.ts`, and `admissions.service.ts` to use bounded complete retrieval when `page` is omitted and single-page requests when interactive pagination is active.
 - **Verification Evidence:**
   - `apps/api/tests/epic10n-phase3-database-validation.integration.test.ts` (20/20 tests passing, 100%).
   - `apps/api/tests/epic10n-phase3-corrections.integration.test.ts` (20/20 tests passing, 100%).
-- **Quality Gates:** `typecheck:api` (0 errors), `typecheck:web` (0 errors), `build:api` (passed), `build:web` (passed), `db:check` (clean).
-- **Report:** [`docs/epic-10n/EPIC-10N-PHASE-3-DATABASE-VALIDATION.md`](file:///c:/HAZA-APPS/HAZA-AIOS/docs/epic-10n/EPIC-10N-PHASE-3-DATABASE-VALIDATION.md).
+  - `apps/api/tests/epic10n-phase3-pagination-completeness.integration.test.ts` (14/14 tests passing, 100% including 2,050 records MySQL integration test).
+  - `apps/web/src/modules/education/sis/__tests__/complete-retrieval.test.ts` (11/11 tests passing, 100%).
+- **Quality Gates:** `typecheck:api` (0 errors), `typecheck:web` (0 errors), `build:api` (passed), `build:web` (passed), `db:check` (clean), `test:api` (37 files, 266 passed), `test:run -w apps/web` (45 files, 256 passed).
+- **Reports:**
+  - [`docs/epic-10n/EPIC-10N-PHASE-3-DATABASE-VALIDATION.md`](file:///c:/HAZA-APPS/HAZA-AIOS/docs/epic-10n/EPIC-10N-PHASE-3-DATABASE-VALIDATION.md)
+  - [`docs/epic-10n/EPIC-10N-PHASE-3-PAGINATION-COMPLETENESS.md`](file:///c:/HAZA-APPS/HAZA-AIOS/docs/epic-10n/EPIC-10N-PHASE-3-PAGINATION-COMPLETENESS.md)
 
 ---
 

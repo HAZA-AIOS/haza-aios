@@ -1,5 +1,5 @@
 import type { Enrollment } from "./sis.types";
-import { jsonBody, sisRequest } from "./sis-api";
+import { fetchCompleteSisDataset, jsonBody, sisRequest } from "./sis-api";
 
 export class EnrollmentServiceClass {
   async getEnrollmentsByStudent(studentId: string, organizationId: string): Promise<Enrollment[]> {
@@ -17,18 +17,26 @@ export class EnrollmentServiceClass {
       page?: number;
       pageSize?: number;
       all?: boolean;
+      signal?: AbortSignal;
     }
   ): Promise<Enrollment[]> {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(filters ?? {})) {
-      if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+      if (key !== "page" && key !== "pageSize" && key !== "all" && key !== "signal" && value !== undefined && value !== null && value !== "") {
+        params.set(key, String(value));
+      }
     }
-    if (!filters?.page && !filters?.pageSize && filters?.all !== false) {
-      params.set("all", "true");
+
+    if (filters?.page || filters?.pageSize) {
+      if (filters.page) params.set("page", String(filters.page));
+      if (filters.pageSize) params.set("pageSize", String(filters.pageSize));
+      const query = params.toString() ? `?${params.toString()}` : "";
+      const body = await sisRequest<{ enrollments?: Enrollment[]; data?: Enrollment[] }>(organizationId, `/enrollments${query}`, { signal: filters?.signal });
+      return body.enrollments ?? body.data ?? [];
     }
+
     const query = params.toString() ? `?${params.toString()}` : "";
-    const body = await sisRequest<{ enrollments: Enrollment[] }>(organizationId, `/enrollments${query}`);
-    return body.enrollments;
+    return fetchCompleteSisDataset<Enrollment>(organizationId, `/enrollments${query}`, { signal: filters?.signal });
   }
 
   async enrollStudent(enrollment: Omit<Enrollment, "id" | "createdAt" | "updatedAt">): Promise<Enrollment> {

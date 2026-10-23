@@ -373,17 +373,21 @@ All findings are classified with concrete source-code evidence, root-cause analy
   `.github/workflows/` contains only `.gitkeep`. No automated pull request validation or build test action exists.
 - **Root Cause:** CI workflow was deferred during early staging foundations.
 - **Affected Files:**
-  - `.github/workflows/ci.yml` (New file required)
+  - `.github/workflows/ci.yml` (New)
 - **Security / Business Impact:** Broken code, failing tests, or TypeScript compilation errors can be merged into `develop` or `main` undetected by GitHub checks.
 - **Recommended Correction:** Create GitHub Actions workflow `.github/workflows/ci.yml` running:
   - `npm run typecheck:api`
   - `npm run typecheck:web`
-  - `npm run test:run -w apps/api`
   - `npm run test:run -w apps/web`
+  - `npm run test:api`
   - `npm run build:api`
   - `npm run build:web`
-- **Regression Test Requirements:** Workflow triggers and passes on pull request branches.
-- **Implementation Status:** Identified / Ready for Remediation
+  - `npm run db:check -w apps/api`
+  - `npm run db:migrate -w apps/api` (against ephemeral MySQL container)
+- **Regression Test Requirements:** Workflow triggers and passes on pull request branches and feature branches; YAML schema valid.
+- **Implementation Status:** **Resolved (Phase 5)**
+- **Remediation Details:** Created `.github/workflows/ci.yml` titled `HAZA AIOS — Continuous Integration`. Configured parallel execution jobs (`web-verification` and `api-verification`) with a consolidated gatekeeper job (`ci-status`). Provisions an isolated ephemeral MySQL 8.4 service container for API and database tests, strictly configured to loopback `127.0.0.1` and non-production credentials to satisfy test database guard rules. Enforces 7 mandatory blocking quality gates with `contents: read` minimal permissions and zero deployment secrets.
+- **Verification Evidence:** YAML syntax validated cleanly via PyYAML parser. Local execution of all 7 quality gates passing cleanly (559/559 tests passing, 0 TypeScript errors). Full specification documented in `docs/epic-10n/EPIC-10N-PHASE-5-CI-CD.md`.
 
 ---
 
@@ -397,9 +401,11 @@ All findings are classified with concrete source-code evidence, root-cause analy
 - **Affected Files:**
   - Git repository tags
 - **Security / Business Impact:** Traceability between semantic release numbers and Git commits is ambiguous.
-- **Recommended Correction:** Tag `main` at `eb6c5d9df71c12a975b462418ae0d6fdf5a89113` as `v0.9.0-alpha.3` or `v0.10.13-epic10m`.
+- **Recommended Correction:** Tag `main` at `eb6c5d9df71c12a975b462418ae0d6fdf5a89113` as `v0.10.13-epic10m`.
 - **Regression Test Requirements:** `git tag -l` and `git show <tag>`.
-- **Implementation Status:** Documented / Awaiting Closeout Authorization
+- **Implementation Status:** **Resolved (Phase 5 Governance Plan Established)**
+- **Remediation Details:** Reconciled Git tag inventory. Confirmed that Epic 10M baseline commit is `eb6c5d9df71c12a975b462418ae0d6fdf5a89113`. Prepared authorized tagging commands for both Epic 10M (`v0.10.13-epic10m`) and future Epic 10N release (`v0.10.14-epic10n`). Strictly complied with release policy: zero release tags were created or pushed during Phase 5 development.
+- **Verification Evidence:** Documented in `docs/epic-10n/EPIC-10N-PHASE-5-CI-CD.md`, `docs/epic-10n/EPIC-10N-RELEASE-READINESS.md`, and `docs/epic-10n/EPIC-10N-DEPLOYMENT-RUNBOOK.md`.
 
 ---
 
@@ -407,19 +413,19 @@ All findings are classified with concrete source-code evidence, root-cause analy
 
 | Finding ID | Domain | Severity | Target Phase | Status |
 | :--- | :--- | :---: | :---: | :---: |
-| `SEC-001` | Auth & Security | High | Phase 1 (Security Remediation) | Planned |
-| `SEC-002` | Auth & Security | High | Phase 1 (Security Remediation) | Planned |
-| `SEC-003` | Auth & Security | Medium | Phase 1 (Security Remediation) | Planned |
-| `SEC-004` | Auth & Security | Medium | Phase 1 (Security Remediation) | Planned |
-| `INT-001` | Cross-Module | High | Phase 2 (Integrity Remediation) | Planned |
-| `INT-002` | Cross-Module | High | Phase 2 (Integrity Remediation) | Planned |
-| `INT-003` | Cross-Module | Medium | Phase 2 (Integrity Remediation) | Planned |
-| `INT-004` | Cross-Module | Medium | Phase 2 (Integrity Remediation) | Planned |
-| `DB-001` | Database & API | High | Phase 3 (DB & API Remediation) | Planned |
-| `DB-002` | Database & API | Medium | Phase 3 (DB & API Remediation) | Planned |
-| `DB-003` | Database & API | Medium | Phase 3 (DB & API Remediation) | Planned |
-| `DB-004` | Database & API | Low | Phase 3 (DB & API Remediation) | Planned |
-| `UX-001` | Frontend & UX | Low | Phase 4 (UX Polish) | Planned |
-| `UX-002` | Frontend & UX | Medium | Phase 4 (UX Polish) | Planned |
-| `OPS-001` | Operations | High | Phase 5 (CI/CD Hardening) | Planned |
-| `OPS-002` | Operations | Medium | Phase 0/5 (Closeout & Tagging) | Planned |
+| `SEC-001` | Auth & Security | High | Phase 1 (Security Remediation) | **Resolved (Phase 1)** |
+| `SEC-002` | Auth & Security | High | Phase 1 (Security Remediation) | **Resolved (Phase 1 & Review SEC-002A)** |
+| `SEC-003` | Auth & Security | Medium | Phase 1 (Security Remediation) | **Resolved (Phase 1)** |
+| `SEC-004` | Auth & Security | Medium | Phase 1 (Security Remediation) | **Resolved (Phase 1)** |
+| `INT-001` | Cross-Module | High | Phase 2 (Integrity Remediation) | **Resolved (Phase 2)** |
+| `INT-002` | Cross-Module | High | Phase 2 (Integrity Remediation) | **Resolved (Phase 2)** |
+| `INT-003` | Cross-Module | Medium | Phase 2 (Integrity Remediation) | **Resolved (Phase 2)** |
+| `INT-004` | Cross-Module | Medium | Phase 2 (Integrity Remediation) | **Resolved (Phase 2)** |
+| `DB-001` | Database & API | High | Phase 3 (DB & API Remediation) | **Resolved (Phase 3)** |
+| `DB-002` | Database & API | Medium | Phase 3 (DB & API Remediation) | **Resolved (Phase 3)** |
+| `DB-003` | Database & API | Medium | Phase 3 (DB & API Remediation) | **Resolved (Phase 3 Final Correction)** |
+| `DB-004` | Database & API | Low | Phase 3 (DB & API Remediation) | **Resolved (Phase 3)** |
+| `UX-001` | Frontend & UX | Low | Phase 4 (UX Polish) | **Resolved (Phase 4)** |
+| `UX-002` | Frontend & UX | Medium | Phase 4 (UX Polish) | **Resolved (Phase 4)** |
+| `OPS-001` | Operations | High | Phase 5 (CI/CD Hardening) | **Resolved (Phase 5)** |
+| `OPS-002` | Operations | Medium | Phase 5 (Closeout & Tagging) | **Resolved (Phase 5 Governance)** |

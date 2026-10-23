@@ -52,6 +52,7 @@ export async function fetchCompleteDataset<T>(
   const seenKeys = new Set<string>();
   let currentPage = 1;
   let totalItems: number | undefined;
+  let moreRecordsRemain = false;
 
   while (currentPage <= maxPages) {
     if (options?.signal?.aborted) {
@@ -70,7 +71,7 @@ export async function fetchCompleteDataset<T>(
     }
 
     const items = result.items ?? [];
-    if (result.pagination) {
+    if (result.pagination && typeof result.pagination.totalItems === "number") {
       totalItems = result.pagination.totalItems;
     }
 
@@ -96,24 +97,61 @@ export async function fetchCompleteDataset<T>(
       });
     }
 
-    // Termination conditions
+    // Determine whether more records remain after this page
     if (!result.pagination) {
       // Endpoint is unpaginated: finished in single request
+      moreRecordsRemain = false;
       break;
     }
 
-    if (!result.pagination.hasNextPage || currentPage >= result.pagination.totalPages) {
+    const pagination = result.pagination;
+    const hasNextFlag = pagination.hasNextPage === true;
+    const hasMorePages =
+      typeof pagination.totalPages === "number" && pagination.totalPages > 0 && currentPage < pagination.totalPages;
+    const hasMoreItems =
+      typeof totalItems === "number" && totalItems >= 0 && allRecords.length < totalItems;
+
+    // Check if pagination explicitly indicates this is the last page
+    if (pagination.hasNextPage === false) {
+      if (hasMoreItems && items.length > 0) {
+        // Inconsistent metadata: hasNextPage is false, but count indicates more records remain
+        moreRecordsRemain = true;
+      } else {
+        // Normal clean completion (including full final page where hasNextPage=false)
+        moreRecordsRemain = false;
+        break;
+      }
+    } else if (hasNextFlag || hasMorePages || hasMoreItems) {
+      moreRecordsRemain = true;
+    } else {
+      moreRecordsRemain = false;
       break;
     }
 
+    // Empty page check
     if (items.length === 0) {
+      if (hasMoreItems && currentPage > 1) {
+        throw new CompleteDatasetRetrievalError(
+          `Dataset retrieval received empty page ${currentPage} before reaching expected total of ${totalItems} records.`,
+          { page: currentPage, retrievedSoFar: allRecords.length, totalExpected: totalItems }
+        );
+      }
+      moreRecordsRemain = false;
       break;
+    }
+
+    // Boundary check: if reached maxPages and more records remain
+    if (currentPage >= maxPages && moreRecordsRemain) {
+      throw new CompleteDatasetRetrievalError(
+        `Dataset retrieval exceeded safety page limit (${maxPages} pages). Bounded retrieval stopped to prevent memory exhaustion.`,
+        { page: currentPage, retrievedSoFar: allRecords.length, totalExpected: totalItems }
+      );
     }
 
     currentPage++;
   }
 
-  if (currentPage > maxPages && totalItems !== undefined && allRecords.length < totalItems) {
+  if (moreRecordsRemain) {
     throw new CompleteDatasetRetrievalError(
       `Dataset retrieval exceeded safety page limit (${maxPages} pages). Bounded retrieval stopped to prevent memory exhaustion.`,
       { page: currentPage, retrievedSoFar: allRecords.length, totalExpected: totalItems }

@@ -6,7 +6,9 @@ import { ApiError } from "../src/common/errors/api-error.js";
 import { createLogger } from "../src/common/logging/logger.js";
 import {
   buildPaginationMetadata,
+  CompleteDatasetRetrievalError,
   fetchAllBatches,
+  IncompleteDatasetRetrievalError,
   paginatedResponse,
   parsePagination,
 } from "../src/common/pagination/pagination.js";
@@ -209,6 +211,196 @@ describe("Epic 10N / Phase 3 Final Correction: Complete Dataset Retrieval & Accu
       await expect(
         fetchAllBatches(fetchBatch, { signal: controller.signal, batchSize: 1 })
       ).rejects.toThrow("aborted");
+    });
+
+    it("completes cleanly when dataset exactly equals maxPages pages with no remaining records", async () => {
+      // 3 pages, batchSize 10, total 30, maxPages 3. Final page has hasNextPage: false.
+      const mockData = Array.from({ length: 30 }, (_, i) => ({ id: `rec-${i + 1}` }));
+      let callCount = 0;
+
+      const fetchBatch = async (pagination: { limit: number; offset: number; page: number }) => {
+        callCount++;
+        const items = mockData.slice(pagination.offset, pagination.offset + pagination.limit);
+        return {
+          items,
+          pagination: {
+            page: pagination.page,
+            pageSize: pagination.limit,
+            totalItems: 30,
+            totalPages: 3,
+            hasNextPage: pagination.page < 3,
+            hasPreviousPage: pagination.page > 1,
+          },
+        };
+      };
+
+      const result = await fetchAllBatches(fetchBatch, { maxPages: 3, batchSize: 10 });
+      expect(callCount).toBe(3);
+      expect(result.length).toBe(30);
+      expect(result[0].id).toBe("rec-1");
+      expect(result[29].id).toBe("rec-30");
+    });
+
+    it("throws IncompleteDatasetRetrievalError when exceeding maxPages and returns NO partial results", async () => {
+      // 40 items across 4 pages, but maxPages = 2. Must throw on boundary and NOT return partial array.
+      const mockData = Array.from({ length: 40 }, (_, i) => ({ id: `rec-${i + 1}` }));
+      let callCount = 0;
+
+      const fetchBatch = async (pagination: { limit: number; offset: number; page: number }) => {
+        callCount++;
+        const items = mockData.slice(pagination.offset, pagination.offset + pagination.limit);
+        return {
+          items,
+          pagination: {
+            page: pagination.page,
+            pageSize: pagination.limit,
+            totalItems: 40,
+            totalPages: 4,
+            hasNextPage: pagination.page < 4,
+            hasPreviousPage: pagination.page > 1,
+          },
+        };
+      };
+
+      let caught: IncompleteDatasetRetrievalError | undefined;
+      let resolvedValue: unknown;
+      try {
+        resolvedValue = await fetchAllBatches(fetchBatch, { maxPages: 2, batchSize: 10 });
+      } catch (err) {
+        caught = err as IncompleteDatasetRetrievalError;
+      }
+
+      expect(resolvedValue).toBeUndefined();
+      expect(caught).toBeInstanceOf(IncompleteDatasetRetrievalError);
+      expect(caught).toBeInstanceOf(CompleteDatasetRetrievalError);
+      expect(caught?.name).toBe("IncompleteDatasetRetrievalError");
+      expect(caught?.page).toBe(2);
+      expect(caught?.retrievedSoFar).toBe(20);
+      expect(caught?.totalExpected).toBe(40);
+      expect(caught?.message).toContain("safety page limit (2 pages)");
+      expect(callCount).toBe(2);
+    });
+
+    it("handles full final page with hasNextPage=false cleanly without false boundary exception", async () => {
+      // 20 items, batchSize 10. Page 2 returns exactly 10 items (full page!) with hasNextPage: false.
+      const mockData = Array.from({ length: 20 }, (_, i) => ({ id: `rec-${i + 1}` }));
+      let callCount = 0;
+
+      const fetchBatch = async (pagination: { limit: number; offset: number; page: number }) => {
+        callCount++;
+        const items = mockData.slice(pagination.offset, pagination.offset + pagination.limit);
+        return {
+          data: items,
+          pagination: {
+            page: pagination.page,
+            pageSize: pagination.limit,
+            totalItems: 20,
+            totalPages: 2,
+            hasNextPage: false,
+            hasPreviousPage: pagination.page > 1,
+          },
+        };
+      };
+
+      const result = await fetchAllBatches(fetchBatch, { maxPages: 2, batchSize: 10 });
+      expect(result.length).toBe(20);
+      expect(callCount).toBe(2);
+    });
+
+    it("terminates cleanly on empty final page when all items retrieved", async () => {
+      // Page 1 returns 5 items (all). Page 2 returns 0 items with hasNextPage: false.
+      const fetchBatch = async (pagination: { limit: number; offset: number; page: number }) => {
+        if (pagination.page === 1) {
+          return {
+            items: Array.from({ length: 5 }, (_, i) => ({ id: `rec-${i + 1}` })),
+            pagination: { page: 1, pageSize: 10, totalItems: 5, totalPages: 1, hasNextPage: false, hasPreviousPage: false },
+          };
+        }
+        return {
+          items: [],
+          pagination: { page: 2, pageSize: 10, totalItems: 5, totalPages: 1, hasNextPage: false, hasPreviousPage: true },
+        };
+      };
+
+      const result = await fetchAllBatches(fetchBatch, { batchSize: 10 });
+      expect(result.length).toBe(5);
+    });
+
+    it("throws IncompleteDatasetRetrievalError on empty batch before reaching totalExpected", async () => {
+      // Total is 50, but page 2 returns empty batch
+      const fetchBatch = async (pagination: { limit: number; offset: number; page: number }) => {
+        if (pagination.page === 1) {
+          return {
+            items: [{ id: "1" }],
+            total: 50,
+          };
+        }
+        return {
+          items: [],
+          total: 50,
+        };
+      };
+
+      await expect(fetchAllBatches(fetchBatch, { batchSize: 10 })).rejects.toThrow(IncompleteDatasetRetrievalError);
+    });
+
+    it("handles missing pagination metadata safely by batch size detection", async () => {
+      // Unpaginated batch: returns 3 items (< batchSize 10) -> completes cleanly
+      const fetchBatch = async () => ({
+        data: [{ id: "1" }, { id: "2" }, { id: "3" }],
+      });
+
+      const result = await fetchAllBatches(fetchBatch, { batchSize: 10 });
+      expect(result.length).toBe(3);
+    });
+
+    it("detects inconsistent metadata (hasNextPage=false but totalItems indicates remaining records)", async () => {
+      // Inconsistent: hasNextPage false, but totalItems is 100 while returning 10 items
+      const fetchBatch = async () => ({
+        items: Array.from({ length: 10 }, (_, i) => ({ id: `rec-${i + 1}` })),
+        pagination: {
+          page: 1,
+          pageSize: 10,
+          totalItems: 100,
+          totalPages: 10,
+          hasNextPage: false,
+          hasPreviousPage: false,
+        },
+      });
+
+      await expect(
+        fetchAllBatches(fetchBatch, { maxPages: 1, batchSize: 10 })
+      ).rejects.toThrow(IncompleteDatasetRetrievalError);
+    });
+
+    it("rethrows IncompleteDatasetRetrievalError when batch fetch fails mid-stream with original cause and no partial leakage", async () => {
+      const errorCause = new Error("Database deadlock during batch scan");
+      let callCount = 0;
+
+      const fetchBatch = async (pagination: { limit: number; offset: number; page: number }) => {
+        callCount++;
+        if (pagination.page === 1) {
+          return {
+            items: [{ id: "1" }, { id: "2" }],
+            total: 10,
+          };
+        }
+        throw errorCause;
+      };
+
+      let caught: IncompleteDatasetRetrievalError | undefined;
+      try {
+        await fetchAllBatches(fetchBatch, { batchSize: 2 });
+      } catch (err) {
+        caught = err as IncompleteDatasetRetrievalError;
+      }
+
+      expect(caught).toBeInstanceOf(IncompleteDatasetRetrievalError);
+      expect(caught?.page).toBe(2);
+      expect(caught?.retrievedSoFar).toBe(2);
+      expect(caught?.totalExpected).toBe(10);
+      expect(caught?.originalCause).toBe(errorCause);
+      expect(callCount).toBe(2);
     });
   });
 

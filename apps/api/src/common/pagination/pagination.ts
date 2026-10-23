@@ -314,22 +314,54 @@ export function paginatedResponse<T, K extends string = string>(
   return result as { data: T[]; pagination: PaginationMetadata } & { [P in K]?: T[] };
 }
 
+export class IncompleteDatasetRetrievalError extends Error {
+  readonly page: number;
+  readonly retrievedSoFar: number;
+  readonly totalExpected?: number;
+  readonly originalCause?: unknown;
+
+  constructor(
+    message: string,
+    details: { page: number; retrievedSoFar: number; totalExpected?: number; cause?: unknown }
+  ) {
+    super(message);
+    this.name = "IncompleteDatasetRetrievalError";
+    this.page = details.page;
+    this.retrievedSoFar = details.retrievedSoFar;
+    this.totalExpected = details.totalExpected;
+    this.originalCause = details.cause;
+  }
+}
+
+export const CompleteDatasetRetrievalError = IncompleteDatasetRetrievalError;
+export type CompleteDatasetRetrievalError = IncompleteDatasetRetrievalError;
+
 export type BatchFetchResult<T> =
   | { data: T[]; pagination?: PaginationMetadata }
   | { items: T[]; total?: number; pagination?: PaginationMetadata };
 
+export interface FetchAllBatchesOptions<T> {
+  maxPages?: number;
+  batchSize?: number;
+  keyExtractor?: (item: T) => string;
+  signal?: AbortSignal;
+}
+
 /**
  * Server-side reusable bounded retrieval helper.
  * Iterates through batches until all records are retrieved, with loop protection.
+ *
+ * Requirements:
+ * - Deterministic iteration until completion.
+ * - Protects against memory exhaustion with configurable maxPages.
+ * - Throws IncompleteDatasetRetrievalError when maxPages is reached and more records remain.
+ * - Never returns partial results as complete on failure or boundary limit.
+ * - Handles full final pages (hasNextPage: false) cleanly without false error.
+ * - Preserves deduplication, cancellation, and error context.
  */
 export async function fetchAllBatches<T>(
   fetchBatch: (pagination: { limit: number; offset: number; page: number }) => Promise<BatchFetchResult<T>>,
-  options?: {
-    maxPages?: number;
-    batchSize?: number;
-    keyExtractor?: (item: T) => string;
-    signal?: AbortSignal;
-  }
+  options?: FetchAllBatchesOptions<T>
 ): Promise<T[]> {
   const maxPages = options?.maxPages ?? 100;
   const batchSize = options?.batchSize ?? DEFAULT_MAX_UNBOUNDED_LIMIT;
@@ -337,6 +369,8 @@ export async function fetchAllBatches<T>(
   const allRecords: T[] = [];
   const seenKeys = new Set<string>();
   let currentPage = 1;
+  let totalItems: number | undefined;
+  let moreRecordsRemain = false;
 
   while (currentPage <= maxPages) {
     if (options?.signal?.aborted) {
@@ -344,9 +378,22 @@ export async function fetchAllBatches<T>(
     }
 
     const offset = (currentPage - 1) * batchSize;
-    const result = await fetchBatch({ limit: batchSize, offset, page: currentPage });
+    let result: BatchFetchResult<T>;
+    try {
+      result = await fetchBatch({ limit: batchSize, offset, page: currentPage });
+    } catch (cause) {
+      throw new IncompleteDatasetRetrievalError(
+        `Failed to retrieve complete dataset on batch page ${currentPage}. Retrieved ${allRecords.length} records before failure.`,
+        { page: currentPage, retrievedSoFar: allRecords.length, totalExpected: totalItems, cause }
+      );
+    }
+
     const items = ("data" in result ? result.data : result.items) ?? [];
-    if (items.length === 0) break;
+    if (result.pagination && typeof result.pagination.totalItems === "number") {
+      totalItems = result.pagination.totalItems;
+    } else if ("total" in result && typeof result.total === "number") {
+      totalItems = result.total;
+    }
 
     for (const item of items) {
       if (keyExtractor) {
@@ -364,18 +411,79 @@ export async function fetchAllBatches<T>(
       }
     }
 
+    // Determine completion status
     if (result.pagination) {
-      if (!result.pagination.hasNextPage || currentPage >= result.pagination.totalPages) {
+      const pagination = result.pagination;
+      const hasNextFlag = pagination.hasNextPage === true;
+      const hasMorePages =
+        typeof pagination.totalPages === "number" && pagination.totalPages > 0 && currentPage < pagination.totalPages;
+      const hasMoreItems =
+        typeof totalItems === "number" && totalItems >= 0 && allRecords.length < totalItems;
+
+      if (pagination.hasNextPage === false) {
+        if (hasMoreItems && items.length > 0) {
+          // Inconsistent metadata: hasNextPage false, but count indicates more items remain
+          moreRecordsRemain = true;
+        } else {
+          // Clean completion (including full final page where hasNextPage=false)
+          moreRecordsRemain = false;
+          break;
+        }
+      } else if (hasNextFlag || hasMorePages || hasMoreItems) {
+        moreRecordsRemain = true;
+      } else {
+        moreRecordsRemain = false;
         break;
       }
-    } else if ("total" in result && typeof result.total === "number") {
-      const totalPages = Math.max(1, Math.ceil(result.total / batchSize));
-      if (currentPage >= totalPages) break;
-    } else if (items.length < batchSize) {
+    } else if (typeof totalItems === "number") {
+      const totalPages = Math.max(1, Math.ceil(totalItems / batchSize));
+      const hasMorePages = currentPage < totalPages;
+      const hasMoreItems = allRecords.length < totalItems;
+
+      if (hasMorePages || hasMoreItems) {
+        moreRecordsRemain = true;
+      } else {
+        moreRecordsRemain = false;
+        break;
+      }
+    } else {
+      // Unpaginated or batch without explicit total metadata
+      if (items.length === batchSize) {
+        moreRecordsRemain = true;
+      } else {
+        moreRecordsRemain = false;
+        break;
+      }
+    }
+
+    // Empty batch check
+    if (items.length === 0) {
+      if (currentPage > 1 && typeof totalItems === "number" && allRecords.length < totalItems) {
+        throw new IncompleteDatasetRetrievalError(
+          `Dataset retrieval received empty batch on page ${currentPage} before reaching expected total of ${totalItems} records.`,
+          { page: currentPage, retrievedSoFar: allRecords.length, totalExpected: totalItems }
+        );
+      }
+      moreRecordsRemain = false;
       break;
     }
 
+    // Boundary check: if reached maxPages and more records remain
+    if (currentPage >= maxPages && moreRecordsRemain) {
+      throw new IncompleteDatasetRetrievalError(
+        `Dataset retrieval exceeded safety page limit (${maxPages} pages). Bounded retrieval stopped to prevent memory exhaustion.`,
+        { page: currentPage, retrievedSoFar: allRecords.length, totalExpected: totalItems }
+      );
+    }
+
     currentPage++;
+  }
+
+  if (moreRecordsRemain) {
+    throw new IncompleteDatasetRetrievalError(
+      `Dataset retrieval exceeded safety page limit (${maxPages} pages). Bounded retrieval stopped to prevent memory exhaustion.`,
+      { page: currentPage, retrievedSoFar: allRecords.length, totalExpected: totalItems }
+    );
   }
 
   return allRecords;

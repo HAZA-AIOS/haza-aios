@@ -227,4 +227,148 @@ describe("Epic 10N / Phase 3 Correction: Frontend Complete Dataset Retrieval", (
     expect(students[0].id).toBe("s-1");
     expect(students[2499].id).toBe("s-2500");
   });
+
+  describe("Maximum-Page Boundary and Incomplete Retrieval Edge Cases (Epic 10N Phase 3 Acceptance)", () => {
+    it("A. exactly maxPages pages with no remaining records completes successfully", async () => {
+      // 3 pages, maxPages: 3. Page 3 has hasNextPage: false.
+      const p1 = [{ id: "1" }, { id: "2" }];
+      const p2 = [{ id: "3" }, { id: "4" }];
+      const p3 = [{ id: "5" }, { id: "6" }];
+
+      const fetchPageMock = vi.fn(async (page: number) => {
+        if (page === 1) {
+          return { items: p1, pagination: { page: 1, pageSize: 2, totalItems: 6, totalPages: 3, hasNextPage: true, hasPreviousPage: false } };
+        }
+        if (page === 2) {
+          return { items: p2, pagination: { page: 2, pageSize: 2, totalItems: 6, totalPages: 3, hasNextPage: true, hasPreviousPage: true } };
+        }
+        return { items: p3, pagination: { page: 3, pageSize: 2, totalItems: 6, totalPages: 3, hasNextPage: false, hasPreviousPage: true } };
+      });
+
+      const results = await fetchCompleteDataset(fetchPageMock, { maxPages: 3 });
+      expect(fetchPageMock).toHaveBeenCalledTimes(3);
+      expect(results.length).toBe(6);
+      expect(results.map((r) => r.id)).toEqual(["1", "2", "3", "4", "5", "6"]);
+    });
+
+    it("B. more than maxPages pages throws CompleteDatasetRetrievalError and returns NO partial results", async () => {
+      // 3 pages available, but maxPages = 2. Must throw on page 2 boundary, never returning the 4 partial records.
+      const p1 = [{ id: "1" }, { id: "2" }];
+      const p2 = [{ id: "3" }, { id: "4" }];
+
+      const fetchPageMock = vi.fn(async (page: number) => {
+        if (page === 1) {
+          return { items: p1, pagination: { page: 1, pageSize: 2, totalItems: 6, totalPages: 3, hasNextPage: true, hasPreviousPage: false } };
+        }
+        return { items: p2, pagination: { page: 2, pageSize: 2, totalItems: 6, totalPages: 3, hasNextPage: true, hasPreviousPage: true } };
+      });
+
+      let caughtError: CompleteDatasetRetrievalError | undefined;
+      let resolvedValue: unknown;
+      try {
+        resolvedValue = await fetchCompleteDataset(fetchPageMock, { maxPages: 2 });
+      } catch (err) {
+        caughtError = err as CompleteDatasetRetrievalError;
+      }
+
+      expect(resolvedValue).toBeUndefined();
+      expect(caughtError).toBeInstanceOf(CompleteDatasetRetrievalError);
+      expect(caughtError?.page).toBe(2);
+      expect(caughtError?.retrievedSoFar).toBe(4);
+      expect(caughtError?.totalExpected).toBe(6);
+      expect(caughtError?.message).toContain("safety page limit (2 pages)");
+      expect(fetchPageMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("C. full final page with hasNextPage=false terminates cleanly without false boundary error", async () => {
+      // Page size 2, totalItems 4. Page 2 has 2 items (full page!) and hasNextPage: false.
+      const p1 = [{ id: "1" }, { id: "2" }];
+      const p2 = [{ id: "3" }, { id: "4" }];
+
+      const fetchPageMock = vi.fn(async (page: number) => {
+        if (page === 1) {
+          return { items: p1, pagination: { page: 1, pageSize: 2, totalItems: 4, totalPages: 2, hasNextPage: true, hasPreviousPage: false } };
+        }
+        return { items: p2, pagination: { page: 2, pageSize: 2, totalItems: 4, totalPages: 2, hasNextPage: false, hasPreviousPage: true } };
+      });
+
+      const results = await fetchCompleteDataset(fetchPageMock, { maxPages: 2 });
+      expect(results.length).toBe(4);
+      expect(results.map((r) => r.id)).toEqual(["1", "2", "3", "4"]);
+      expect(fetchPageMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("D. empty final page terminates cleanly when all records retrieved", async () => {
+      // Page 1 returns 2 items with totalItems: 2. Page 2 returns 0 items with hasNextPage: false.
+      const fetchPageMock = vi.fn(async (page: number) => {
+        if (page === 1) {
+          return { items: [{ id: "1" }, { id: "2" }], pagination: { page: 1, pageSize: 2, totalItems: 2, totalPages: 1, hasNextPage: true, hasPreviousPage: false } };
+        }
+        return { items: [], pagination: { page: 2, pageSize: 2, totalItems: 2, totalPages: 1, hasNextPage: false, hasPreviousPage: true } };
+      });
+
+      const results = await fetchCompleteDataset(fetchPageMock);
+      expect(results.length).toBe(2);
+      expect(fetchPageMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("E. empty page before expected total throws CompleteDatasetRetrievalError", async () => {
+      // Expected 10 items, but page 2 returned empty array
+      const fetchPageMock = vi.fn(async (page: number) => {
+        if (page === 1) {
+          return { items: [{ id: "1" }, { id: "2" }], pagination: { page: 1, pageSize: 2, totalItems: 10, totalPages: 5, hasNextPage: true, hasPreviousPage: false } };
+        }
+        return { items: [], pagination: { page: 2, pageSize: 2, totalItems: 10, totalPages: 5, hasNextPage: true, hasPreviousPage: true } };
+      });
+
+      await expect(fetchCompleteDataset(fetchPageMock)).rejects.toThrow(CompleteDatasetRetrievalError);
+    });
+
+    it("F. missing pagination metadata completes safely as single-page dataset", async () => {
+      const fetchPageMock = vi.fn(async () => ({
+        items: [{ id: "1" }, { id: "2" }],
+        // pagination omitted entirely
+      }));
+
+      const results = await fetchCompleteDataset(fetchPageMock);
+      expect(results.length).toBe(2);
+      expect(fetchPageMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("G. inconsistent pagination metadata (hasNextPage=false but totalItems > loaded) detects remaining records and enforces boundary", async () => {
+      // Defective API says hasNextPage: false on page 1, but totalItems is 100 while returning 10 items
+      const fetchPageMock = vi.fn(async () => ({
+        items: Array.from({ length: 10 }, (_, i) => ({ id: `item-${i + 1}` })),
+        pagination: { page: 1, pageSize: 10, totalItems: 100, totalPages: 10, hasNextPage: false, hasPreviousPage: false },
+      }));
+
+      // With maxPages: 1, helper recognizes that records remain despite false hasNextPage, and throws safety boundary error
+      await expect(
+        fetchCompleteDataset(fetchPageMock, { maxPages: 1 })
+      ).rejects.toThrow(CompleteDatasetRetrievalError);
+    });
+
+    it("H. failure before reaching maxPages rethrows CompleteDatasetRetrievalError with cause and no partial leakage", async () => {
+      const errorCause = new Error("Network connection reset by peer");
+      const fetchPageMock = vi.fn(async (page: number) => {
+        if (page === 1) {
+          return { items: [{ id: "1" }], pagination: { page: 1, pageSize: 1, totalItems: 5, totalPages: 5, hasNextPage: true, hasPreviousPage: false } };
+        }
+        throw errorCause;
+      });
+
+      let caught: CompleteDatasetRetrievalError | undefined;
+      try {
+        await fetchCompleteDataset(fetchPageMock, { maxPages: 5 });
+      } catch (err) {
+        caught = err as CompleteDatasetRetrievalError;
+      }
+
+      expect(caught).toBeInstanceOf(CompleteDatasetRetrievalError);
+      expect(caught?.page).toBe(2);
+      expect(caught?.retrievedSoFar).toBe(1);
+      expect(caught?.totalExpected).toBe(5);
+      expect(caught?.originalCause).toBe(errorCause);
+    });
+  });
 });

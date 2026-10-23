@@ -151,8 +151,13 @@ sequenceDiagram
     DB-->>API: 50 records (total: 2,050)
     API-->>Engine: { students: [...50], pagination: { page: 2, totalPages: 2, hasNextPage: false } }
     Note over Engine: hasNextPage === false; terminate loop
-    Engine-->>UI: Complete array of 2,050 deduplicated student records
-```
+### Maximum-Page Safety Boundary & Incomplete Retrieval Handling (Phase 3 Final Acceptance Fix)
+In the final acceptance hardening, both `fetchCompleteDataset<T>()` and `fetchAllBatches<T>()` were reinforced against maximum-page boundary edge cases:
+1. **Explicit Error on Boundary:** If iteration reaches `maxPages` and `moreRecordsRemain` is true (via `hasNextPage: true`, `currentPage < totalPages`, or `allRecords.length < totalItems`), the helper throws an explicit, structured error (`CompleteDatasetRetrievalError` in frontend, `IncompleteDatasetRetrievalError` / `CompleteDatasetRetrievalError` in backend).
+2. **Never Return Partial Data as Complete:** When boundary or mid-stream failures occur, callers receive a structured rejection with `{ page, retrievedSoFar, totalExpected, originalCause }`. Partial datasets are NEVER returned as if complete.
+3. **Full Final Page Clean Termination:** When the final page contains a full page of items (e.g., 2,000 items out of 2,000 total, or exactly matching batch size) and `hasNextPage === false`, the helper cleanly terminates without throwing a false boundary exception.
+4. **Empty Final Page Handling:** Empty pages (`items.length === 0`) terminate cleanly if expected or unconstrained; if `totalItems` indicates additional records were expected, a structured error is raised.
+5. **Inconsistent Metadata Resilience:** If defective or legacy endpoints report `hasNextPage: false` while `totalItems` indicates additional unread items exist, the engine identifies that more records remain and enforces boundary and completeness checks accordingly.
 
 ---
 
@@ -312,6 +317,6 @@ Before deploying Epic 10N to production or staging environments:
 | **API Build** | `npm run build:api` | **PASS (0 errors)** | Production bundle generation |
 | **Web Build** | `npm run build:web` | **PASS (0 errors)** | Vite client build |
 | **Database Schema Check** | `npm run db:check -w apps/api` | **PASS ("Everything's fine")** | Drizzle schema alignment check |
-| **Full API Regression Suite** | `npm run test:api` | **PASS (37/37 files, 266/266 tests)** | 100% pass across all API integration and unit tests |
-| **Full Web Regression Suite** | `npm run test:run -w apps/web` | **PASS (45/45 files, 256/256 tests)** | 100% pass across all frontend test suites |
-| **Total Monorepo Tests** | All Suites | **PASS (522/522 tests)** | Zero failing tests |
+| **Full API Regression Suite** | `npm run test:api` | **PASS (37/37 files, 274/274 tests)** | 100% pass across all API integration and unit tests |
+| **Full Web Regression Suite** | `npm run test:run -w apps/web` | **PASS (45/45 files, 264/264 tests)** | 100% pass across all frontend test suites |
+| **Total Monorepo Tests** | All Suites | **PASS (538/538 tests)** | Zero failing tests |

@@ -469,6 +469,9 @@ export class SisService {
             .values({
               id,
               workspaceId: tenant.workspaceId,
+              dateOfBirth: "2010-01-01",
+              gender: "other",
+              admissionDate: "2026-09-01",
               ...clean(data),
               admissionNumber,
               status: data.status ?? "applicant",

@@ -335,7 +335,9 @@ All findings are classified with concrete source-code evidence, root-cause analy
 - **Security / Business Impact:** Zero functional impact (first case matches), but creates codebase confusion and maintenance debt.
 - **Recommended Correction:** Remove duplicate switch cases (lines 549–570).
 - **Regression Test Requirements:** `npm run typecheck:web` and router smoke test on attendance pages.
-- **Implementation Status:** Identified / Ready for Remediation
+- **Implementation Status:** **Resolved (Phase 4)**
+- **Remediation Details:** Retained canonical attendance routes (`/workspace/education/attendance`, `/workspace/education/attendance/mark`, `/workspace/education/attendance/history`) and eliminated duplicate route cases in `apps/web/src/App.tsx`. Configured `LegacyRedirect` component in `App.tsx` mapping legacy paths (`/attendance`, `/workspace/attendance`, `/education/attendance`, and sub-routes) to canonical destinations while preserving URL search parameters and hashes, and enforcing authentication and workspace guards.
+- **Verification Evidence:** `apps/web/src/routes/__tests__/attendance-routes.ux001.test.tsx` (8/8 tests passed).
 
 ---
 
@@ -345,14 +347,19 @@ All findings are classified with concrete source-code evidence, root-cause analy
 - **Classification:** UX / Concurrency Risk
 - **Evidence:**
   Several modal dialogs in admissions and examinations do not explicitly disable the submit button while `isSubmitting` is true.
-- **Root Cause:** Inconsistent use of loading state across modal dialogs.
+- **Root Cause:** Inconsistent use of loading state and asynchronous React state updates that allow duplicate event dispatch during the click event loop tick.
 - **Affected Files:**
+  - `apps/web/src/hooks/use-async-submission.ts` (New)
   - `apps/web/src/pages/workspace/education/admissions/AdmissionsPage.tsx`
+  - `apps/web/src/pages/workspace/education/students/StudentAdmissionPage.tsx`
   - `apps/web/src/pages/workspace/education/examinations/ExaminationResultsPage.tsx`
-- **Security / Business Impact:** Double-clicking submit can issue duplicate API requests before response returns.
-- **Recommended Correction:** Enforce `disabled={isSubmitting}` and loading spinner icon on all dialog submission buttons.
-- **Regression Test Requirements:** Component test verifying button is disabled during pending promise.
-- **Implementation Status:** Identified / Ready for Remediation
+  - `apps/web/src/pages/workspace/education/finance/FeesFinancePage.tsx`
+- **Security / Business Impact:** Double-clicking submit can issue duplicate API requests before response returns, potentially leading to duplicate database records or error dialogs.
+- **Recommended Correction:** Enforce synchronous `inFlightRef.current` lock, `disabled={isSubmitting}`, and spinning progress icon on all dialog submission buttons. Ensure form state and errors survive failed requests without clearing entered fields.
+- **Regression Test Requirements:** Component tests verifying button is disabled during pending promise, rapid double-clicks dispatch only one mutation, and failed submissions restore button while preserving user input.
+- **Implementation Status:** **Resolved (Phase 4)**
+- **Remediation Details:** Implemented `useAsyncSubmission` hook (`apps/web/src/hooks/use-async-submission.ts`) with synchronous `inFlightRef` protection and `isSubmitting` state. Hardened all submission handlers across Admissions (`AdmissionsPage.tsx`, `StudentAdmissionPage.tsx`), Examinations (`ExaminationResultsPage.tsx`), and Finance (`FeesFinancePage.tsx`). Submit buttons display animated spinners and are disabled during processing. On network or validation error, entered data is preserved and controls are restored for user correction and retry.
+- **Verification Evidence:** `apps/web/src/hooks/__tests__/use-async-submission.test.ts` (4/4 tests passed), `apps/web/src/pages/workspace/education/admissions/__tests__/AdmissionsPage.double-submit.ux002.test.tsx` (3/3 tests passed), `apps/web/src/pages/workspace/education/examinations/__tests__/ExaminationResultsPage.double-submit.ux002.test.tsx` (3/3 tests passed), and `apps/web/src/pages/workspace/education/finance/__tests__/FeesFinancePage.double-submit.ux002.test.tsx` (3/3 tests passed). All 50 web test suites passed (285/285 tests).
 
 ---
 

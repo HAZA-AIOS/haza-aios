@@ -145,14 +145,26 @@ graph TD
 
 ### Phase 4: Frontend UX Robustness & Route Cleanup
 - **Objective:** Clean up duplicate route declarations and protect form dialogs against double submissions.
+- **Status:** **Completed**
 - **Tasks:**
-  1. **Fix `UX-001` (App.tsx Duplicate Case Cleanup):**
-     - Remove redundant duplicate cases for `/workspace/education/attendance`, `/attendance/mark`, `/attendance/history` in [`apps/web/src/App.tsx`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/web/src/App.tsx) lines 549–570.
-  2. **Fix `UX-002` (Modal Double-Submit Disabling):**
-     - Audit admissions and examination modal dialogs.
-     - Ensure submit buttons bind `disabled={isSubmitting}` and render `<RefreshCw className="animate-spin" />` during network operations.
+  1. **Fix `UX-001` (App.tsx Duplicate Case Cleanup & Route Hardening):**
+     - Retained canonical attendance routes (`/workspace/education/attendance`, `/workspace/education/attendance/mark`, `/workspace/education/attendance/history`).
+     - Removed redundant duplicate route declarations in `apps/web/src/App.tsx`.
+     - Added `LegacyRedirect` component in `App.tsx` ensuring full backward compatibility for legacy URLs (`/attendance`, `/workspace/attendance`, `/education/attendance`, and sub-paths) while preserving URL query parameters and hashes, and enforcing authentication and workspace guards.
+  2. **Fix `UX-002` (Modal Double-Submit In-Flight Locks & Form Hardening):**
+     - Created `useAsyncSubmission` hook (`apps/web/src/hooks/use-async-submission.ts`) with synchronous `inFlightRef` guard and `isSubmitting` reactive state.
+     - Hardened all dialogs and submission actions in Admissions (`AdmissionsPage.tsx`, `StudentAdmissionPage.tsx`), Examinations (`ExaminationResultsPage.tsx`), and Finance (`FeesFinancePage.tsx`).
+     - Submit buttons disabled with spinning indicators; form data and validation errors preserved on failure for seamless user retry without data re-entry.
+- **Verification Evidence:**
+  - `apps/web/src/routes/__tests__/attendance-routes.ux001.test.tsx` (8/8 tests passing, 100%).
+  - `apps/web/src/hooks/__tests__/use-async-submission.test.ts` (4/4 tests passing, 100%).
+  - `apps/web/src/pages/workspace/education/admissions/__tests__/AdmissionsPage.double-submit.ux002.test.tsx` (3/3 tests passing, 100%).
+  - `apps/web/src/pages/workspace/education/examinations/__tests__/ExaminationResultsPage.double-submit.ux002.test.tsx` (3/3 tests passing, 100%).
+  - `apps/web/src/pages/workspace/education/finance/__tests__/FeesFinancePage.double-submit.ux002.test.tsx` (3/3 tests passing, 100%).
+- **Quality Gates:** `typecheck:web` (0 errors), `build:web` (passed), `test:run -w apps/web` (50 files, 285 tests passed, 100%), `typecheck:api` (0 errors), `build:api` (passed), `test:api` (37 files, 274 tests passed, 100%), `db:check` (clean).
+- **Report:** [`docs/epic-10n/EPIC-10N-PHASE-4-FRONTEND-UX-ROBUSTNESS.md`](file:///c:/HAZA-APPS/HAZA-AIOS/docs/epic-10n/EPIC-10N-PHASE-4-FRONTEND-UX-ROBUSTNESS.md)
 - **Dependencies:** Phase 3 complete.
-- **Estimated Effort:** Low.
+
 
 ---
 

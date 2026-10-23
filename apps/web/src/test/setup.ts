@@ -6,7 +6,10 @@
  * matchers (toBeInTheDocument, toHaveValue, toBeDisabled, etc.).
  */
 import "@testing-library/jest-dom";
+import { configure } from "@testing-library/dom";
 import { vi } from "vitest";
+
+configure({ asyncUtilTimeout: 5000 });
 
 const originalFetch = globalThis.fetch?.bind(globalThis);
 

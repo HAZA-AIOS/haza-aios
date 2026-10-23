@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { AcademicService } from "@/modules/education/sis/academic.service";
 import { EnrollmentService } from "@/modules/education/sis/enrollment.service";
@@ -143,6 +143,7 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
   const { currentOrganization } = useOrganization();
   const [activeTab, setActiveTab] = useState<FinanceTab>(initialTab);
   const [isLoading, setIsLoading] = useState(true);
+  const inFlightRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -521,6 +522,8 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
   }
 
   async function runAction(action: () => Promise<void>) {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setMessage(null);
     setError(null);
     setIsSubmitting(true);
@@ -530,6 +533,7 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
     } catch (err) {
       setError(err instanceof Error ? err.message : "Finance action failed.");
     } finally {
+      inFlightRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -1501,7 +1505,15 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
                         disabled={isSubmitting || !structureForm.name}
                         className="w-full bg-red-600 hover:bg-red-700 text-white font-medium"
                       >
-                        <Plus className="mr-1.5 h-4 w-4" /> Save Fee Structure
+                        {isSubmitting ? (
+                          <>
+                            <RefreshCw className="mr-1.5 h-4 w-4 animate-spin" /> Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="mr-1.5 h-4 w-4" /> Save Fee Structure
+                          </>
+                        )}
                       </Button>
                     </CardContent>
                   </Card>
@@ -1547,7 +1559,15 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
                         disabled={isSubmitting || !categoryForm.name || !categoryForm.code}
                         className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
                       >
-                        <Plus className="mr-1.5 h-4 w-4" /> Add Category
+                        {isSubmitting ? (
+                          <>
+                            <RefreshCw className="mr-1.5 h-4 w-4 animate-spin" /> Adding...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="mr-1.5 h-4 w-4" /> Add Category
+                          </>
+                        )}
                       </Button>
 
                       {/* Existing Categories List */}
@@ -1680,7 +1700,15 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
                           disabled={isSubmitting || !discountForm.name}
                           className="w-full bg-amber-600 hover:bg-amber-700 text-white font-medium"
                         >
-                          <Plus className="mr-1.5 h-4 w-4" /> Save Discount
+                          {isSubmitting ? (
+                            <>
+                              <RefreshCw className="mr-1.5 h-4 w-4 animate-spin" /> Saving...
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="mr-1.5 h-4 w-4" /> Save Discount
+                            </>
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -2379,7 +2407,15 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
                       disabled={isSubmitting}
                       className="border-white/10 text-slate-200 hover:bg-white/5"
                     >
-                      <Clock className="mr-1.5 h-4 w-4 text-amber-400" /> Run Late Fee Evaluation
+                      {isSubmitting ? (
+                        <>
+                          <RefreshCw className="mr-1.5 h-4 w-4 animate-spin text-amber-400" /> Evaluating...
+                        </>
+                      ) : (
+                        <>
+                          <Clock className="mr-1.5 h-4 w-4 text-amber-400" /> Run Late Fee Evaluation
+                        </>
+                      )}
                     </Button>
                     <Button
                       onClick={() => setActiveModal("createPolicy")}
@@ -2558,7 +2594,15 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
                         disabled={isSubmitting}
                         className="border-white/10 text-slate-200 hover:bg-white/5"
                       >
-                        <ShieldCheck className="mr-1.5 h-4 w-4 text-emerald-400" /> Run System Ledger Audit
+                        {isSubmitting ? (
+                          <>
+                            <RefreshCw className="mr-1.5 h-4 w-4 animate-spin text-emerald-400" /> Auditing...
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck className="mr-1.5 h-4 w-4 text-emerald-400" /> Run System Ledger Audit
+                          </>
+                        )}
                       </Button>
                     </div>
 
@@ -3667,7 +3711,13 @@ export function FeesFinancePage({ initialTab = "overview" }: FeesFinancePageProp
                   disabled={isSubmitting || !expenseCategoryForm.name || !expenseCategoryForm.code}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
                 >
-                  Save Category
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="mr-1.5 h-4 w-4 animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    "Save Category"
+                  )}
                 </Button>
               </div>
             </div>

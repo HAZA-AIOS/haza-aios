@@ -66,6 +66,7 @@ import {
   Archive,
   Plus,
   Search,
+  RefreshCw,
 } from "lucide-react";
 
 export type ExamTab =
@@ -176,7 +177,14 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
   const [marksAssessmentId, setMarksAssessmentId] = useState("");
   const [marksSubjectId, setMarksSubjectId] = useState("");
   const [isCreateAssessmentModalOpen, setIsCreateAssessmentModalOpen] = useState(false);
+  const isSubmittingAssessmentRef = useRef(false);
   const [isSubmittingAssessment, setIsSubmittingAssessment] = useState(false);
+  const isActionRunningRef = useRef(false);
+  const [isActionRunning, setIsActionRunning] = useState(false);
+  const isSubmittingCorrectionRef = useRef(false);
+  const [isSubmittingCorrection, setIsSubmittingCorrection] = useState(false);
+  const isSavingMarksRef = useRef(false);
+  const isUpdatingAssessmentRef = useRef(false);
   const rosterRequestIdRef = useRef(0);
 
   // Tab 2: Assessment Register Filters & Management State
@@ -650,7 +658,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
 
   async function handleSaveMarks() {
     if (!currentOrganization) return;
-    if (isSavingMarks) return;
+    if (isSavingMarksRef.current || isSavingMarks) return;
     if (Object.keys(validationErrors).length > 0) {
       setError("Please fix marks validation errors before saving.");
       return;
@@ -660,6 +668,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
       return;
     }
 
+    isSavingMarksRef.current = true;
     setIsSavingMarks(true);
     setError(null);
     setMessage(null);
@@ -713,6 +722,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
         setError("Marks were saved successfully, but refreshing the roster failed. Please reload the page.");
       }
     } finally {
+      isSavingMarksRef.current = false;
       setIsSavingMarks(false);
     }
   }
@@ -850,8 +860,9 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
   async function handleCreateAssessment(e: React.FormEvent) {
     e.preventDefault();
     if (!currentOrganization) return;
-    if (isSubmittingAssessment) return;
+    if (isSubmittingAssessmentRef.current || isSubmittingAssessment) return;
 
+    isSubmittingAssessmentRef.current = true;
     setIsSubmittingAssessment(true);
     setError(null);
     try {
@@ -891,6 +902,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create assessment.");
     } finally {
+      isSubmittingAssessmentRef.current = false;
       setIsSubmittingAssessment(false);
     }
   }
@@ -918,8 +930,9 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
   async function handleUpdateAssessment(e: React.FormEvent) {
     e.preventDefault();
     if (!currentOrganization || !editingAssessment) return;
-    if (isUpdatingAssessment) return;
+    if (isUpdatingAssessmentRef.current || isUpdatingAssessment) return;
 
+    isUpdatingAssessmentRef.current = true;
     setIsUpdatingAssessment(true);
     setError(null);
     try {
@@ -941,6 +954,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update assessment.");
     } finally {
+      isUpdatingAssessmentRef.current = false;
       setIsUpdatingAssessment(false);
     }
   }
@@ -1055,22 +1069,30 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
   async function handleRequestCorrection(e: React.FormEvent) {
     e.preventDefault();
     if (!currentOrganization) return;
-    await runAction(async () => {
-      await ExaminationService.requestResultCorrection(currentOrganization.id, {
-        examinationId: correctionForm.examinationId,
-        gradeId: correctionForm.gradeId,
-        sectionId: correctionForm.sectionId,
-        studentId: correctionForm.studentId,
-        subjectId: correctionForm.subjectId,
-        newMarks: Number(correctionForm.newMarks),
-        reason: correctionForm.reason,
-        requestedBy: user?.displayName || user?.email || "teacher",
+    if (isSubmittingCorrectionRef.current || isActionRunningRef.current) return;
+    isSubmittingCorrectionRef.current = true;
+    setIsSubmittingCorrection(true);
+    try {
+      await runAction(async () => {
+        await ExaminationService.requestResultCorrection(currentOrganization.id, {
+          examinationId: correctionForm.examinationId,
+          gradeId: correctionForm.gradeId,
+          sectionId: correctionForm.sectionId,
+          studentId: correctionForm.studentId,
+          subjectId: correctionForm.subjectId,
+          newMarks: Number(correctionForm.newMarks),
+          reason: correctionForm.reason,
+          requestedBy: user?.displayName || user?.email || "teacher",
+        });
+        setMessage("Correction request submitted for approval.");
+        setIsCorrectionModalOpen(false);
+        setCorrectionForm({ examinationId: "", gradeId: "", sectionId: "", studentId: "", subjectId: "", newMarks: "", reason: "" });
+        await loadData();
       });
-      setMessage("Correction request submitted for approval.");
-      setIsCorrectionModalOpen(false);
-      setCorrectionForm({ examinationId: "", gradeId: "", sectionId: "", studentId: "", subjectId: "", newMarks: "", reason: "" });
-      await loadData();
-    });
+    } finally {
+      isSubmittingCorrectionRef.current = false;
+      setIsSubmittingCorrection(false);
+    }
   }
 
   async function handleReviewCorrection(id: string, decision: "approved" | "rejected") {
@@ -1227,12 +1249,18 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
   }
 
   async function runAction(action: () => Promise<void>) {
+    if (isActionRunningRef.current) return;
+    isActionRunningRef.current = true;
+    setIsActionRunning(true);
     setError(null);
     setMessage(null);
     try {
       await action();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed.");
+    } finally {
+      isActionRunningRef.current = false;
+      setIsActionRunning(false);
     }
   }
 
@@ -1372,7 +1400,16 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                         onChange={(e) => setExamForm({ ...examForm, description: e.target.value })}
                       />
                       <div className="lg:col-span-3">
-                        <Button type="submit">Create Examination</Button>
+                        <Button type="submit" disabled={isActionRunning}>
+                          {isActionRunning ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              Creating...
+                            </>
+                          ) : (
+                            "Create Examination"
+                          )}
+                        </Button>
                       </div>
                     </form>
 
@@ -1514,7 +1551,16 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                         value={examSubjectForm.weightage}
                         onChange={(e) => setExamSubjectForm({ ...examSubjectForm, weightage: Number(e.target.value) })}
                       />
-                      <Button type="submit">Add Subject</Button>
+                      <Button type="submit" disabled={isActionRunning}>
+                        {isActionRunning ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                            Adding...
+                          </>
+                        ) : (
+                          "Add Subject"
+                        )}
+                      </Button>
                     </form>
 
                     <div className="overflow-x-auto rounded-xl border border-white/5 mt-4">
@@ -2184,8 +2230,17 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                             }
                             className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-950/20"
                           >
-                            <Save className="w-4 h-4 mr-2" />
-                            {isSavingMarks ? "Saving..." : "Save Gradebook Marks"}
+                            {isSavingMarks ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                Saving...
+                              </>
+                            ) : (
+                              <>
+                                <Save className="w-4 h-4 mr-2" />
+                                Save Gradebook Marks
+                              </>
+                            )}
                           </Button>
                         </div>
                       </div>
@@ -2480,10 +2535,18 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                         {(!currentPublication || currentPublication.status === "draft") && (
                           <Button
                             onClick={handleSubmitForReview}
-                            disabled={calculatedResults.length === 0}
+                            disabled={calculatedResults.length === 0 || isActionRunning}
                             className="bg-blue-600 hover:bg-blue-700 text-white"
                           >
-                            <Send className="w-4 h-4 mr-1.5" /> Submit for Review
+                            {isActionRunning ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" /> Submitting...
+                              </>
+                            ) : (
+                              <>
+                                <Send className="w-4 h-4 mr-1.5" /> Submit for Review
+                              </>
+                            )}
                           </Button>
                         )}
 
@@ -2497,12 +2560,14 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                             />
                             <Button
                               onClick={() => handleReviewDecision("approved")}
+                              disabled={isActionRunning}
                               className="bg-emerald-600 hover:bg-emerald-700 text-white"
                             >
                               <CheckCircle2 className="w-4 h-4 mr-1.5" /> Approve Results
                             </Button>
                             <Button
                               onClick={() => handleReviewDecision("rejected")}
+                              disabled={isActionRunning}
                               variant="destructive"
                               className="bg-red-600 hover:bg-red-700 text-white"
                             >
@@ -2514,9 +2579,18 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                         {currentPublication?.status === "completed" && (
                           <Button
                             onClick={handlePublishResults}
+                            disabled={isActionRunning}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-950/20"
                           >
-                            <ShieldCheck className="w-4 h-4 mr-1.5" /> Publish to Portals
+                            {isActionRunning ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" /> Publishing...
+                              </>
+                            ) : (
+                              <>
+                                <ShieldCheck className="w-4 h-4 mr-1.5" /> Publish to Portals
+                              </>
+                            )}
                           </Button>
                         )}
 
@@ -2824,12 +2898,24 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                           <Button
                             type="button"
                             variant="ghost"
+                            disabled={isSubmittingCorrection || isActionRunning}
                             onClick={() => setIsCorrectionModalOpen(false)}
                           >
                             Cancel
                           </Button>
-                          <Button type="submit" className="bg-red-500 hover:bg-red-600 text-white">
-                            Submit Correction
+                          <Button
+                            type="submit"
+                            disabled={isSubmittingCorrection || isActionRunning}
+                            className="bg-red-500 hover:bg-red-600 text-white"
+                          >
+                            {isSubmittingCorrection || isActionRunning ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                Submitting...
+                              </>
+                            ) : (
+                              "Submit Correction"
+                            )}
                           </Button>
                         </div>
                       </form>
@@ -3353,6 +3439,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                     <Button
                       type="button"
                       variant="ghost"
+                      disabled={isSubmittingAssessment}
                       onClick={() => setIsCreateAssessmentModalOpen(false)}
                     >
                       Cancel
@@ -3362,7 +3449,14 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                       disabled={isSubmittingAssessment}
                       className="bg-red-500 hover:bg-red-600 text-white"
                     >
-                      {isSubmittingAssessment ? "Creating..." : "Create & Select Assessment"}
+                      {isSubmittingAssessment ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        "Create & Select Assessment"
+                      )}
                     </Button>
                   </div>
                 </form>
@@ -3589,6 +3683,7 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                     <Button
                       type="button"
                       variant="ghost"
+                      disabled={isUpdatingAssessment}
                       onClick={() => {
                         setIsEditAssessmentModalOpen(false);
                         setEditingAssessment(null);
@@ -3597,7 +3692,14 @@ export function ExaminationResultsPage({ initialTab = "examinations" }: Examinat
                       Cancel
                     </Button>
                     <Button type="submit" disabled={isUpdatingAssessment} className="bg-red-500 hover:bg-red-600 text-white">
-                      {isUpdatingAssessment ? "Saving..." : "Save Changes"}
+                      {isUpdatingAssessment ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Changes"
+                      )}
                     </Button>
                   </div>
                 </form>

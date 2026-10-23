@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 // Forced HMR reload
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, Select } from "@haza-aios/ui";
 import { StudentService } from "@/modules/education/sis/student.service";
@@ -10,11 +10,12 @@ import { useOrganization } from "@/org/use-organization";
 import { navigate } from "@/routes/navigation";
 import { Link } from "@/routes/router";
 import { AppShell } from "@/components/AppShell";
-import { ArrowLeft, Save, UserPlus, ShieldAlert, Contact2, GraduationCap, Camera, User } from "lucide-react";
+import { ArrowLeft, Save, UserPlus, ShieldAlert, Contact2, GraduationCap, Camera, User, RefreshCw } from "lucide-react";
 
 export const StudentAdmissionPage: React.FC = () => {
   const { currentOrganization } = useOrganization();
   const [loading, setLoading] = useState(false);
+  const inFlightRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   const isHigherEd = currentOrganization?.organizationType === "College" || currentOrganization?.organizationType === "University";
@@ -85,6 +86,8 @@ export const StudentAdmissionPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentOrganization) return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -128,6 +131,8 @@ export const StudentAdmissionPage: React.FC = () => {
       navigate(`/workspace/education/students/${newStudent.id}`);
     } catch (err: any) {
       setError(err.message || "Failed to admit student");
+    } finally {
+      inFlightRef.current = false;
       setLoading(false);
     }
   };
@@ -316,8 +321,17 @@ export const StudentAdmissionPage: React.FC = () => {
               <Button variant="ghost" type="button">Cancel</Button>
             </Link>
             <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white">
-              <Save className="w-4 h-4 mr-2" />
-              {loading ? "Admitting..." : "Admit & Create Profile"}
+              {loading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Admitting...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Admit & Create Profile
+                </>
+              )}
             </Button>
           </div>
         </form>

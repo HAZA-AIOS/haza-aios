@@ -185,6 +185,27 @@ All 7 required quality gates were executed locally and confirmed passing prior t
 - `npm run db:check -w apps/api` -> "Everything's fine 🐶🔥" (Passed)
 - YAML validation (`.github/workflows/ci.yml`): Verified valid syntax via `python -c "import yaml; yaml.safe_load(...)"`.
 
+### 6.1 Live GitHub Actions Run Evidence
+The workflow was triggered via push to `feature/epic-10n-system-hardening` and verified directly on GitHub Actions:
+- **Run ID:** `39984944706`
+- **Workflow Name:** `HAZA AIOS — Continuous Integration`
+- **Commit:** `23fd7c2` (`fix(epic-10n): normalize examination and assessment enum values for strict mysql`)
+- **Status:** `✓ Completed successfully (100% Green)`
+- **Job Execution Summary:**
+  1. `API & Database Quality Gates` (Job ID `120521571796` - 1m 45s):
+     - ✓ Ephemeral MySQL 8.4 container initialized & health check passed
+     - ✓ API TypeScript Verification (`npm run typecheck:api`)
+     - ✓ Database Schema Integrity Validation (`npm run db:check -w apps/api`)
+     - ✓ Database Migrations Execution (`npm run db:migrate`)
+     - ✓ API Automated & Integration Test Suite (`npm run test:api`)
+     - ✓ API Production Build (`npm run build:api`)
+  2. `Web Client Quality Gates` (Job ID `120521572361` - 1m 22s):
+     - ✓ Web TypeScript Verification (`npm run typecheck:web`)
+     - ✓ Web Automated Test Suite (`npm run test:run -w apps/web`)
+     - ✓ Web Production Build (`npm run build:web`)
+  3. `CI Acceptance Status` (Job ID `120522432875` - 3s):
+     - ✓ Verified both parallel quality gate jobs succeeded
+
 ---
 
 ## 7. Mandatory Release Constraints

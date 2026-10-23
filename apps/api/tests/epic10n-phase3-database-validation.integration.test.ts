@@ -72,7 +72,7 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
         firstName: "Bob",
         lastName: "Builder",
         admissionDate: "2026-09-01",
-        status: "suspended",
+        status: "inactive",
       });
 
       const activeStudents = await sis.listStudents(tenant, { status: "active" });

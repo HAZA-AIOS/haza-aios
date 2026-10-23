@@ -702,7 +702,8 @@ export class SisService {
   async createEnrollment(tenant: Tenant, data: JsonRecord) {
     await Promise.all([this.assertStudent(tenant.workspaceId, String(data.studentId)), this.assertGrade(tenant.workspaceId, String(data.gradeId)), this.assertSection(tenant.workspaceId, String(data.sectionId))]);
     const id = uuid();
-    await this.database.db.insert(enrollments).values({ id, workspaceId: tenant.workspaceId, ...clean(data) } as typeof enrollments.$inferInsert).catch(databaseError);
+    const enrollmentDate = (data.enrollmentDate as string) || (data.startDate as string) || "2026-09-01";
+    await this.database.db.insert(enrollments).values({ id, workspaceId: tenant.workspaceId, ...clean(data), enrollmentDate } as typeof enrollments.$inferInsert).catch(databaseError);
     return (await this.getEnrollment(tenant, id))!;
   }
 

@@ -118,6 +118,42 @@ function assertMarks(maximumMarks: unknown, obtainedMarks?: unknown, passingMark
   if (obtained !== undefined && obtained > maximum) throw new ApiError(400, 'VALIDATION_FAILED', 'Obtained marks cannot exceed maximum marks.');
 }
 
+function normalizeExaminationType(raw: unknown): "monthly_test" | "mid_term" | "final_term" | "annual" | "entry_assessment" | "other" {
+  const str = String(raw ?? "").trim().toLowerCase();
+  if (str === "midterm" || str === "mid_term") return "mid_term";
+  if (str === "final" || str === "final_term") return "final_term";
+  if (str === "monthly" || str === "monthly_test") return "monthly_test";
+  if (str === "annual") return "annual";
+  if (str === "entry_assessment" || str === "entry") return "entry_assessment";
+  return "other";
+}
+
+function normalizeExaminationStatus(raw: unknown): "draft" | "scheduled" | "in_progress" | "completed" | "published" | "archived" {
+  const str = String(raw ?? "").trim().toLowerCase();
+  const allowed = ["draft", "scheduled", "in_progress", "completed", "published", "archived"];
+  return allowed.includes(str) ? (str as "draft" | "scheduled" | "in_progress" | "completed" | "published" | "archived") : "draft";
+}
+
+function normalizeExamSubjectStatus(raw: unknown): "draft" | "scheduled" | "completed" | "cancelled" {
+  const str = String(raw ?? "").trim().toLowerCase();
+  const allowed = ["draft", "scheduled", "completed", "cancelled"];
+  return allowed.includes(str) ? (str as "draft" | "scheduled" | "completed" | "cancelled") : "draft";
+}
+
+function normalizeAssessmentType(raw: unknown): "class_test" | "assignment" | "quiz" | "project" | "practical" | "oral" | "other" {
+  const str = String(raw ?? "").trim().toLowerCase();
+  const allowed = ["class_test", "assignment", "quiz", "project", "practical", "oral", "other"];
+  if (allowed.includes(str)) return str as any;
+  if (str === "test") return "class_test";
+  return "other";
+}
+
+function normalizeAssessmentStatus(raw: unknown): "draft" | "assigned" | "in_progress" | "completed" | "published" | "archived" {
+  const str = String(raw ?? "").trim().toLowerCase();
+  const allowed = ["draft", "assigned", "in_progress", "completed", "published", "archived"];
+  return allowed.includes(str) ? (str as any) : "draft";
+}
+
 export class SisExaminationService {
   constructor(private readonly database: DatabaseClient) {}
 
@@ -137,10 +173,10 @@ export class SisExaminationService {
       name: String(data.name).trim(),
       academicYearId: String(data.academicYearId),
       termId: typeof data.termId === 'string' && data.termId ? data.termId : undefined,
-      type: String(data.type ?? 'other') as typeof examinations.$inferInsert.type,
+      type: normalizeExaminationType(data.type),
       startDate: String(data.startDate),
       endDate: String(data.endDate),
-      status: String(data.status ?? 'draft') as typeof examinations.$inferInsert.status,
+      status: normalizeExaminationStatus(data.status),
       description: typeof data.description === 'string' ? data.description : undefined,
     }).catch(databaseError);
     return (await this.listExaminations(tenant)).find((row) => row.id === id)!;
@@ -207,7 +243,7 @@ export class SisExaminationService {
       passingMarks: Number(data.passingMarks),
       weightage: data.weightage === undefined ? undefined : Number(data.weightage),
       examDate: typeof data.examDate === 'string' ? data.examDate : undefined,
-      status: String(data.status ?? 'draft') as typeof examinationSubjects.$inferInsert.status,
+      status: normalizeExamSubjectStatus(data.status),
     }).catch(databaseError);
     return (await this.listExaminationSubjects(tenant, String(data.examinationId))).find((row) => row.id === id)!;
   }
@@ -310,12 +346,12 @@ export class SisExaminationService {
       sectionId: String(data.sectionId),
       subjectId: String(data.subjectId),
       teacherId: resolvedTeacherId,
-      type: String(data.type ?? 'class_test') as typeof assessments.$inferInsert.type,
+      type: normalizeAssessmentType(data.type),
       maximumMarks: Number(data.maximumMarks),
       passingMarks: Number(data.passingMarks),
       weightage: data.weightage === undefined ? undefined : Number(data.weightage),
       assessmentDate,
-      status: String(data.status ?? 'draft') as typeof assessments.$inferInsert.status,
+      status: normalizeAssessmentStatus(data.status),
       description: typeof data.description === 'string' ? data.description : undefined,
     }).catch(databaseError);
 

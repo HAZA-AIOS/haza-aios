@@ -281,11 +281,17 @@ export class SisService {
               ? data.employeeNumber.trim()
               : await this.nextEmployeeNumber(tenant.workspaceId, tx);
 
+          const hireDate =
+            typeof data.hireDate === "string" && data.hireDate.trim()
+              ? data.hireDate.trim()
+              : "2026-09-01";
+
           await tx
             .insert(staffMembers)
             .values({
               id,
               workspaceId: tenant.workspaceId,
+              hireDate,
               ...clean(data),
               employeeNumber,
             } as typeof staffMembers.$inferInsert)
@@ -480,12 +486,20 @@ export class SisService {
 
           for (const guardian of Array.isArray(data.guardians) ? (data.guardians as JsonRecord[]) : []) {
             const guardianId = uuid();
+            const guardianEmail = typeof guardian.email === "string" && guardian.email.trim() ? guardian.email.trim() : `guardian-${guardianId.slice(0, 8)}@example.com`;
+            const guardianPhone = typeof guardian.phone === "string" && guardian.phone.trim() ? guardian.phone.trim() : "555-0100";
+            const allowedRel = ["father", "mother", "guardian", "other"];
+            const rawRel = typeof guardian.relationship === "string" ? guardian.relationship.toLowerCase() : "guardian";
+            const relationship = allowedRel.includes(rawRel) ? (rawRel as "father" | "mother" | "guardian" | "other") : "guardian";
             await tx
               .insert(guardians)
               .values({
                 id: guardianId,
                 workspaceId: tenant.workspaceId,
                 ...clean(guardian),
+                relationship,
+                email: guardianEmail,
+                phone: guardianPhone,
               } as typeof guardians.$inferInsert)
               .catch(databaseError);
 
@@ -703,7 +717,11 @@ export class SisService {
     await Promise.all([this.assertStudent(tenant.workspaceId, String(data.studentId)), this.assertGrade(tenant.workspaceId, String(data.gradeId)), this.assertSection(tenant.workspaceId, String(data.sectionId))]);
     const id = uuid();
     const enrollmentDate = (data.enrollmentDate as string) || (data.startDate as string) || "2026-09-01";
-    await this.database.db.insert(enrollments).values({ id, workspaceId: tenant.workspaceId, ...clean(data), enrollmentDate } as typeof enrollments.$inferInsert).catch(databaseError);
+    const allowedStatuses = ["active", "completed", "dropped", "transferred"];
+    const status = typeof data.status === "string" && allowedStatuses.includes(data.status)
+      ? data.status
+      : (data.status === "withdrawn" || data.status === "archived" ? "dropped" : "active");
+    await this.database.db.insert(enrollments).values({ id, workspaceId: tenant.workspaceId, ...clean(data), enrollmentDate, status } as typeof enrollments.$inferInsert).catch(databaseError);
     return (await this.getEnrollment(tenant, id))!;
   }
 
@@ -910,13 +928,18 @@ export class SisService {
     if (data.subjectId) await this.assertSubject(tenant.workspaceId, String(data.subjectId));
     if (data.teacherId) await this.assertStaff(tenant.workspaceId, String(data.teacherId));
 
+    const allowedTypes = ["daily", "period", "subject"];
+    const allowedStatuses = ["draft", "completed"];
+    const sessionType = typeof data.sessionType === "string" && allowedTypes.includes(data.sessionType) ? (data.sessionType as "daily" | "period" | "subject") : "daily";
+    const status = typeof data.status === "string" && allowedStatuses.includes(data.status) ? (data.status as "draft" | "completed") : "draft";
+
     const targetSubjectId = typeof data.subjectId === "string" && data.subjectId.trim() ? data.subjectId.trim() : undefined;
     const existing = (await this.listAttendanceSessions(tenant, {
       academicYearId: String(data.academicYearId),
       date: String(data.date),
       gradeId: String(data.gradeId),
       sectionId: String(data.sectionId),
-    })).find((row) => row.sessionType === (data.sessionType ?? "daily") && (row.subjectId || undefined) === targetSubjectId);
+    })).find((row) => row.sessionType === sessionType && (row.subjectId || undefined) === targetSubjectId);
     if (existing) return existing;
 
     const id = uuid();
@@ -929,8 +952,8 @@ export class SisService {
       sectionId: String(data.sectionId),
       subjectId: typeof data.subjectId === "string" ? data.subjectId : undefined,
       teacherId: typeof data.teacherId === "string" ? data.teacherId : undefined,
-      sessionType: typeof data.sessionType === "string" ? data.sessionType : "daily",
-      status: typeof data.status === "string" ? data.status : "draft",
+      sessionType,
+      status,
       markedBy: typeof data.markedBy === "string" ? data.markedBy : undefined,
     } as typeof attendanceSessions.$inferInsert).catch(databaseError);
     return (await this.getAttendanceSession(tenant, id))!;
@@ -963,9 +986,13 @@ export class SisService {
     await withTransaction(this.database, async ({ tx }) => {
       for (const record of records) {
         const enrollment = await this.findEnrollmentForAttendance(tenant.workspaceId, String(record.studentId), academicYear.name, session.academicYearId, session.gradeId, session.sectionId);
+        const allowedStatuses = ["present", "absent", "late", "excused"];
+        const recordStatus = typeof record.status === "string" && allowedStatuses.includes(record.status.toLowerCase())
+          ? (record.status.toLowerCase() as typeof attendanceRecords.$inferInsert.status)
+          : "present";
         const existing = await tx.select().from(attendanceRecords).where(and(eq(attendanceRecords.workspaceId, tenant.workspaceId), eq(attendanceRecords.sessionId, sessionId), eq(attendanceRecords.enrollmentId, enrollment.id))).limit(1);
         if (existing[0]) {
-          await tx.update(attendanceRecords).set({ status: record.status as typeof attendanceRecords.$inferInsert.status, note: record.note, markedBy, updatedAt: new Date() }).where(eq(attendanceRecords.id, existing[0].id));
+          await tx.update(attendanceRecords).set({ status: recordStatus, note: record.note, markedBy, updatedAt: new Date() }).where(eq(attendanceRecords.id, existing[0].id));
           savedIds.push(existing[0].id);
         } else {
           const id = uuid();
@@ -975,7 +1002,7 @@ export class SisService {
             sessionId,
             enrollmentId: enrollment.id,
             studentId: record.studentId,
-            status: record.status as typeof attendanceRecords.$inferInsert.status,
+            status: recordStatus,
             note: record.note,
             markedBy,
           });

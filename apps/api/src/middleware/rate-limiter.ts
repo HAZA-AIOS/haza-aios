@@ -403,7 +403,13 @@ export function resolveClientIp(
   request: IncomingMessage,
   trustProxy: ProxyTrustOption = false,
 ): string {
-  const socketIp = normalizeIp(request.socket?.remoteAddress) || "127.0.0.1";
+  const rawSocketIp = request.socket?.remoteAddress;
+  const socketIp = normalizeIp(rawSocketIp);
+
+  if (!socketIp) {
+    // Missing or invalid socket IP: return safe fallback without trusting forwarded headers
+    return "127.0.0.1";
+  }
 
   // Check if proxy trust is enabled AND the immediate connection is from a verified trusted proxy
   const socketIsTrusted = isTrustedProxy(socketIp, trustProxy);
@@ -415,7 +421,8 @@ export function resolveClientIp(
 
   // Socket is trusted; inspect forwarded headers
   let candidateClientIp: string | null = null;
-  let upstreamProxyIsCloudflare = isCloudflareIp(socketIp);
+  const socketIsCloudflare = isCloudflareIp(socketIp);
+  let upstreamProxyIsCloudflare = socketIsCloudflare;
 
   // Check X-Forwarded-For
   const forwarded = request.headers["x-forwarded-for"];
@@ -459,14 +466,23 @@ export function resolveClientIp(
   // Check CF-Connecting-IP:
   // Only accept if:
   // 1. Header exists and is a valid normalized IP
-  // 2. The connection legitimately traversed Cloudflare (socket or upstream proxy in XFF is Cloudflare, or trustCloudflare is explicitly set)
+  // 2. Cloudflare trust mode is enabled (trustProxy === "cloudflare" or trustProxy === true)
+  // 3. The connection legitimately traversed Cloudflare:
+  //    - socket is directly from Cloudflare, OR
+  //    - socket is a trusted proxy AND a verified Cloudflare proxy is in the chain AND candidateClientIp is a non-Cloudflare client.
+  //    CRITICAL: Never accept CF-Connecting-IP on a direct Railway request where upstreamProxyIsCloudflare === false.
   const cfIp = request.headers["cf-connecting-ip"];
   if (typeof cfIp === "string" && cfIp.trim()) {
-    const trustExplicitCloudflare =
+    const isCloudflareTrustMode =
+      trustProxy === "cloudflare" ||
       (typeof trustProxy === "string" && trustProxy.toLowerCase() === "cloudflare") ||
       (typeof trustProxy === "object" && trustProxy !== null && "trustCloudflare" in trustProxy && Boolean(trustProxy.trustCloudflare));
 
-    if (upstreamProxyIsCloudflare || trustExplicitCloudflare) {
+    const legitimateCloudflare =
+      socketIsCloudflare ||
+      (upstreamProxyIsCloudflare && candidateClientIp !== null && !isCloudflareIp(candidateClientIp));
+
+    if (legitimateCloudflare && (isCloudflareTrustMode || trustProxy === true)) {
       const normCf = normalizeIp(cfIp);
       if (normCf) {
         return normCf;

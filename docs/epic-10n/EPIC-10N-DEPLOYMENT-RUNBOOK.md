@@ -20,15 +20,16 @@ Before initiating any deployment activities, verify that all conditions below ar
 
 - [ ] **Operator Authorization:** Explicit, written approval from the project owner authorizing Epic 10N deployment.
 - [ ] **Release Blocker RB-001 (Data Integrity):** Code remediated and verified with 10/10 focused regression tests. No fabricated fallbacks for DOB, hireDate, admissionDate, guardian contact, or attendance status.
-- [ ] **Release Blocker RB-002 (Proxy Security Verification):** Operator must inspect Cloudflare and Railway console to confirm:
-  1. Direct `*.up.railway.app` ingress is removed or access restricted to Cloudflare IPs.
-  2. Cloudflare Proxied mode (Orange Cloud) is active on the production API hostname.
+- [ ] **Release Blocker RB-002A (Proxy Source Correction):** Code remediated and verified with 18 focused regression tests (TP-001 through TP-018). `env.ts` preserves `"cloudflare"` mode, and `rate-limiter.ts` validates legitimate Cloudflare origin before accepting `CF-Connecting-IP`.
+- [ ] **Release Blocker RB-002B (Proxy Operational Verification):** Operator must inspect Cloudflare and Railway console to confirm:
+  1. Direct `api-production-367e.up.railway.app` generated public domain is **deleted** in Railway Settings.
+  2. Cloudflare Proxied mode (Orange Cloud) is active on `api.haza-aios.com` pointing to `gpc9vf9z.up.railway.app`.
   3. Railway service environment has `TRUST_PROXY=cloudflare`.
 - [ ] **Release Blocker RB-003 (Migration & Backup Verification):** Operator must perform:
   1. Dry-run of migrations 0019 and 0020 against an isolated staging/clone database.
   2. Successful pre-deployment full logical backup (`mysqldump`) with table row count verification.
   3. Verification that restored copy matches live production record counts.
-- [ ] **Local Quality Gates:** All local tests and builds verified (569 tests passing across web and api, 0 typecheck errors, db:check clean).
+- [ ] **Local Quality Gates:** All local tests and builds verified (587 tests passing across web and api, 0 typecheck errors, db:check clean).
 - [ ] **CI Pipeline Acceptance:** GitHub Actions workflow `HAZA AIOS — Continuous Integration` passing on `feature/epic-10n-system-hardening`.
 - [ ] **Git Synchronization:** Working tree clean; feature branch synchronized with `origin`.
 - [ ] **Infrastructure Health:** Railway production API service and Cloudflare DNS operational with normal latency and zero elevated error rates.

@@ -109,13 +109,14 @@ Prior to executing production deployment, the following gates must be formally c
 
 ---
 
-## 5. Consolidated Release Blocker Status (RB-001, RB-002, RB-003)
+## 5. Consolidated Release Blocker Status (RB-001, RB-002/RB-002A, RB-003)
 
 | Blocker ID | Description | Resolution Status | Technical Summary |
 | :--- | :--- | :---: | :--- |
-| **`RB-001`** | Unsafe Fabricated Data Defaults | **PASS** | Removed hardcoded fallbacks across `sis.service.ts`, `sis-admissions.service.ts`, `sis-examination.service.ts`, and `sis-validation.ts`. Enforced strict HTTP 400 validation errors. Missing or invalid attendance status is never defaulted to `present`. Verified via 10 integration tests in `epic10n-rb001-data-integrity.integration.test.ts`. |
-| **`RB-002`** | Ingress Proxy Security | **BLOCKED** | Read-only audit confirmed `rate-limiter.ts` fails safe to socket IP. Verified DNS edge routing to Cloudflare. Marked BLOCKED pending operator confirmation of Railway variable `TRUST_PROXY=cloudflare` and restriction of default public domain. |
+| **`RB-001`** | Unsafe Fabricated Data Defaults | **PASS** | Removed hardcoded fallbacks across `sis.service.ts`, `sis-admissions.service.ts`, `sis-examination.service.ts`, and `sis-validation.ts`. Enforced strict HTTP 400 validation errors. Missing or invalid attendance status is never defaulted to `present`. Verified via 10 focused integration tests in `epic10n-rb001-data-integrity.integration.test.ts`. |
+| **`RB-002A`** | Trusted Proxy Source Correction | **PASS** | Corrected `env.ts` type-coercion defect (`ApiConfig.trustProxy: TrustProxySetting`), preserving explicit `"cloudflare"` mode. Hardened `resolveClientIp` in `rate-limiter.ts` with strict `legitimateCloudflare` validation to prevent header spoofing on direct Railway requests. Verified via 18 security regression tests (TP-001 through TP-018). |
+| **`RB-002` / `RB-002B`** | Ingress Proxy Security (Production) | **BLOCKED** | Direct Railway endpoint `api-production-367e.up.railway.app` is confirmed active. Marked BLOCKED pending operator execution of RB-002B: deleting the generated Railway domain, configuring `TRUST_PROXY=cloudflare`, and verifying Cloudflare Orange Cloud. |
 | **`RB-003`** | Database Migration Readiness | **BLOCKED** | Verified additive migrations 0019 and 0020 with idempotent deduplication. Rehearsed in isolated tests. Marked BLOCKED pending operator pre-migration backup dump on live database. |
 
-### Consolidated Readiness Verdict: **NOT READY — OPERATOR VERIFICATION BLOCKERS REMAIN**
+### Consolidated Readiness Verdict: **NOT READY — OPERATOR VERIFICATION BLOCKERS REMAIN (RB-002B, RB-003)**
 

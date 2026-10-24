@@ -18,8 +18,10 @@ export type ApiConfig = {
   apiBasePath: "/api/v1";
   serviceName: "haza-aios-api";
   version: string;
-  trustProxy: boolean;
+  trustProxy: TrustProxySetting;
 };
+
+export type TrustProxySetting = boolean | "cloudflare";
 
 export type EmailConfig = {
   /** Resend API key. Empty string means email delivery is disabled (dev/test/staging). */
@@ -113,10 +115,7 @@ export function loadConfig(env: EnvInput = process.env): ApiConfig {
 
   // Never trust forwarding headers solely because APP_ENV is production.
   // Require explicit configuration of TRUST_PROXY to enable reverse proxy trust.
-  const trustProxy =
-    env.TRUST_PROXY !== undefined
-      ? env.TRUST_PROXY === "true" || env.TRUST_PROXY === "1" || env.TRUST_PROXY === "cloudflare"
-      : false;
+  const trustProxy = readTrustProxy(env.TRUST_PROXY);
 
   return {
     appEnv,
@@ -313,4 +312,31 @@ function readEnum<T extends string>(
   }
 
   return resolved;
+}
+
+export function readTrustProxy(raw: unknown): TrustProxySetting {
+  if (raw === undefined || raw === null || raw === "") {
+    return false;
+  }
+  if (typeof raw === "boolean") {
+    return raw;
+  }
+  if (typeof raw !== "string") {
+    throw new Error(
+      `Invalid TRUST_PROXY configuration: expected string or boolean, received ${typeof raw}. Supported values: "true", "false", "1", "0", "cloudflare"`,
+    );
+  }
+  const trimmed = raw.trim().toLowerCase();
+  if (trimmed === "false" || trimmed === "0") {
+    return false;
+  }
+  if (trimmed === "true" || trimmed === "1") {
+    return true;
+  }
+  if (trimmed === "cloudflare") {
+    return "cloudflare";
+  }
+  throw new Error(
+    `Invalid TRUST_PROXY configuration: "${raw}". Supported values: "true", "false", "1", "0", "cloudflare"`,
+  );
 }

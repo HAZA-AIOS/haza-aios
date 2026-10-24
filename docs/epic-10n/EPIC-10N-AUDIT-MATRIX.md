@@ -432,11 +432,12 @@ All findings are classified with concrete source-code evidence, root-cause analy
 
 ---
 
-## 5. Release Blocker Status Matrix (RB-001, RB-002, RB-003)
+## 5. Release Blocker Status Matrix (RB-001, RB-002/RB-002A, RB-003)
 
 | Blocker ID | Domain | Description | Severity | Status | Evidence & Resolution |
 | :--- | :--- | :--- | :---: | :---: | :--- |
 | **`RB-001`** | Data Integrity | Phase 5 strict-MySQL fixes introduced hardcoded fallback defaults (`2010-01-01` DOB, `2026-09-01` admission/hire dates, `555-0100` phone, placeholder emails, and defaulting invalid attendance to `present`). | **High** | **PASS** | Removed all hardcoded fallbacks across `sis.service.ts`, `sis-admissions.service.ts`, `sis-examination.service.ts`, and `sis-validation.ts`. Enforced explicit HTTP 400 validation errors. Never default attendance to `present`. Verified via 10 focused regression tests in `epic10n-rb001-data-integrity.integration.test.ts`. |
-| **`RB-002`** | Network & Proxy | Production ingress proxy trust chain and Railway default domain exposure require operational verification before release. | **High** | **BLOCKED** | Read-only audit confirmed `rate-limiter.ts` fails safe to direct socket IP unless upstream matches trusted proxy CIDRs. Marked BLOCKED pending operator confirmation of Railway variable `TRUST_PROXY=cloudflare` and restriction of default public domain. |
+| **`RB-002A`** | Security Architecture | In `env.ts`, `TRUST_PROXY=cloudflare` was coerced to boolean `true`, failing to preserve explicit Cloudflare mode; `rate-limiter.ts` needed hardening against spoofed `CF-Connecting-IP` on direct Railway ingress. | **High** | **PASS** | Corrected `env.ts` type-coercion defect (`ApiConfig.trustProxy: TrustProxySetting`), preserving explicit `"cloudflare"` mode. Hardened `resolveClientIp` in `rate-limiter.ts` to strictly verify `legitimateCloudflare` proxy chain before accepting `CF-Connecting-IP`. Verified via 18 security regression tests (TP-001 to TP-018). |
+| **`RB-002` / `RB-002B`** | Network & Proxy | Production ingress proxy trust chain and Railway direct public domain exposure (`api-production-367e.up.railway.app`) require operational verification in production consoles. | **High** | **BLOCKED** | Direct Railway endpoint `api-production-367e.up.railway.app` confirmed active. Marked BLOCKED pending operator execution of RB-002B: deleting generated domain in Railway, setting `TRUST_PROXY=cloudflare` in Railway variables, and verifying Cloudflare Orange Cloud. |
 | **`RB-003`** | Database Migrations | Historical portal update request identifiers and additive schema migration safety require pre-migration backup and collision dry-run. | **High** | **BLOCKED** | Read-only audit confirmed migrations 0019 and 0020 are additive and idempotent (`HAVING count(*) = 1`). Rehearsed in isolated integration tests. Marked BLOCKED pending operator pre-migration backup dump on live database. |
 

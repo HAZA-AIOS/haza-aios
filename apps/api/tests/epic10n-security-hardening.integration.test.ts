@@ -716,6 +716,245 @@ describe("Epic 10N Phase 1: Core Security & Authentication Hardening", () => {
       createCategorySpy.mockRestore();
     });
   });
+
+  /* ─────────────────────────────────────────────────────────────
+   * RB-002A: Trusted Proxy Security & Client IP Resolution (TP-001 to TP-018)
+   * ───────────────────────────────────────────────────────────── */
+  describe("RB-002A: Trusted Proxy Security & Client IP Resolution (TP-001 to TP-018)", () => {
+    // TP-001: TRUST_PROXY unset -> Disabled
+    it("TP-001: TRUST_PROXY unset -> trustProxy is disabled (false)", () => {
+      const cfg = loadConfig({});
+      expect(cfg.trustProxy).toBe(false);
+    });
+
+    // TP-002: TRUST_PROXY=false -> Disabled
+    it("TP-002: TRUST_PROXY=false -> trustProxy is disabled (false)", () => {
+      const cfg = loadConfig({ TRUST_PROXY: "false" });
+      expect(cfg.trustProxy).toBe(false);
+    });
+
+    // TP-003: TRUST_PROXY=true -> Explicit boolean mode
+    it("TP-003: TRUST_PROXY=true -> explicit boolean true mode", () => {
+      const cfg = loadConfig({ TRUST_PROXY: "true" });
+      expect(cfg.trustProxy).toBe(true);
+    });
+
+    // TP-004: TRUST_PROXY=cloudflare -> Cloudflare mode preserved
+    it("TP-004: TRUST_PROXY=cloudflare -> explicit 'cloudflare' mode preserved", () => {
+      const cfg = loadConfig({ TRUST_PROXY: "cloudflare" });
+      expect(cfg.trustProxy).toBe("cloudflare");
+    });
+
+    // TP-005: Invalid TRUST_PROXY value -> Configuration rejected
+    it("TP-005: Invalid TRUST_PROXY value -> configuration rejected with startup error", () => {
+      expect(() => loadConfig({ TRUST_PROXY: "unsupported-mode" })).toThrow(
+        /Invalid TRUST_PROXY configuration/,
+      );
+      expect(() => loadConfig({ TRUST_PROXY: "yes" })).toThrow(
+        /Invalid TRUST_PROXY configuration/,
+      );
+    });
+
+    // TP-006: Untrusted socket with forged headers -> Headers ignored
+    it("TP-006: Untrusted socket with forged headers -> headers ignored, binds to socket IP", () => {
+      const request = {
+        socket: { remoteAddress: "203.0.113.50" }, // Public untrusted IP
+        headers: {
+          "x-forwarded-for": "1.1.1.1, 8.8.8.8",
+          "cf-connecting-ip": "1.1.1.1",
+          "x-real-ip": "1.1.1.1",
+        },
+      } as any;
+      expect(resolveClientIp(request, "cloudflare")).toBe("203.0.113.50");
+      expect(resolveClientIp(request, true)).toBe("203.0.113.50");
+      expect(resolveClientIp(request, false)).toBe("203.0.113.50");
+    });
+
+    // TP-007: Trusted proxy with valid, verified chain -> Correct client IP
+    it("TP-007: Trusted proxy with valid, verified Cloudflare chain -> extracts genuine client IP", () => {
+      const request = {
+        socket: { remoteAddress: "10.0.1.5" }, // Railway internal proxy
+        headers: {
+          "x-forwarded-for": "203.0.113.195, 173.245.48.5", // Client IP followed by Cloudflare edge IP
+          "cf-connecting-ip": "203.0.113.195",
+        },
+      } as any;
+      expect(resolveClientIp(request, "cloudflare")).toBe("203.0.113.195");
+    });
+
+    // TP-008: Direct Railway request with forged CF header -> Forged value ignored
+    it("TP-008: Direct Railway request with forged CF header -> forged value ignored, returns connecting client IP", () => {
+      const request = {
+        socket: { remoteAddress: "10.0.1.5" }, // Railway internal proxy
+        headers: {
+          // Direct request: Railway edge appended connecting IP (198.51.100.55), client injected CF-Connecting-IP
+          "x-forwarded-for": "198.51.100.55",
+          "cf-connecting-ip": "8.8.8.8",
+        },
+      } as any;
+      // Must NOT accept 8.8.8.8 because the request did not traverse Cloudflare
+      expect(resolveClientIp(request, "cloudflare")).toBe("198.51.100.55");
+    });
+
+    // TP-009: Forged Cloudflare CIDR inside XFF -> No false authentication of proxy chain
+    it("TP-009: Forged Cloudflare CIDR inside XFF -> no false authentication of proxy chain", () => {
+      const request = {
+        socket: { remoteAddress: "10.0.1.5" }, // Railway internal proxy
+        headers: {
+          // Attacker injected Cloudflare IP into their XFF, but Railway edge appended attacker's real IP
+          "x-forwarded-for": "173.245.48.5, 198.51.100.55",
+          "cf-connecting-ip": "8.8.8.8",
+        },
+      } as any;
+      // Right-to-left traversal stops at 198.51.100.55; 173.245.48.5 is untrusted client data
+      expect(resolveClientIp(request, "cloudflare")).toBe("198.51.100.55");
+    });
+
+    // TP-010: Malformed CF-Connecting-IP -> Safe fallback
+    it("TP-010: Malformed CF-Connecting-IP -> safe fallback to valid candidate client IP", () => {
+      const request = {
+        socket: { remoteAddress: "10.0.1.5" },
+        headers: {
+          "x-forwarded-for": "203.0.113.195, 173.245.48.5",
+          "cf-connecting-ip": "not-an-ip; <script>",
+        },
+      } as any;
+      expect(resolveClientIp(request, "cloudflare")).toBe("203.0.113.195");
+    });
+
+    // TP-011: Malformed X-Forwarded-For -> Safe fallback
+    it("TP-011: Malformed X-Forwarded-For -> safe fallback to socket IP", () => {
+      const request = {
+        socket: { remoteAddress: "10.0.1.5" },
+        headers: {
+          "x-forwarded-for": "malformed-ip, 999.999.999.999",
+        },
+      } as any;
+      expect(resolveClientIp(request, "cloudflare")).toBe("10.0.1.5");
+    });
+
+    // TP-012: IPv4 address -> Correct normalization
+    it("TP-012: IPv4 address -> correct normalization", () => {
+      expect(normalizeIp(" 192.0.2.1 ")).toBe("192.0.2.1");
+      expect(normalizeIp("192.0.2.1:8080")).toBe("192.0.2.1");
+    });
+
+    // TP-013: IPv6 address -> Correct normalization
+    it("TP-013: IPv6 address -> correct normalization", () => {
+      expect(normalizeIp("[2001:db8::1]:8443")).toBe("2001:db8::1");
+      expect(normalizeIp(" 2001:db8::1 ")).toBe("2001:db8::1");
+    });
+
+    // TP-014: IPv4-mapped IPv6 -> Correct normalization
+    it("TP-014: IPv4-mapped IPv6 -> stripped and normalized to IPv4", () => {
+      expect(normalizeIp("::ffff:192.0.2.1")).toBe("192.0.2.1");
+    });
+
+    // TP-015: Missing socket information -> Safe documented fallback
+    it("TP-015: Missing socket information -> safe documented fallback to loopback, ignoring headers", () => {
+      const requestWithoutSocket = {
+        socket: undefined,
+        headers: {
+          "x-forwarded-for": "203.0.113.195",
+          "cf-connecting-ip": "8.8.8.8",
+        },
+      } as any;
+      expect(resolveClientIp(requestWithoutSocket, "cloudflare")).toBe("127.0.0.1");
+
+      const requestWithNullAddress = {
+        socket: { remoteAddress: null },
+        headers: {
+          "x-forwarded-for": "203.0.113.195",
+          "cf-connecting-ip": "8.8.8.8",
+        },
+      } as any;
+      expect(resolveClientIp(requestWithNullAddress, "cloudflare")).toBe("127.0.0.1");
+    });
+
+    // TP-016: Distinct clients through verified proxy -> Independent rate-limit buckets
+    it("TP-016: Distinct clients through verified proxy maintain independent rate-limit buckets", () => {
+      const store = new InMemoryRateLimiterStore();
+      const reqClientA = {
+        socket: { remoteAddress: "10.0.1.5" },
+        headers: {
+          "x-forwarded-for": "198.51.100.1, 173.245.48.5",
+          "cf-connecting-ip": "198.51.100.1",
+        },
+      } as any;
+      const reqClientB = {
+        socket: { remoteAddress: "10.0.1.5" },
+        headers: {
+          "x-forwarded-for": "198.51.100.2, 173.245.48.5",
+          "cf-connecting-ip": "198.51.100.2",
+        },
+      } as any;
+
+      const ipA = resolveClientIp(reqClientA, "cloudflare");
+      const ipB = resolveClientIp(reqClientB, "cloudflare");
+      expect(ipA).toBe("198.51.100.1");
+      expect(ipB).toBe("198.51.100.2");
+      expect(ipA).not.toBe(ipB);
+
+      // Both consume from rate limiter independently
+      expect(store.consume(`auth:login:${ipA}`, 2, 60_000).allowed).toBe(true);
+      expect(store.consume(`auth:login:${ipB}`, 2, 60_000).allowed).toBe(true);
+      store.destroy();
+    });
+
+    // TP-017: One client exceeds rate limit -> Other clients unaffected
+    it("TP-017: One client exceeding rate limit leaves other clients unaffected", () => {
+      const store = new InMemoryRateLimiterStore();
+      const ipAbuser = "198.51.100.100";
+      const ipInnocent = "198.51.100.200";
+
+      // Abuser consumes all quota (limit = 2)
+      expect(store.consume(`auth:login:${ipAbuser}`, 2, 60_000).allowed).toBe(true);
+      expect(store.consume(`auth:login:${ipAbuser}`, 2, 60_000).allowed).toBe(true);
+      const blocked = store.consume(`auth:login:${ipAbuser}`, 2, 60_000);
+      expect(blocked.allowed).toBe(false);
+
+      // Innocent client is unaffected
+      const allowed = store.consume(`auth:login:${ipInnocent}`, 2, 60_000);
+      expect(allowed.allowed).toBe(true);
+      store.destroy();
+    });
+
+    // TP-018: Security headers with explicit proxy mode -> Correct HTTPS handling
+    it("TP-018: Security headers emit HSTS only on verified HTTPS across trusted proxy", () => {
+      const mockResponseTrusted = {
+        headers: {} as Record<string, string>,
+        setHeader(name: string, value: string) {
+          this.headers[name.toLowerCase()] = value;
+        },
+      } as any;
+      const reqTrustedHttps = {
+        socket: { encrypted: false, remoteAddress: "10.0.1.5" },
+        headers: { "x-forwarded-proto": "https" },
+      } as any;
+
+      applySecurityHeaders(mockResponseTrusted, reqTrustedHttps, {
+        trustProxy: "cloudflare",
+      });
+      expect(mockResponseTrusted.headers["strict-transport-security"]).toBe("max-age=31536000");
+
+      // Untrusted socket attempting to claim HTTPS
+      const mockResponseUntrusted = {
+        headers: {} as Record<string, string>,
+        setHeader(name: string, value: string) {
+          this.headers[name.toLowerCase()] = value;
+        },
+      } as any;
+      const reqUntrustedHttps = {
+        socket: { encrypted: false, remoteAddress: "203.0.113.50" },
+        headers: { "x-forwarded-proto": "https" },
+      } as any;
+
+      applySecurityHeaders(mockResponseUntrusted, reqUntrustedHttps, {
+        trustProxy: "cloudflare",
+      });
+      expect(mockResponseUntrusted.headers["strict-transport-security"]).toBeUndefined();
+    });
+  });
 });
 
 function createMockDatabase(): DatabaseClient {

@@ -302,6 +302,7 @@ describeDatabase("Epic 10N Phase 3 Corrections: Migration Integrity, Strict Pars
         await sis.createStudent(tenant, {
           firstName: `Student${String(i).padStart(3, "0")}`,
           lastName: "ScaleTest",
+          dateOfBirth: "2015-05-01",
           admissionDate: "2026-09-01",
           status: "active",
         });
@@ -348,6 +349,7 @@ describeDatabase("Epic 10N Phase 3 Corrections: Migration Integrity, Strict Pars
         const student = await sis.createStudent(tenant, {
           firstName: `RosterStudent${String(i).padStart(2, "0")}`,
           lastName: "ClassRoster",
+          dateOfBirth: "2015-05-01",
           admissionDate: "2026-09-01",
           status: "active",
         });
@@ -402,6 +404,7 @@ describeDatabase("Epic 10N Phase 3 Corrections: Migration Integrity, Strict Pars
         const student = await sis.createStudent(tenant, {
           firstName: `FinStudent${String(i).padStart(2, "0")}`,
           lastName: "FinScale",
+          dateOfBirth: "2015-05-01",
           admissionDate: "2026-09-01",
           status: "active",
         });

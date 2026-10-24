@@ -119,39 +119,58 @@ function assertMarks(maximumMarks: unknown, obtainedMarks?: unknown, passingMark
 }
 
 function normalizeExaminationType(raw: unknown): "monthly_test" | "mid_term" | "final_term" | "annual" | "entry_assessment" | "other" {
-  const str = String(raw ?? "").trim().toLowerCase();
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return "other";
+  }
+  const str = String(raw).trim().toLowerCase();
   if (str === "midterm" || str === "mid_term") return "mid_term";
   if (str === "final" || str === "final_term") return "final_term";
   if (str === "monthly" || str === "monthly_test") return "monthly_test";
   if (str === "annual") return "annual";
   if (str === "entry_assessment" || str === "entry") return "entry_assessment";
-  return "other";
+  if (str === "other") return "other";
+  throw new ApiError(400, "VALIDATION_FAILED", `Invalid examination type: "${String(raw)}".`);
 }
 
 function normalizeExaminationStatus(raw: unknown): "draft" | "scheduled" | "in_progress" | "completed" | "published" | "archived" {
-  const str = String(raw ?? "").trim().toLowerCase();
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return "draft";
+  }
+  const str = String(raw).trim().toLowerCase();
   const allowed = ["draft", "scheduled", "in_progress", "completed", "published", "archived"];
-  return allowed.includes(str) ? (str as "draft" | "scheduled" | "in_progress" | "completed" | "published" | "archived") : "draft";
+  if (allowed.includes(str)) return str as any;
+  throw new ApiError(400, "VALIDATION_FAILED", `Invalid examination status: "${String(raw)}". Allowed values: ${allowed.join(", ")}.`);
 }
 
 function normalizeExamSubjectStatus(raw: unknown): "draft" | "scheduled" | "completed" | "cancelled" {
-  const str = String(raw ?? "").trim().toLowerCase();
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return "draft";
+  }
+  const str = String(raw).trim().toLowerCase();
   const allowed = ["draft", "scheduled", "completed", "cancelled"];
-  return allowed.includes(str) ? (str as "draft" | "scheduled" | "completed" | "cancelled") : "draft";
+  if (allowed.includes(str)) return str as any;
+  throw new ApiError(400, "VALIDATION_FAILED", `Invalid examination subject status: "${String(raw)}". Allowed values: ${allowed.join(", ")}.`);
 }
 
 function normalizeAssessmentType(raw: unknown): "class_test" | "assignment" | "quiz" | "project" | "practical" | "oral" | "other" {
-  const str = String(raw ?? "").trim().toLowerCase();
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return "other";
+  }
+  const str = String(raw).trim().toLowerCase();
   const allowed = ["class_test", "assignment", "quiz", "project", "practical", "oral", "other"];
   if (allowed.includes(str)) return str as any;
   if (str === "test") return "class_test";
-  return "other";
+  throw new ApiError(400, "VALIDATION_FAILED", `Invalid assessment type: "${String(raw)}". Allowed values: ${allowed.join(", ")}.`);
 }
 
 function normalizeAssessmentStatus(raw: unknown): "draft" | "assigned" | "in_progress" | "completed" | "published" | "archived" {
-  const str = String(raw ?? "").trim().toLowerCase();
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return "draft";
+  }
+  const str = String(raw).trim().toLowerCase();
   const allowed = ["draft", "assigned", "in_progress", "completed", "published", "archived"];
-  return allowed.includes(str) ? (str as any) : "draft";
+  if (allowed.includes(str)) return str as any;
+  throw new ApiError(400, "VALIDATION_FAILED", `Invalid assessment status: "${String(raw)}". Allowed values: ${allowed.join(", ")}.`);
 }
 
 export class SisExaminationService {

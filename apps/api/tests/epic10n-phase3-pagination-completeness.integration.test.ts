@@ -545,6 +545,7 @@ describe("Epic 10N / Phase 3 Final Correction: Complete Dataset Retrieval & Accu
         const student = await sis.createStudent(tenant, {
           firstName: `OpStudent${String(i).padStart(2, "0")}`,
           lastName: "WorkflowScale",
+          dateOfBirth: "2015-05-01",
           admissionDate: "2026-09-01",
           status: "active",
         });

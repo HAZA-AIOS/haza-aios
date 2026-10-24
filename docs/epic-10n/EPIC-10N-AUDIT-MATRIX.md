@@ -429,3 +429,14 @@ All findings are classified with concrete source-code evidence, root-cause analy
 | `UX-002` | Frontend & UX | Medium | Phase 4 (UX Polish) | **Resolved (Phase 4)** |
 | `OPS-001` | Operations | High | Phase 5 (CI/CD Hardening) | **Resolved (Phase 5)** |
 | `OPS-002` | Operations | Medium | Phase 5 (Closeout & Tagging) | **Resolved (Phase 5 Governance)** |
+
+---
+
+## 5. Release Blocker Status Matrix (RB-001, RB-002, RB-003)
+
+| Blocker ID | Domain | Description | Severity | Status | Evidence & Resolution |
+| :--- | :--- | :--- | :---: | :---: | :--- |
+| **`RB-001`** | Data Integrity | Phase 5 strict-MySQL fixes introduced hardcoded fallback defaults (`2010-01-01` DOB, `2026-09-01` admission/hire dates, `555-0100` phone, placeholder emails, and defaulting invalid attendance to `present`). | **High** | **PASS** | Removed all hardcoded fallbacks across `sis.service.ts`, `sis-admissions.service.ts`, `sis-examination.service.ts`, and `sis-validation.ts`. Enforced explicit HTTP 400 validation errors. Never default attendance to `present`. Verified via 10 focused regression tests in `epic10n-rb001-data-integrity.integration.test.ts`. |
+| **`RB-002`** | Network & Proxy | Production ingress proxy trust chain and Railway default domain exposure require operational verification before release. | **High** | **BLOCKED** | Read-only audit confirmed `rate-limiter.ts` fails safe to direct socket IP unless upstream matches trusted proxy CIDRs. Marked BLOCKED pending operator confirmation of Railway variable `TRUST_PROXY=cloudflare` and restriction of default public domain. |
+| **`RB-003`** | Database Migrations | Historical portal update request identifiers and additive schema migration safety require pre-migration backup and collision dry-run. | **High** | **BLOCKED** | Read-only audit confirmed migrations 0019 and 0020 are additive and idempotent (`HAVING count(*) = 1`). Rehearsed in isolated integration tests. Marked BLOCKED pending operator pre-migration backup dump on live database. |
+

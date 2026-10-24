@@ -281,10 +281,19 @@ export class SisService {
               ? data.employeeNumber.trim()
               : await this.nextEmployeeNumber(tenant.workspaceId, tx);
 
-          const hireDate =
-            typeof data.hireDate === "string" && data.hireDate.trim()
-              ? data.hireDate.trim()
-              : "2026-09-01";
+          if (!data.firstName || typeof data.firstName !== "string" || !data.firstName.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Staff first name is required.");
+          }
+          if (!data.lastName || typeof data.lastName !== "string" || !data.lastName.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Staff last name is required.");
+          }
+          if (!data.hireDate || typeof data.hireDate !== "string" || !data.hireDate.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Staff hire date is required.");
+          }
+          const hireDate = data.hireDate.trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(hireDate.slice(0, 10)) || isNaN(new Date(hireDate).getTime())) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Staff hire date must be a valid date in YYYY-MM-DD format.");
+          }
 
           await tx
             .insert(staffMembers)
@@ -470,33 +479,95 @@ export class SisService {
               ? data.admissionNumber.trim()
               : await this.nextAdmissionNumber(tenant.workspaceId, tx);
 
+          if (!data.firstName || typeof data.firstName !== "string" || !data.firstName.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Student first name is required.");
+          }
+          if (!data.lastName || typeof data.lastName !== "string" || !data.lastName.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Student last name is required.");
+          }
+          if (!data.dateOfBirth || typeof data.dateOfBirth !== "string" || !data.dateOfBirth.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Student date of birth is required.");
+          }
+          const dateOfBirth = data.dateOfBirth.trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth.slice(0, 10)) || isNaN(new Date(dateOfBirth).getTime())) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Student date of birth must be a valid date in YYYY-MM-DD format.");
+          }
+
+          const rawAdmissionDate = (data.admissionDate as string) || (data.enrollmentDate as string) || (data.startDate as string);
+          if (!rawAdmissionDate || typeof rawAdmissionDate !== "string" || !rawAdmissionDate.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Student admission date is required.");
+          }
+          const admissionDate = rawAdmissionDate.trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(admissionDate.slice(0, 10)) || isNaN(new Date(admissionDate).getTime())) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Student admission date must be a valid date in YYYY-MM-DD format.");
+          }
+
+          const allowedGenders = ["male", "female", "other", "prefer_not_to_say"];
+          let gender: "male" | "female" | "other" | "prefer_not_to_say";
+          if (data.gender !== undefined && data.gender !== null && String(data.gender).trim() !== "") {
+            const rawGender = String(data.gender).trim().toLowerCase();
+            if (!allowedGenders.includes(rawGender)) {
+              throw new ApiError(400, "VALIDATION_FAILED", `Student gender must be one of: ${allowedGenders.join(", ")}.`);
+            }
+            gender = rawGender as "male" | "female" | "other" | "prefer_not_to_say";
+          } else {
+            gender = "prefer_not_to_say";
+          }
+
           await tx
             .insert(students)
             .values({
               id,
               workspaceId: tenant.workspaceId,
-              dateOfBirth: "2010-01-01",
-              gender: "other",
-              admissionDate: "2026-09-01",
               ...clean(data),
+              dateOfBirth,
+              gender,
+              admissionDate,
               admissionNumber,
               status: data.status ?? "applicant",
             } as typeof students.$inferInsert)
             .catch(databaseError);
 
           for (const guardian of Array.isArray(data.guardians) ? (data.guardians as JsonRecord[]) : []) {
-            const guardianId = uuid();
-            const guardianEmail = typeof guardian.email === "string" && guardian.email.trim() ? guardian.email.trim() : `guardian-${guardianId.slice(0, 8)}@example.com`;
-            const guardianPhone = typeof guardian.phone === "string" && guardian.phone.trim() ? guardian.phone.trim() : "555-0100";
+            if (!guardian.firstName || typeof guardian.firstName !== "string" || !guardian.firstName.trim()) {
+              throw new ApiError(400, "VALIDATION_FAILED", "Guardian first name is required.");
+            }
+            if (!guardian.lastName || typeof guardian.lastName !== "string" || !guardian.lastName.trim()) {
+              throw new ApiError(400, "VALIDATION_FAILED", "Guardian last name is required.");
+            }
+            if (!guardian.phone || typeof guardian.phone !== "string" || !guardian.phone.trim()) {
+              throw new ApiError(400, "VALIDATION_FAILED", "Guardian phone is required.");
+            }
+            const guardianPhone = guardian.phone.trim();
+
+            if (!guardian.email || typeof guardian.email !== "string" || !guardian.email.trim()) {
+              throw new ApiError(400, "VALIDATION_FAILED", "Guardian email is required.");
+            }
+            const guardianEmail = guardian.email.trim().toLowerCase();
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guardianEmail)) {
+              throw new ApiError(400, "VALIDATION_FAILED", "Guardian email must be a valid email address.");
+            }
+
             const allowedRel = ["father", "mother", "guardian", "other"];
-            const rawRel = typeof guardian.relationship === "string" ? guardian.relationship.toLowerCase() : "guardian";
-            const relationship = allowedRel.includes(rawRel) ? (rawRel as "father" | "mother" | "guardian" | "other") : "guardian";
+            const rawRel = typeof guardian.relationship === "string" ? guardian.relationship.trim().toLowerCase() : "";
+            let relationship: "father" | "mother" | "guardian" | "other";
+            if (!rawRel) {
+              relationship = "guardian";
+            } else if (allowedRel.includes(rawRel)) {
+              relationship = rawRel as "father" | "mother" | "guardian" | "other";
+            } else {
+              throw new ApiError(400, "VALIDATION_FAILED", `Invalid guardian relationship: "${guardian.relationship}". Allowed relationships: ${allowedRel.join(", ")}.`);
+            }
+
+            const guardianId = uuid();
             await tx
               .insert(guardians)
               .values({
                 id: guardianId,
                 workspaceId: tenant.workspaceId,
                 ...clean(guardian),
+                firstName: guardian.firstName.trim(),
+                lastName: guardian.lastName.trim(),
                 relationship,
                 email: guardianEmail,
                 phone: guardianPhone,
@@ -716,11 +787,26 @@ export class SisService {
   async createEnrollment(tenant: Tenant, data: JsonRecord) {
     await Promise.all([this.assertStudent(tenant.workspaceId, String(data.studentId)), this.assertGrade(tenant.workspaceId, String(data.gradeId)), this.assertSection(tenant.workspaceId, String(data.sectionId))]);
     const id = uuid();
-    const enrollmentDate = (data.enrollmentDate as string) || (data.startDate as string) || "2026-09-01";
+    const rawDate = (data.enrollmentDate as string) || (data.startDate as string);
+    if (!rawDate || typeof rawDate !== "string" || !rawDate.trim()) {
+      throw new ApiError(400, "VALIDATION_FAILED", "Enrollment date is required.");
+    }
+    const enrollmentDate = rawDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(enrollmentDate.slice(0, 10)) || isNaN(new Date(enrollmentDate).getTime())) {
+      throw new ApiError(400, "VALIDATION_FAILED", "Enrollment date must be a valid date in YYYY-MM-DD format.");
+    }
+
     const allowedStatuses = ["active", "completed", "dropped", "transferred"];
-    const status = typeof data.status === "string" && allowedStatuses.includes(data.status)
-      ? data.status
-      : (data.status === "withdrawn" || data.status === "archived" ? "dropped" : "active");
+    let status: typeof enrollments.$inferInsert.status;
+    if (typeof data.status === "string" && allowedStatuses.includes(data.status)) {
+      status = data.status as typeof enrollments.$inferInsert.status;
+    } else if (data.status === "withdrawn" || data.status === "archived") {
+      status = "dropped";
+    } else if (data.status === undefined || data.status === null || String(data.status).trim() === "") {
+      status = "active";
+    } else {
+      throw new ApiError(400, "VALIDATION_FAILED", `Invalid enrollment status: "${data.status}". Allowed values: ${allowedStatuses.join(", ")}.`);
+    }
     await this.database.db.insert(enrollments).values({ id, workspaceId: tenant.workspaceId, ...clean(data), enrollmentDate, status } as typeof enrollments.$inferInsert).catch(databaseError);
     return (await this.getEnrollment(tenant, id))!;
   }
@@ -985,11 +1071,17 @@ export class SisService {
 
     await withTransaction(this.database, async ({ tx }) => {
       for (const record of records) {
-        const enrollment = await this.findEnrollmentForAttendance(tenant.workspaceId, String(record.studentId), academicYear.name, session.academicYearId, session.gradeId, session.sectionId);
         const allowedStatuses = ["present", "absent", "late", "excused"];
-        const recordStatus = typeof record.status === "string" && allowedStatuses.includes(record.status.toLowerCase())
-          ? (record.status.toLowerCase() as typeof attendanceRecords.$inferInsert.status)
-          : "present";
+        const rawStatus = typeof record.status === "string" ? record.status.trim().toLowerCase() : "";
+        if (!rawStatus || !allowedStatuses.includes(rawStatus)) {
+          throw new ApiError(
+            400,
+            "VALIDATION_FAILED",
+            `Attendance status is invalid or missing for student ${record.studentId}: "${record.status}". Allowed values: ${allowedStatuses.join(", ")}.`
+          );
+        }
+        const recordStatus = rawStatus as typeof attendanceRecords.$inferInsert.status;
+        const enrollment = await this.findEnrollmentForAttendance(tenant.workspaceId, String(record.studentId), academicYear.name, session.academicYearId, session.gradeId, session.sectionId);
         const existing = await tx.select().from(attendanceRecords).where(and(eq(attendanceRecords.workspaceId, tenant.workspaceId), eq(attendanceRecords.sessionId, sessionId), eq(attendanceRecords.enrollmentId, enrollment.id))).limit(1);
         if (existing[0]) {
           await tx.update(attendanceRecords).set({ status: recordStatus, note: record.note, markedBy, updatedAt: new Date() }).where(eq(attendanceRecords.id, existing[0].id));

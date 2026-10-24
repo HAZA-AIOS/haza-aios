@@ -163,6 +163,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
               lastName: "Mirza",
               relationship: "father",
               email: "kamran@example.com",
+              phone: "555-1111",
               isPrimaryContact: true,
             },
           ],
@@ -401,6 +402,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         firstName: "Archival",
         lastName: "Target",
         dateOfBirth: "2015-02-02",
+        admissionDate: "2026-09-01",
         gender: "male",
         status: "active",
       });
@@ -459,6 +461,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         firstName: "Dues",
         lastName: "Student",
         dateOfBirth: "2015-04-04",
+        admissionDate: "2026-09-01",
         status: "active",
       });
 
@@ -544,6 +547,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         firstName: "Historical",
         lastName: "Records",
         dateOfBirth: "2015-06-06",
+        admissionDate: "2026-09-01",
         status: "active",
       });
 
@@ -589,6 +593,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         firstName: "Repeat",
         lastName: "Archive",
         dateOfBirth: "2015-07-07",
+        admissionDate: "2026-09-01",
         status: "active",
       });
 
@@ -610,6 +615,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         firstName: "Concurrent",
         lastName: "Archival",
         dateOfBirth: "2015-08-18",
+        admissionDate: "2026-09-01",
         status: "active",
       });
 
@@ -666,6 +672,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         firstName: "Tariq",
         lastName: "Jamil",
         dateOfBirth: "2015-09-09",
+        admissionDate: "2026-09-01",
         status: "active",
       });
 
@@ -730,6 +737,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         firstName: "Transfer",
         lastName: "Validation",
         dateOfBirth: "2015-10-10",
+        admissionDate: "2026-09-01",
         status: "active",
       });
 
@@ -779,6 +787,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         firstName: "Inactive",
         lastName: "Student",
         dateOfBirth: "2015-11-11",
+        admissionDate: "2026-09-01",
         status: "active",
       });
 
@@ -829,6 +838,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         firstName: "Concurrent",
         lastName: "Transfer",
         dateOfBirth: "2015-09-19",
+        admissionDate: "2026-09-01",
         status: "active",
       });
 
@@ -893,6 +903,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
           firstName: `Parallel${i}`,
           lastName: "Student",
           dateOfBirth: `2015-01-${String(i + 1).padStart(2, "0")}`,
+          admissionDate: "2026-09-01",
           status: "applicant",
         })
       );
@@ -948,6 +959,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         firstName: "High",
         lastName: "Sequence",
         dateOfBirth: "2015-12-12",
+        admissionDate: "2026-09-01",
         admissionNumber: `TMS-${year}-00050`,
       });
 
@@ -956,6 +968,7 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         firstName: "Auto",
         lastName: "Sequence",
         dateOfBirth: "2015-12-13",
+        admissionDate: "2026-09-01",
       });
 
       expect(nextStudent.admissionNumber).toBe(`TMS-${year}-00051`);
@@ -970,12 +983,14 @@ describeDatabase("Epic 10N Phase 2: Cross-Module Lifecycle & Transactional Integ
         firstName: "TenantA",
         lastName: "Student",
         dateOfBirth: "2015-01-01",
+        admissionDate: "2026-09-01",
       });
 
       const studentB = await sis.createStudent(tenantB, {
         firstName: "TenantB",
         lastName: "Student",
         dateOfBirth: "2015-01-01",
+        admissionDate: "2026-09-01",
       });
 
       // Both tenants can start their numbering sequence independently

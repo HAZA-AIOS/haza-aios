@@ -106,3 +106,16 @@ Prior to executing production deployment, the following gates must be formally c
 4. **Proxy Environment Configuration:** Confirmation that Railway environment variable `TRUST_PROXY=cloudflare` is set in production API service.
 5. **Git Merge & CI Green:** Clean merge of `feature/epic-10n-system-hardening` into `develop` and `main`, with green GitHub Actions run on `main`.
 6. **Release Tag Creation:** Execution of tag reconciliation commands for `v0.10.13-epic10m` and `v0.10.14-epic10n`.
+
+---
+
+## 5. Consolidated Release Blocker Status (RB-001, RB-002, RB-003)
+
+| Blocker ID | Description | Resolution Status | Technical Summary |
+| :--- | :--- | :---: | :--- |
+| **`RB-001`** | Unsafe Fabricated Data Defaults | **PASS** | Removed hardcoded fallbacks across `sis.service.ts`, `sis-admissions.service.ts`, `sis-examination.service.ts`, and `sis-validation.ts`. Enforced strict HTTP 400 validation errors. Missing or invalid attendance status is never defaulted to `present`. Verified via 10 integration tests in `epic10n-rb001-data-integrity.integration.test.ts`. |
+| **`RB-002`** | Ingress Proxy Security | **BLOCKED** | Read-only audit confirmed `rate-limiter.ts` fails safe to socket IP. Verified DNS edge routing to Cloudflare. Marked BLOCKED pending operator confirmation of Railway variable `TRUST_PROXY=cloudflare` and restriction of default public domain. |
+| **`RB-003`** | Database Migration Readiness | **BLOCKED** | Verified additive migrations 0019 and 0020 with idempotent deduplication. Rehearsed in isolated tests. Marked BLOCKED pending operator pre-migration backup dump on live database. |
+
+### Consolidated Readiness Verdict: **NOT READY — OPERATOR VERIFICATION BLOCKERS REMAIN**
+

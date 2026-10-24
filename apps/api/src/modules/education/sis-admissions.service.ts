@@ -1233,12 +1233,63 @@ export class SisAdmissionsService {
           );
         }
 
+        if (!studentData.dateOfBirth || typeof studentData.dateOfBirth !== "string" || !studentData.dateOfBirth.trim()) {
+          throw new ApiError(400, "VALIDATION_FAILED", "Application student date of birth is required for enrollment conversion.");
+        }
+        const studentDob = (studentData.dateOfBirth as string).trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(studentDob.slice(0, 10)) || isNaN(new Date(studentDob).getTime())) {
+          throw new ApiError(400, "VALIDATION_FAILED", "Application student date of birth must be a valid date in YYYY-MM-DD format.");
+        }
+
+        const validGuardians = guardiansData.map((g, idx) => {
+          if (!g.firstName || typeof g.firstName !== "string" || !g.firstName.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", `Guardian ${idx + 1} first name is required for admission conversion.`);
+          }
+          if (!g.lastName || typeof g.lastName !== "string" || !g.lastName.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", `Guardian ${idx + 1} last name is required for admission conversion.`);
+          }
+          if (!g.phone || typeof g.phone !== "string" || !g.phone.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", `Guardian ${idx + 1} phone is required for admission conversion.`);
+          }
+          if (!g.email || typeof g.email !== "string" || !g.email.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", `Guardian ${idx + 1} email is required for admission conversion.`);
+          }
+          const email = g.email.trim().toLowerCase();
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            throw new ApiError(400, "VALIDATION_FAILED", `Guardian ${idx + 1} email must be a valid email address.`);
+          }
+          const allowedRel = ["father", "mother", "guardian", "other"];
+          const rawRel = typeof g.relationship === "string" ? g.relationship.trim().toLowerCase() : "";
+          let relationship: "father" | "mother" | "guardian" | "other";
+          if (!rawRel) {
+            relationship = "guardian";
+          } else if (allowedRel.includes(rawRel)) {
+            relationship = rawRel as "father" | "mother" | "guardian" | "other";
+          } else {
+            throw new ApiError(400, "VALIDATION_FAILED", `Invalid guardian relationship: "${g.relationship}".`);
+          }
+
+          return {
+            firstName: g.firstName.trim(),
+            lastName: g.lastName.trim(),
+            relationship,
+            email,
+            phone: g.phone.trim(),
+            address: g.address,
+            occupation: g.occupation,
+            isPrimaryContact: Boolean(g.isPrimaryContact),
+            isEmergencyContact: Boolean(g.isEmergencyContact),
+            portalAccessEnabled: true,
+            authorizedForPortal: true,
+          };
+        });
+
         // Create student record inside transaction
         const createdStudent = await txSisService.createStudent(tenant, {
           firstName: studentData.firstName,
           middleName: studentData.middleName,
           lastName: studentData.lastName,
-          dateOfBirth: studentData.dateOfBirth,
+          dateOfBirth: studentDob,
           gender: studentData.gender || "male",
           email: studentData.email || undefined,
           phone: studentData.phone || undefined,
@@ -1246,19 +1297,7 @@ export class SisAdmissionsService {
           photoUrl: studentData.photoUrl || undefined,
           admissionDate: options.admissionDate || now().slice(0, 10),
           status: "active",
-          guardians: guardiansData.map((g) => ({
-            firstName: g.firstName,
-            lastName: g.lastName,
-            relationship: g.relationship || "guardian",
-            email: g.email || `guardian-${uuid().slice(0, 8)}@example.com`,
-            phone: g.phone || "555-0100",
-            address: g.address,
-            occupation: g.occupation,
-            isPrimaryContact: Boolean(g.isPrimaryContact),
-            isEmergencyContact: Boolean(g.isEmergencyContact),
-            portalAccessEnabled: true,
-            authorizedForPortal: true,
-          })),
+          guardians: validGuardians,
         });
         if (!createdStudent) {
           throw new ApiError(500, "INTERNAL_SERVER_ERROR", "Failed to create student during admission conversion.");

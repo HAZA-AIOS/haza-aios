@@ -197,8 +197,8 @@ export function validateCreateStudent(input: unknown) {
   const firstName = requireText(rec.firstName, "firstName", 1, 120);
   const lastName = requireText(rec.lastName, "lastName", 1, 120);
   const admissionDate = requireDateString(rec.admissionDate, "admissionDate");
-  const dateOfBirth = optionalDateString(rec.dateOfBirth, "dateOfBirth");
-  const gender = optionalEnum(rec.gender, "gender", ["male", "female", "other"] as const);
+  const dateOfBirth = requireDateString(rec.dateOfBirth, "dateOfBirth");
+  const gender = optionalEnum(rec.gender, "gender", ["male", "female", "other", "prefer_not_to_say"] as const) ?? "prefer_not_to_say";
   const email = optionalEmail(rec.email, "email");
   const phone = optionalText(rec.phone, "phone", 1, 80);
   const address = optionalText(rec.address, "address", 1, 1000);
@@ -214,8 +214,8 @@ export function validateCreateStudent(input: unknown) {
     firstName,
     lastName,
     admissionDate,
-    ...(dateOfBirth ? { dateOfBirth } : {}),
-    ...(gender ? { gender } : {}),
+    dateOfBirth,
+    gender,
     ...(email ? { email } : {}),
     ...(phone ? { phone } : {}),
     ...(address ? { address } : {}),

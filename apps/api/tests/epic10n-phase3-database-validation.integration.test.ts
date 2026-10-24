@@ -65,12 +65,14 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
       const s1 = await sis.createStudent(tenant, {
         firstName: "Alice",
         lastName: "Wonderland",
+        dateOfBirth: "2015-01-01",
         admissionDate: "2026-09-01",
         status: "active",
       });
       const s2 = await sis.createStudent(tenant, {
         firstName: "Bob",
         lastName: "Builder",
+        dateOfBirth: "2015-01-02",
         admissionDate: "2026-09-01",
         status: "inactive",
       });
@@ -92,12 +94,14 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
       const student1 = await sis.createStudent(tenant, {
         firstName: "Student",
         lastName: "One",
+        dateOfBirth: "2015-02-01",
         admissionDate: "2026-09-01",
         status: "active",
       });
       const student2 = await sis.createStudent(tenant, {
         firstName: "Student",
         lastName: "Two",
+        dateOfBirth: "2015-02-02",
         admissionDate: "2026-09-01",
         status: "active",
       });
@@ -166,6 +170,7 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
       const student = await sis.createStudent(tenant, {
         firstName: "Finance",
         lastName: "Pupil",
+        dateOfBirth: "2015-03-01",
         admissionDate: "2026-09-01",
         status: "active",
       });
@@ -275,6 +280,7 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
       const studentA = await sis.createStudent(tenantA, {
         firstName: "SecretA",
         lastName: "Child",
+        dateOfBirth: "2015-04-01",
         admissionDate: "2026-09-01",
         status: "active",
       });
@@ -296,6 +302,7 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
         firstName: "John",
         lastName: "Doe",
         admissionDate: "2026-09-01",
+        dateOfBirth: "2015-05-15",
         status: "active",
       });
       expect(validStudent.firstName).toBe("John");
@@ -344,6 +351,7 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
           firstName: "John",
           lastName: "Doe",
           admissionDate: "2026-09-01",
+          dateOfBirth: "2015-05-15",
           gender: "invalid_gender_value",
         });
         expect.fail("Should have thrown ApiError");
@@ -464,6 +472,7 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
         await sis.createStudent(tenant, {
           firstName: `Student${String(i).padStart(2, "0")}`,
           lastName: "PaginationTest",
+          dateOfBirth: "2015-05-01",
           admissionDate: "2026-09-01",
           status: "active",
         });
@@ -518,9 +527,9 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
       );
 
       // Create 3 active students and enroll them
-      const s1 = await sis.createStudent(tenant, { firstName: "Child1", lastName: "Active", admissionDate: "2026-09-01", status: "active" });
-      const s2 = await sis.createStudent(tenant, { firstName: "Child2", lastName: "Active", admissionDate: "2026-09-01", status: "active" });
-      const s3 = await sis.createStudent(tenant, { firstName: "Child3", lastName: "Active", admissionDate: "2026-09-01", status: "active" });
+      const s1 = await sis.createStudent(tenant, { firstName: "Child1", lastName: "Active", dateOfBirth: "2016-01-01", admissionDate: "2026-09-01", status: "active" });
+      const s2 = await sis.createStudent(tenant, { firstName: "Child2", lastName: "Active", dateOfBirth: "2016-01-02", admissionDate: "2026-09-01", status: "active" });
+      const s3 = await sis.createStudent(tenant, { firstName: "Child3", lastName: "Active", dateOfBirth: "2016-01-03", admissionDate: "2026-09-01", status: "active" });
 
       const e1 = await sis.createEnrollment(tenant, {
         studentId: s1.id,
@@ -616,6 +625,7 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
       const student = await sis.createStudent(tenant, {
         firstName: "Concurrent",
         lastName: "Candidate",
+        dateOfBirth: "2015-06-01",
         admissionDate: "2026-09-01",
         status: "active",
       });
@@ -690,8 +700,8 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
         actor
       );
 
-      const activeStudent = await sis.createStudent(tenant, { firstName: "Stay", lastName: "Active", admissionDate: "2026-09-01", status: "active" });
-      const archivedStudent = await sis.createStudent(tenant, { firstName: "Left", lastName: "Archived", admissionDate: "2026-09-01", status: "archived" });
+      const activeStudent = await sis.createStudent(tenant, { firstName: "Stay", lastName: "Active", dateOfBirth: "2016-02-01", admissionDate: "2026-09-01", status: "active" });
+      const archivedStudent = await sis.createStudent(tenant, { firstName: "Left", lastName: "Archived", dateOfBirth: "2016-02-02", admissionDate: "2026-09-01", status: "archived" });
 
       const eActive = await sis.createEnrollment(tenant, {
         studentId: activeStudent.id,

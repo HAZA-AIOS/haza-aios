@@ -833,6 +833,67 @@ describe("Epic 10N Phase 1: Core Security & Authentication Hardening", () => {
       expect(resolveClientIp(request, "cloudflare")).toBe("10.0.1.5");
     });
 
+    // TP-011A: Absent XFF with forged X-Real-IP through trusted proxy
+    it("TP-011A: Absent X-Forwarded-For with forged X-Real-IP through trusted proxy -> X-Real-IP ignored, safe fallback to socket IP", () => {
+      const request = {
+        socket: { remoteAddress: "10.0.1.5" },
+        headers: {
+          "x-real-ip": "198.51.100.99",
+        },
+      } as any;
+      expect(resolveClientIp(request, "cloudflare")).toBe("10.0.1.5");
+      expect(resolveClientIp(request, true)).toBe("10.0.1.5");
+    });
+
+    // TP-011B: Malformed XFF with forged X-Real-IP through trusted proxy
+    it("TP-011B: Malformed X-Forwarded-For with forged X-Real-IP through trusted proxy -> X-Real-IP ignored, safe fallback to socket IP", () => {
+      const request = {
+        socket: { remoteAddress: "10.0.1.5" },
+        headers: {
+          "x-forwarded-for": "invalid-ip-entry",
+          "x-real-ip": "198.51.100.99",
+        },
+      } as any;
+      expect(resolveClientIp(request, "cloudflare")).toBe("10.0.1.5");
+      expect(resolveClientIp(request, true)).toBe("10.0.1.5");
+    });
+
+    // TP-011C: Absent XFF with empty headers through trusted proxy
+    it("TP-011C: Absent X-Forwarded-For with empty headers through trusted proxy -> safe fallback to socket IP", () => {
+      const request = {
+        socket: { remoteAddress: "10.0.1.5" },
+        headers: {},
+      } as any;
+      expect(resolveClientIp(request, "cloudflare")).toBe("10.0.1.5");
+      expect(resolveClientIp(request, true)).toBe("10.0.1.5");
+    });
+
+    // TP-011D: Forged X-Real-IP on direct untrusted socket
+    it("TP-011D: Forged X-Real-IP on direct untrusted socket -> ignored, binds to socket IP", () => {
+      const request = {
+        socket: { remoteAddress: "203.0.113.88" },
+        headers: {
+          "x-real-ip": "198.51.100.99",
+        },
+      } as any;
+      expect(resolveClientIp(request, "cloudflare")).toBe("203.0.113.88");
+      expect(resolveClientIp(request, true)).toBe("203.0.113.88");
+      expect(resolveClientIp(request, false)).toBe("203.0.113.88");
+    });
+
+    // TP-011E: Forged X-Real-IP alongside valid verified XFF chain
+    it("TP-011E: Forged X-Real-IP alongside valid verified XFF chain -> X-Real-IP ignored, authentic client IP from verified chain returned", () => {
+      const request = {
+        socket: { remoteAddress: "10.0.1.5" },
+        headers: {
+          "x-forwarded-for": "203.0.113.195, 173.245.48.5",
+          "x-real-ip": "198.51.100.99",
+        },
+      } as any;
+      expect(resolveClientIp(request, "cloudflare")).toBe("203.0.113.195");
+      expect(resolveClientIp(request, true)).toBe("203.0.113.195");
+    });
+
     // TP-012: IPv4 address -> Correct normalization
     it("TP-012: IPv4 address -> correct normalization", () => {
       expect(normalizeIp(" 192.0.2.1 ")).toBe("192.0.2.1");

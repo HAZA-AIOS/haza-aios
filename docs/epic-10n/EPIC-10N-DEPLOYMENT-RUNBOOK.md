@@ -29,7 +29,7 @@ Before initiating any deployment activities, verify that all conditions below ar
   1. Dry-run of migrations 0019 and 0020 against an isolated staging/clone database.
   2. Successful pre-deployment full logical backup (`mysqldump`) with table row count verification.
   3. Verification that restored copy matches live production record counts.
-- [ ] **Local Quality Gates:** All local tests and builds verified (587 tests passing across web and api, 0 typecheck errors, db:check clean).
+- [ ] **Local Quality Gates:** All local tests and builds verified (592 tests passing across web and api, 0 typecheck errors, db:check clean).
 - [ ] **CI Pipeline Acceptance:** GitHub Actions workflow `HAZA AIOS — Continuous Integration` passing on `feature/epic-10n-system-hardening`.
 - [ ] **Git Synchronization:** Working tree clean; feature branch synchronized with `origin`.
 - [ ] **Infrastructure Health:** Railway production API service and Cloudflare DNS operational with normal latency and zero elevated error rates.

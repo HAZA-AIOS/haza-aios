@@ -101,14 +101,20 @@ For legitimate Cloudflare requests entering via `api.haza-aios.com`:
 - `upstreamProxyIsCloudflare` evaluates to `true`.
 - `CF-Connecting-IP` is verified, normalized, and returned as the authoritative client IP.
 
-### Property F — Rate-Limiter Consistency
+### Property F — Removal of Unauthenticated X-Real-IP Fallback
+The unauthenticated fallback to `X-Real-IP` has been removed completely:
+- An attacker cannot inject `X-Real-IP` to spoof client identity.
+- In the absence of a valid, verified `X-Forwarded-For` chain or authentic `CF-Connecting-IP`, the resolver strictly falls back to the immediate `socketIp`.
+- Even if a request arrives from a trusted proxy, an unauthenticated `X-Real-IP` header is ignored.
+
+### Property G — Rate-Limiter Consistency
 Both authentication and registration rate limiters utilize `resolveClientIp(request, config.trustProxy)`. Individual users receive isolated rate-limiting buckets without grouping unrelated users into the shared Railway proxy bucket.
 
 ---
 
-## 4. Security Regression Test Evidence (TP-001 to TP-018)
+## 4. Security Regression Test Evidence (TP-001 to TP-018 + Hardening Extensions)
 
-All 18 scenarios mandated by the specification were implemented in [`apps/api/tests/epic10n-security-hardening.integration.test.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/tests/epic10n-security-hardening.integration.test.ts) and passed 100%:
+All scenarios mandated by the specification plus the `X-Real-IP` hardening extensions were implemented in [`apps/api/tests/epic10n-security-hardening.integration.test.ts`](file:///c:/HAZA-APPS/HAZA-AIOS/apps/api/tests/epic10n-security-hardening.integration.test.ts) and passed 100%:
 
 | ID | Test Scenario | Verified Expected Result | Status |
 | :--- | :--- | :--- | :---: |
@@ -123,6 +129,11 @@ All 18 scenarios mandated by the specification were implemented in [`apps/api/te
 | **TP-009** | Forged Cloudflare CIDR inside XFF | Traversal stops at untrusted IP; no false authentication of chain | **PASS** |
 | **TP-010** | Malformed `CF-Connecting-IP` | Safe fallback to valid candidate client IP | **PASS** |
 | **TP-011** | Malformed `X-Forwarded-For` | Safe fallback to socket IP | **PASS** |
+| **TP-011A** | Absent XFF with forged `X-Real-IP` through trusted proxy | `X-Real-IP` ignored; safe fallback to socket IP | **PASS** |
+| **TP-011B** | Malformed XFF with forged `X-Real-IP` through trusted proxy | `X-Real-IP` ignored; safe fallback to socket IP | **PASS** |
+| **TP-011C** | Absent XFF with empty headers through trusted proxy | Safe fallback to socket IP | **PASS** |
+| **TP-011D** | Forged `X-Real-IP` on direct untrusted socket | Ignored; strictly binds to socket IP | **PASS** |
+| **TP-011E** | Forged `X-Real-IP` alongside valid verified XFF chain | `X-Real-IP` ignored; authentic client IP from verified chain returned | **PASS** |
 | **TP-012** | IPv4 address | Correct normalization and port stripping | **PASS** |
 | **TP-013** | IPv6 address | Correct normalization and bracket stripping | **PASS** |
 | **TP-014** | IPv4-mapped IPv6 | Stripped of `::ffff:` and normalized to IPv4 | **PASS** |

@@ -393,8 +393,9 @@ export function isTrustedProxy(
  * 1. If trustProxy is disabled (false), all forwarding headers are ignored, binding to socket.remoteAddress.
  * 2. If trustProxy is enabled, the immediate peer (socket.remoteAddress) MUST be a verified trusted proxy.
  *    If the socket address is NOT in the trusted proxy set, all forwarding headers are ignored (direct untrusted request).
- * 3. Forwarded headers (X-Forwarded-For, CF-Connecting-IP, X-Real-IP) are validated and normalized.
+ * 3. Forwarded headers (X-Forwarded-For, CF-Connecting-IP) are validated and normalized.
  *    Any malformed or ambiguous IP entry in forwarded headers causes that header to be rejected.
+ *    Unauthenticated X-Real-IP headers are strictly ignored and never accepted as client identity.
  * 4. In X-Forwarded-For, traversal is right-to-left: the first non-trusted IP encountered from the right
  *    is the client IP that connected to the trusted proxy chain.
  * 5. CF-Connecting-IP is only trusted if the request arrived from or traversed a verified Cloudflare proxy.
@@ -492,14 +493,6 @@ export function resolveClientIp(
 
   if (candidateClientIp) {
     return candidateClientIp;
-  }
-
-  const realIp = request.headers["x-real-ip"];
-  if (typeof realIp === "string" && realIp.trim()) {
-    const normReal = normalizeIp(realIp);
-    if (normReal) {
-      return normReal;
-    }
   }
 
   return socketIp;

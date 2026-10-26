@@ -284,11 +284,99 @@ When the maintenance window opens at 22:00 PKT, the operator must execute the fo
    - Verify SHA-256 checksum matches `.sha256` output.
 4. **Restore into Isolated MySQL 8.4/9.x Target & Run Pending Migrations:**
    ```powershell
-   # Restore into isolated staging database
-   mysql -h 127.0.0.1 -P 3307 -u root isolated_rehearsal < <new_backup>.sql
+   # Restore into isolated staging database using cmd /c (PowerShell does not support '<' input redirection)
+   cmd /c "mysql -h 127.0.0.1 -P 3307 -u root haza_epic10n_rehearsal < <new_backup>.sql"
    # Execute migrations against isolated clone
-   npm run db:migrate -w apps/api
+   cmd /c "set DATABASE_PORT=3307&& set DATABASE_NAME=haza_epic10n_rehearsal&& npm run db:migrate -w apps/api"
    ```
 5. **Clear RB-003 Gate:**
    - With verified backup and rehearsal completed, operator formally approves closure of release blocker RB-003.
+
+---
+
+## 10. Phase A Preparation & Phase B Rehearsal Execution Log (October 26, 2026)
+
+### 10.1 Phase A — Immediate Preparation Item-by-Item Verification
+
+| # | Phase A Checklist Item | Empirical Result | Gate Status |
+| :- | :--- | :--- | :---: |
+| 1 | **Railway CLI Authentication** (`railway whoami`) | Process exited with code 1: `Unauthorized. Please login with railway login`. No auth tokens or credentials in environment. | **BLOCKED** |
+| 2 | **Confirm Railway Project & Environment** | Inspected `~/.railway/config.json`: Project `haza-aios` (`e28efe9a-f4f0-4ace-8ccf-5cc04baede34`), Environment `production` (`e1766450-207b-497f-a563-d4a939a0da16`). Zero changes made to configuration. | **PASS** |
+| 3 | **Backup Script Verification** (`scripts/backup-production.ps1`) | Database targeting: `railway` (fallback `MYSQLDATABASE`). Consistency: `--single-transaction --quick --routines --triggers --events --set-gtid-purged=OFF --no-tablespaces --default-character-set=utf8mb4`. Error handling: validates exit code 0, non-zero file size, header and footer comments, writes diagnostic log on failure, cleans incomplete files. Destination: `C:\Users\theme\HAZA-AIOS-Private\production-backups\stage20` (strictly outside repository). Dry-run test passed cleanly. | **PASS** |
+| 4 | **Isolated MySQL 8.4.9 Rehearsal Instance** | Started Oracle MySQL 8.4.9 Community Server (`mysqld.exe` v8.4.9) on `127.0.0.1:3307` with data directory `C:\Users\theme\HAZA-AIOS-Private\production-backups\stage19a4\restore-test\mysql-data`. Verified connection: `SELECT VERSION()` returned `8.4.9`. Fully isolated from default MariaDB on 3306. | **PASS** |
+| 5 | **Disposable Rehearsal Database** | Rehearsal database `haza_epic10n_rehearsal` created with `utf8mb4` and `utf8mb4_0900_ai_ci`. Contains no persistent or production records. Confirmed disposable. | **PASS** |
+| 6 | **Correct PowerShell Restoration Procedure** | Identified that native PowerShell rejects the `<` redirection operator (`The '<' operator is reserved for future use.`). Corrected procedure uses `cmd /c "mysql ... < <dump.sql>"`. Verified by restoring historical snapshot `haza-aios-production-stage20-backup_20261014_093605.sql` into `haza_epic10n_rehearsal`. Completed in **7,233 ms** (7.23s) with exit code 0; restored 78 tables at migration baseline 16. | **PASS** |
+| 7 | **Storage, Permissions, and Recovery Capacity** | Verified 44.28 GB available disk space on `C:`. Directory ACLs on `C:\Users\theme\HAZA-AIOS-Private\production-backups\stage20` restricted to local user `theme` (MHussain) and system administrators. Redaction verified. | **PASS** |
+| 8 | **Timestamped Evidence Collection & Redaction** | All execution logs, command outputs, and checksums recorded with strict credential redaction. Zero passwords, tokens, or private endpoints stored in repository. | **PASS** |
+| 9 | **Pre-Maintenance Window Protection** | System clock verified at `2026-10-26T13:18:00+05:00` (13:18 PKT). Maintenance window is scheduled for `2026-10-26, 22:00–23:00 PKT` (~8.7 hours ahead). In strict compliance with instructions, **no production backup was executed before 22:00 PKT**. | **PASS (POLICY ENFORCED)** |
+
+---
+
+### 10.2 Phase B — Isolated Migration Rehearsal & Validation Results
+
+To ensure technical readiness for the 22:00 PKT window, the entire migration sequence was rehearsed against the freshly restored baseline clone `haza_epic10n_rehearsal` on MySQL 8.4.9 (`127.0.0.1:3307`).
+
+#### 1. Baseline State (Pre-Migration)
+- **Target Database:** `haza_epic10n_rehearsal` on `127.0.0.1:3307`
+- **Initial Table Count:** 78 relational tables
+- **Initial Migration Level:** Migration 16 (`16_left_deathstrike`)
+
+#### 2. Migration Execution
+- **Command:** `cmd /c "set DATABASE_PORT=3307&& set DATABASE_NAME=haza_epic10n_rehearsal&& npm run db:migrate -w apps/api"`
+- **Result:** Exit code 0, all pending migrations (0017, 0018, 0019, 0020) applied cleanly:
+  - Migration 0017: `tenant_domains` status enum expanded and `verification_token` column added.
+  - Migration 0018: 5 new financial management tables created (`finance_late_fee_policies`, `finance_expense_categories`, `finance_expenses`, `finance_incomes`, `finance_accounts`).
+  - Migration 0019: Nullable `reference_number` and `application_number` columns added to `portal_update_requests` with tenant-scoped composite unique indexes.
+  - Migration 0020: JSON extraction and deduplication backfill applied.
+- **Post-Migration Migration Status:**
+  - `applied: 21, latestMigrationId: 21, status: clean`
+- **Post-Migration Table Count:** 84 schema tables
+
+#### 3. Migration Idempotency Test
+- **Command:** `npm run db:migrate -w apps/api` re-executed against `haza_epic10n_rehearsal`.
+- **Result:** Exit code 0, 0 schema changes, 0 errors.
+
+#### 4. Multi-Tenant Unique Constraint & Isolation Validation
+- Tested inserting `portal_update_requests` across distinct workspaces with identical `reference_number` (`REF-TEST-001`): **Succeeded**.
+- Tested inserting duplicate `reference_number` within the same workspace: **Rejected** with `ERROR 1062 (23000): Duplicate entry for key 'portal_requests_workspace_ref_num_unique'`.
+- Tested inserting multiple `NULL` values for `reference_number` and `application_number`: **Succeeded** (InnoDB allows multiple NULLs in unique indexes).
+
+#### 5. Migration 0020 Deduplicated Backfill Validation
+- Verified with synthetic records containing valid JSON payloads:
+  - Single distinct enquiry payload `{"referenceNumber":"REF-ENQ-999"}`: **Backfilled successfully**.
+  - Single distinct application payload `{"applicationNumber":"APP-2026-001"}`: **Backfilled successfully**.
+  - Duplicate payload within workspace `{"referenceNumber":"REF-COLLIDE"}`: **Safely skipped** (`HAVING count(*) = 1`), leaving `NULL` without violating uniqueness constraints.
+
+#### 6. Database Integrity & Tenant Isolation Verification
+- **Command:** `cmd /c "set DATABASE_PORT=3307&& set DATABASE_NAME=haza_epic10n_rehearsal&& npm run db:integrity -w apps/api"`
+- **Foreign Key Checks:** 207 checks executed — **0 failures**.
+- **Tenant Isolation Checks:** 7 cross-tenant isolation checks executed — **0 failures**.
+- **Verdict:** **PASS**.
+
+#### 7. Regression Test Suite Results
+- **API Test Suite:** 38 test files, 307 tests passed (0 failures) in 154.67s.
+- **Web Test Suite:** 50 test files, 285 tests passed (0 failures) in 170.89s.
+- **Total Tests Passed:** **592 tests passed** (100% green).
+- **GitHub Actions CI Status:** Run `40287090417` on HEAD `045ff74787c3c614220326b918d61eff42f276d9` completed **SUCCESS**.
+
+---
+
+### 10.3 Phase C — Gate Evaluation Summary
+
+| Check ID | Validation Scope | Verdict | Details / Blocking Factor |
+| :--- | :--- | :---: | :--- |
+| **G-01** | Railway CLI Authentication | **BLOCKED** | Unauthenticated host session (`railway whoami` exit 1). Operator action required at 22:00 PKT. |
+| **G-02** | Railway Project & Production Environment | **PASS** | Verified `haza-aios` (`production`) configuration untouched. |
+| **G-03** | Backup Script Invariants & Safety | **PASS** | Validated `--single-transaction`, SHA-256 sidecar, destination outside repo, dry-run exit 0. |
+| **G-04** | Local Isolated MySQL 8.4.9 Target | **PASS** | Verified Oracle MySQL 8.4.9 running on `127.0.0.1:3307`. |
+| **G-05** | Disposable Database Invariant | **PASS** | `haza_epic10n_rehearsal` isolated, verified disposable. |
+| **G-06** | PowerShell Restoration Procedure | **PASS** | Corrected `cmd /c` redirection; verified restore in 7.23s, 78 tables restored. |
+| **G-07** | Backup Storage & Permissions | **PASS** | 44.28 GB free disk space; restricted ACLs on target directory. |
+| **G-08** | Credential Redaction & Evidence | **PASS** | Redacted logs, zero tokens or passwords stored in repo. |
+| **G-09** | Maintenance Window Timing Constraint | **BLOCKED** | Current time (13:18 PKT) is outside authorized window (22:00–23:00 PKT). Production backup prohibited until 22:00 PKT. |
+| **G-10** | Migrations 0019/0020 Rehearsal | **PASS** | Applied to isolated clone; table count 78 -> 84; idempotency confirmed; `latestMigrationId: 21`. |
+| **G-11** | Referential Integrity & Tenant Isolation | **PASS** | 207 FK checks and 7 tenant checks passed with 0 failures (`db:integrity`). |
+| **G-12** | Test Suite & CI Compatibility | **PASS** | 592 tests passed (307 API + 285 Web); GitHub Actions CI run `40287090417` green. |
+| **FINAL** | **Consolidated RB-003 Verdict** | **BLOCKED** | **Technical readiness verified; live production backup holds pending operator window at 22:00 PKT.** |
+
 

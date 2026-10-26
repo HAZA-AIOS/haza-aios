@@ -229,7 +229,7 @@ function examinations(method: string, orgId: string, id: string | undefined, inp
   const rows = read<ExaminationRow>("haza-aios.sis.examinations");
   if (method === "GET") return json({ examinations: rows.filter((row) => row.organizationId === orgId) });
   if (method === "POST") {
-    const row = makeRow(orgId, { ...input, name: String(input.name ?? "").trim() }, `exam-${Date.now()}`) as ExaminationRow;
+    const row = makeRow(orgId, { ...input, name: String(input.name ?? "").trim() }, `exam-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`) as ExaminationRow;
     rows.push(row); write("haza-aios.sis.examinations", rows); return json({ examination: row }, 201);
   }
   const row = update(rows, orgId, id, input, "Examination"); write("haza-aios.sis.examinations", rows); return json({ examination: row });

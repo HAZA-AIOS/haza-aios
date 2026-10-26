@@ -26,9 +26,9 @@ Before initiating any deployment activities, verify that all conditions below ar
   2. Cloudflare Proxied mode (Orange Cloud) is active on `api.haza-aios.com` pointing to `gpc9vf9z.up.railway.app`.
   3. Railway service environment has `TRUST_PROXY=cloudflare`.
 - [ ] **Release Blocker RB-003 (Migration & Backup Verification):** Operator must perform:
-  1. Dry-run of migrations 0019 and 0020 against an isolated staging/clone database.
-  2. Successful pre-deployment full logical backup (`mysqldump`) with table row count verification.
-  3. Verification that restored copy matches live production record counts.
+  1. Review verified rehearsal results in [EPIC-10N-RB003-DATABASE-MIGRATION-REHEARSAL.md](file:///C:/HAZA-APPS/HAZA-AIOS/docs/epic-10n/EPIC-10N-RB003-DATABASE-MIGRATION-REHEARSAL.md).
+  2. Execute pre-deployment full logical backup (`mysqldump`) with table row count verification.
+  3. Verify backup file size and integrity before applying migrations 0019 and 0020.
 - [ ] **Local Quality Gates:** All local tests and builds verified (592 tests passing across web and api, 0 typecheck errors, db:check clean).
 - [ ] **CI Pipeline Acceptance:** GitHub Actions workflow `HAZA AIOS — Continuous Integration` passing on `feature/epic-10n-system-hardening`.
 - [ ] **Git Synchronization:** Working tree clean; feature branch synchronized with `origin`.
@@ -90,8 +90,8 @@ Verify the backup file size and integrity before proceeding.
 
 ### Step 2: Database Migration Execution
 Apply pending additive migrations (0019 and 0020):
-1. **Migration 0019 (`0019_chunky_starjammers.sql`):** Creates persistent sequence tables and constraint updates.
-2. **Migration 0020 (`0020_backfill_portal_request_identifiers.sql`):** Idempotently backfills legacy portal update request identifiers.
+1. **Migration 0019 (`0019_portal_requests_unique_identifiers.sql`):** Adds nullable `reference_number` and `application_number` columns and creates workspace-scoped composite unique indexes.
+2. **Migration 0020 (`0020_backfill_portal_request_identifiers.sql`):** Idempotently backfills legacy portal update request identifiers with duplicate-safe extraction (`HAVING count(*) = 1`).
 ```bash
 # Run migration runner from deployed API service or controlled runner
 npm run db:migrate -w apps/api

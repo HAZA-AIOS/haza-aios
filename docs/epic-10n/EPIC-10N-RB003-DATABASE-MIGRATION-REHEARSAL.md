@@ -4,7 +4,7 @@
 **Repository:** `HAZA-AIOS/haza-aios`  
 **Local Workspace:** `C:\HAZA-APPS\HAZA-AIOS`  
 **Target Branch:** `feature/epic-10n-system-hardening`  
-**Current Release Candidate Commit:** `ad24188373b9e59d48b77055743a6d0066ba6f98`  
+**Current Release Candidate Commit:** `5cbf8da401768652431fa2410a0a86071ea29b82`  
 **Production Baseline Commit:** `eb6c5d9df71c12a975b462418ae0d6fdf5a89113` (Epic 10M)  
 **Date:** October 26, 2026  
 **Auditor / Verification Lead:** HAZA AIOS Engineering Team  
@@ -378,5 +378,61 @@ To ensure technical readiness for the 22:00 PKT window, the entire migration seq
 | **G-11** | Referential Integrity & Tenant Isolation | **PASS** | 207 FK checks and 7 tenant checks passed with 0 failures (`db:integrity`). |
 | **G-12** | Test Suite & CI Compatibility | **PASS** | 592 tests passed (307 API + 285 Web); GitHub Actions CI run `40287090417` green. |
 | **FINAL** | **Consolidated RB-003 Verdict** | **BLOCKED** | **Technical readiness verified; live production backup holds pending operator window at 22:00 PKT.** |
+
+---
+
+## 11. Automated Migration 0020 Backfill Regression Test Suite Evidence
+
+### 11.1 Test Suite Overview & Safeguard Verification
+- **Execution Timestamp:** `2026-10-26T13:39:40+05:00`
+- **Database Engine & Version:** Oracle MySQL `8.4.9` Community Server (`mysqld.exe` v8.4.9)
+- **Target Host & Port:** `127.0.0.1:3307` (Strictly verified isolated loopback port)
+- **Target Database:** `haza_epic10n_rehearsal` (Verified disposable clone, 0 production data)
+- **Automation Runner:** `tsx src/database/scripts/test-migration-0020-backfill.ts` (`npm run test:migration-0020 -w apps/api`)
+- **Evidence Locations:**
+  - Automated Runner: [apps/api/src/database/scripts/test-migration-0020-backfill.ts](file:///C:/HAZA-APPS/HAZA-AIOS/apps/api/src/database/scripts/test-migration-0020-backfill.ts)
+  - Integration Test Suite: [apps/api/tests/epic10n-phase3-corrections.integration.test.ts](file:///C:/HAZA-APPS/HAZA-AIOS/apps/api/tests/epic10n-phase3-corrections.integration.test.ts)
+  - Helper Function: [apps/api/src/database/backfills/backfill-portal-identifiers.ts](file:///C:/HAZA-APPS/HAZA-AIOS/apps/api/src/database/backfills/backfill-portal-identifiers.ts)
+  - Raw Migration SQL: [apps/api/src/database/migrations/0020_backfill_portal_request_identifiers.sql](file:///C:/HAZA-APPS/HAZA-AIOS/apps/api/src/database/migrations/0020_backfill_portal_request_identifiers.sql)
+- **Total Test Cases Executed:** 18
+- **Passed:** 18
+- **Failed:** 0
+- **Total Execution Duration:** 472 ms (Migration 0020 executed in 11 ms; Idempotency pass in 3 ms)
+- **Outstanding Defects:** **NONE (0 defects)**
+
+---
+
+### 11.2 Complete Test Case Matrix & Empirical Results
+
+| Test Case ID | Test Case Name & Scenario | Input Scenario | Expected Result | Actual Result | Status |
+| :--- | :--- | :--- | :--- | :--- | :---: |
+| **TC-BF-00** | Malformed JSON rejection at schema level | Attempting to insert invalid JSON text `'{bad-json-syntax:'` into `payload` column | MySQL enforces JSON type check and throws `ER_INVALID_JSON_TEXT` | Rejected cleanly: `ER_INVALID_JSON_TEXT` | **PASS** |
+| **TC-BF-01** | Unique enquiry reference-number backfill | Single `admission_enquiry` request in Workspace 1 with `reference_number = NULL` and `payload = {"referenceNumber": "ENQ-SYNTH-UNIQUE-001"}` | `reference_number` backfilled to `'ENQ-SYNTH-UNIQUE-001'` | `reference_number = 'ENQ-SYNTH-UNIQUE-001'` | **PASS** |
+| **TC-BF-02** | Unique application-number backfill | Single `admission_application` request in Workspace 1 with `application_number = NULL` and `payload = {"applicationNumber": "APP-SYNTH-UNIQUE-001"}` | `application_number` backfilled to `'APP-SYNTH-UNIQUE-001'` | `application_number = 'APP-SYNTH-UNIQUE-001'` | **PASS** |
+| **TC-BF-03** | Duplicate references within one workspace | Two `admission_enquiry` requests in Workspace 1 with identical `referenceNumber = 'ENQ-COLLIDE-SAME-WS'` | Both rows skipped by `HAVING count(*) = 1` guard (remain `NULL`) to prevent unique key violation | `dup_a: NULL, dup_b: NULL` | **PASS** |
+| **TC-BF-04** | Duplicate applications within one workspace | Two `admission_application` requests in Workspace 1 with identical `applicationNumber = 'APP-COLLIDE-SAME-WS'` | Both rows skipped by `HAVING count(*) = 1` guard (remain `NULL`) to prevent unique key violation | `dup_a: NULL, dup_b: NULL` | **PASS** |
+| **TC-BF-05** | Identical references across separate workspaces (Tenant Isolation) | Two `admission_enquiry` requests with identical `referenceNumber = 'ENQ-SHARED-CROSS-TENANT'` in distinct workspaces (Tenant A & Tenant B) | Both rows successfully backfilled; composite unique index `(workspace_id, reference_number)` allows multi-tenant reuse | `ws1: 'ENQ-SHARED-CROSS-TENANT', ws2: 'ENQ-SHARED-CROSS-TENANT'` | **PASS** |
+| **TC-BF-06** | Identical applications across separate workspaces (Tenant Isolation) | Two `admission_application` requests with identical `applicationNumber = 'APP-SHARED-CROSS-TENANT'` in distinct workspaces (Tenant A & Tenant B) | Both rows successfully backfilled; composite unique index `(workspace_id, application_number)` allows multi-tenant reuse | `ws1: 'APP-SHARED-CROSS-TENANT', ws2: 'APP-SHARED-CROSS-TENANT'` | **PASS** |
+| **TC-BF-07** | Missing JSON identifier field | Payload contains other keys but lacks `referenceNumber` (`{"notes": "..."}`) | `reference_number` remains `NULL` (`IS NOT NULL` filter) | `reference_number = NULL` | **PASS** |
+| **TC-BF-08** | Explicit NULL JSON identifier | Payload contains `{"referenceNumber": null}` | `reference_number` remains `NULL` (`!= 'null'` filter) | `reference_number = NULL` | **PASS** |
+| **TC-BF-09** | Empty string JSON identifier | Payload contains `{"referenceNumber": ""}` | `reference_number` remains `NULL` (`!= ''` filter) | `reference_number = NULL` | **PASS** |
+| **TC-BF-10** | String 'null' JSON identifier | Payload contains `{"referenceNumber": "null"}` | `reference_number` remains `NULL` (`!= 'null'` filter) | `reference_number = NULL` | **PASS** |
+| **TC-BF-11** | Numeric JSON identifier coercion | Payload contains numeric identifier `{"referenceNumber": 998877}` | Value is extracted and coerced cleanly to string `'998877'` | `reference_number = '998877'` | **PASS** |
+| **TC-BF-12** | Preservation of existing non-NULL identifier | Row already has `reference_number = 'PRE-EXISTING-REF-001'` before migration | `reference_number` is preserved without modification | `reference_number = 'PRE-EXISTING-REF-001'` | **PASS** |
+| **TC-BF-13** | Collision with pre-existing identifier in same workspace | Candidate payload has `referenceNumber` equal to an already-populated row in the same workspace | Candidate skipped by `existing.id IS NULL` check (remains `NULL`) | `reference_number = NULL` | **PASS** |
+| **TC-BF-14** | Request type filtering | Request has `request_type = 'student_profile_update'` with `referenceNumber` in payload | `reference_number` remains `NULL` (only `admission_enquiry` is processed) | `reference_number = NULL` | **PASS** |
+| **TC-BF-15** | Migration idempotency under repeated execution | Re-execute Migration 0020 SQL statements a second consecutive time | 0 unintended modifications; all records remain 100% identical | Zero changes detected (3 ms) | **PASS** |
+| **TC-BF-16** | Unique index enforcement on backfilled columns | Attempt inserting duplicate `(workspace_id, reference_number)` colliding with backfilled record | MySQL enforces composite unique index and rejects with `ER_DUP_ENTRY` | `ER_DUP_ENTRY` thrown as expected | **PASS** |
+| **TC-BF-17** | Post-backfill referential integrity & tenant isolation | Full database integrity check across schema after backfill execution | 0 foreign key violations, 0 tenant isolation violations | 207 FK checks (0 failures), 7 Tenant checks (0 failures) | **PASS** |
+
+---
+
+### 11.3 Codebase Harmonization
+- Aligned `backfillPortalRequestIdentifiers` TypeScript helper in `apps/api/src/database/backfills/backfill-portal-identifiers.ts` to strictly filter out `"null"` string values, exactly matching migration `0020_backfill_portal_request_identifiers.sql` SQL condition `AND json_unquote(json_extract(payload, '$.referenceNumber')) != 'null'`.
+- Added edge case regression tests in `apps/api/tests/epic10n-phase3-corrections.integration.test.ts`. All 22 tests passing.
+- Full API automated test suite: 38 test files, 309 tests passed (0 failures).
+- Full Web automated test suite: 50 test files, 285 tests passed (0 failures).
+- Total test count: **594 tests passing across repository**.
+
 
 

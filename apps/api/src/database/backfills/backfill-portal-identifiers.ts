@@ -60,14 +60,14 @@ export async function backfillPortalRequestIdentifiers(
     const payload = typeof row.payload === "string" ? JSON.parse(row.payload) : (row.payload || {});
     if (row.requestType === "admission_enquiry") {
       const ref = row.referenceNumber || payload.referenceNumber;
-      if (ref) {
-        const key = `${row.workspaceId}::${ref}`;
+      if (ref && String(ref).trim() !== "" && String(ref).trim().toLowerCase() !== "null") {
+        const key = `${row.workspaceId}::${String(ref).trim()}`;
         enquiryCounts.set(key, (enquiryCounts.get(key) || 0) + 1);
       }
     } else if (row.requestType === "admission_application") {
       const appNum = row.applicationNumber || payload.applicationNumber;
-      if (appNum) {
-        const key = `${row.workspaceId}::${appNum}`;
+      if (appNum && String(appNum).trim() !== "" && String(appNum).trim().toLowerCase() !== "null") {
+        const key = `${row.workspaceId}::${String(appNum).trim()}`;
         appCounts.set(key, (appCounts.get(key) || 0) + 1);
       }
     }
@@ -83,7 +83,7 @@ export async function backfillPortalRequestIdentifiers(
         continue;
       }
       const ref = payload.referenceNumber ? String(payload.referenceNumber).trim() : "";
-      if (!ref) {
+      if (!ref || ref.toLowerCase() === "null") {
         result.enquiriesSkippedMissing++;
         continue;
       }
@@ -110,7 +110,7 @@ export async function backfillPortalRequestIdentifiers(
         continue;
       }
       const appNum = payload.applicationNumber ? String(payload.applicationNumber).trim() : "";
-      if (!appNum) {
+      if (!appNum || appNum.toLowerCase() === "null") {
         result.applicationsSkippedMissing++;
         continue;
       }

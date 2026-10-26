@@ -163,6 +163,67 @@ describeDatabase("Epic 10N Phase 3 Corrections: Migration Integrity, Strict Pars
       expect(rows[1].ref).toBeNull();
     });
 
+    it("handles missing keys, null, empty string, and string 'null' JSON identifiers safely", async () => {
+      const { tenant } = await createSisTenant(database, "corr-a-edge-cases");
+      const client = database.db;
+
+      const idMissing = randomUUID();
+      const idNull = randomUUID();
+      const idEmpty = randomUUID();
+      const idStrNull = randomUUID();
+
+      await client.execute(sql`
+        INSERT INTO portal_update_requests (id, workspace_id, requester_user_id, requester_role, request_type, status, reference_number, payload)
+        VALUES 
+          (${idMissing}, ${tenant.workspaceId}, 'u1', 'parent', 'admission_enquiry', 'new', NULL, ${JSON.stringify({ notes: "no ref" })}),
+          (${idNull}, ${tenant.workspaceId}, 'u2', 'parent', 'admission_enquiry', 'new', NULL, ${JSON.stringify({ referenceNumber: null })}),
+          (${idEmpty}, ${tenant.workspaceId}, 'u3', 'parent', 'admission_enquiry', 'new', NULL, ${JSON.stringify({ referenceNumber: "" })}),
+          (${idStrNull}, ${tenant.workspaceId}, 'u4', 'parent', 'admission_enquiry', 'new', NULL, ${JSON.stringify({ referenceNumber: "null" })})
+      `);
+
+      const result = await backfillPortalRequestIdentifiers(database, { workspaceId: tenant.workspaceId });
+      expect(result.enquiriesSkippedMissing).toBeGreaterThanOrEqual(4);
+
+      const [rows] = (await client.execute(sql`
+        SELECT id, reference_number as ref FROM portal_update_requests WHERE id IN (${idMissing}, ${idNull}, ${idEmpty}, ${idStrNull})
+      `)) as unknown as [Array<{ id: string; ref: string | null }>];
+
+      for (const r of rows) {
+        expect(r.ref).toBeNull();
+      }
+    });
+
+    it("preserves existing non-NULL identifiers and prevents collision with pre-existing values", async () => {
+      const { tenant } = await createSisTenant(database, "corr-a-preserve-test");
+      const client = database.db;
+
+      const preExistingRef = `ENQ-PRE-${randomUUID().slice(0, 4)}`;
+      const existingId = randomUUID();
+      const collidingId = randomUUID();
+
+      // Row 1 already has a populated reference_number
+      await client.execute(sql`
+        INSERT INTO portal_update_requests (id, workspace_id, requester_user_id, requester_role, request_type, status, reference_number, payload)
+        VALUES (${existingId}, ${tenant.workspaceId}, 'u1', 'parent', 'admission_enquiry', 'new', ${preExistingRef}, ${JSON.stringify({ referenceNumber: "OVERWRITE-ATTEMPT" })})
+      `);
+
+      // Row 2 is unpopulated, but its JSON payload collides with Row 1's already-populated reference_number
+      await client.execute(sql`
+        INSERT INTO portal_update_requests (id, workspace_id, requester_user_id, requester_role, request_type, status, reference_number, payload)
+        VALUES (${collidingId}, ${tenant.workspaceId}, 'u2', 'parent', 'admission_enquiry', 'new', NULL, ${JSON.stringify({ referenceNumber: preExistingRef })})
+      `);
+
+      await backfillPortalRequestIdentifiers(database, { workspaceId: tenant.workspaceId });
+
+      const [rows] = (await client.execute(sql`
+        SELECT id, reference_number as ref FROM portal_update_requests WHERE id IN (${existingId}, ${collidingId})
+      `)) as unknown as [Array<{ id: string; ref: string | null }>];
+
+      const rowMap = new Map(rows.map((r) => [r.id, r.ref]));
+      expect(rowMap.get(existingId)).toBe(preExistingRef); // Untouched
+      expect(rowMap.get(collidingId)).toBeNull(); // Skipped to prevent collision
+    });
+
     it("generates next sequential numbers accurately without colliding with legacy records", async () => {
       const { tenant } = await createSisTenant(database, "corr-a-sequence-test");
       const admissions = new SisAdmissionsService(database);

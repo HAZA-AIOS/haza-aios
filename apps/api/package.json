@@ -16,6 +16,7 @@
     "db:recovery:disposable": "tsx src/database/scripts/recovery-disposable.ts",
     "db:seed:staging": "tsx src/database/scripts/seed-staging.ts",
     "db:integrity": "tsx src/database/scripts/integrity-check.ts",
+    "test:migration-0020": "tsx src/database/scripts/test-migration-0020-backfill.ts",
     "lint": "npx eslint .",
     "typecheck": "npx tsc -p tsconfig.json --noEmit",
     "test": "vitest run"

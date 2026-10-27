@@ -3,6 +3,7 @@ import type { BackendModule } from "../module-registry.js";
 import { AuthService } from "../auth/services/auth.service.js";
 import { assertUuid, createTenantContext } from "../platform/tenant-context.js";
 import type {
+  AgentAuditEvent,
   AgentConversationRecord,
   AgentDefinitionWithTools,
   AgentMemoryRecord,
@@ -14,6 +15,8 @@ import { AgentService } from "./services/agent.service.js";
 import { AgentRuntimeService } from "./services/agent-runtime.service.js";
 import { AgentMemoryService } from "./services/agent-memory.service.js";
 import {
+  readPagePagination,
+  redactSensitiveConfig,
   validateCreateAgent,
   validateUpdateAgentConfiguration,
   validateUpdateAgentStatus,
@@ -37,6 +40,36 @@ export const agentsModule: BackendModule = {
     router.register({
       method: "GET",
       path: "/api/v1/organizations/:organizationId/agents/templates",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const pagination = readPagePagination(url);
+        const category = url.searchParams.get("category") ?? undefined;
+        const industry = url.searchParams.get("industry") ?? undefined;
+        const search = url.searchParams.get("search") ?? undefined;
+        const paginated = await new AgentService(database).listTemplatesPaginated({
+          category,
+          industry,
+          search,
+          ...pagination,
+        });
+        sendJson(response, 200, {
+          templates: paginated.items.map(toTemplateDto),
+          total: paginated.total,
+          page: paginated.page,
+          pageSize: paginated.pageSize,
+          totalPages: paginated.totalPages,
+        });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/providers",
       async handler(request, response, { database, routeParams }) {
         const tenant = createTenantContext(routeParams.organizationId);
         await new AuthService(database).requireOrganizationPermission(
@@ -44,23 +77,41 @@ export const agentsModule: BackendModule = {
           tenant.organizationId,
           "agent.read",
         );
-        const templates = await new AgentService(database).listTemplates();
-        sendJson(response, 200, { templates: templates.map(toTemplateDto) });
+        const providers = await new AgentService(database).listProviders();
+        sendJson(response, 200, { providers });
       },
     });
 
     router.register({
       method: "GET",
       path: "/api/v1/organizations/:organizationId/agents",
-      async handler(request, response, { database, routeParams }) {
+      async handler(request, response, { database, routeParams, url }) {
         const tenant = createTenantContext(routeParams.organizationId);
         await new AuthService(database).requireOrganizationPermission(
           request,
           tenant.organizationId,
           "agent.read",
         );
-        const agents = await new AgentService(database).listAgents(tenant.organizationId);
-        sendJson(response, 200, { agents: agents.map(toAgentDto) });
+        const pagination = readPagePagination(url);
+        const status = url.searchParams.get("status") ?? undefined;
+        const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
+        const search = url.searchParams.get("search") ?? undefined;
+        const paginated = await new AgentService(database).listAgentsPaginated(
+          tenant.organizationId,
+          {
+            status,
+            workspaceId,
+            search,
+            ...pagination,
+          },
+        );
+        sendJson(response, 200, {
+          agents: paginated.items.map(toAgentDto),
+          total: paginated.total,
+          page: paginated.page,
+          pageSize: paginated.pageSize,
+          totalPages: paginated.totalPages,
+        });
       },
     });
 
@@ -119,6 +170,57 @@ export const agentsModule: BackendModule = {
           ),
         );
         sendJson(response, 200, { agent: toAgentDto(agent) });
+      },
+    });
+
+    router.register({
+      method: "PATCH",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/status",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.agentId, "agentId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const validated = validateUpdateAgentStatus(
+          tenant.organizationId,
+          routeParams.agentId,
+          request.body,
+        );
+        const agent = await new AgentService(database).updateStatus({
+          ...validated,
+          updatedBy: auth.user.id,
+        });
+        sendJson(response, 200, { agent: toAgentDto(agent) });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/audit-history",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.agentId, "agentId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const pagination = readPagePagination(url);
+        const result = await new AgentService(database).getAgentAuditHistory(
+          tenant.organizationId,
+          routeParams.agentId,
+          pagination,
+        );
+        sendJson(response, 200, {
+          items: result.items.map(toAuditEventDto),
+          total: result.total,
+          page: result.page,
+          pageSize: result.pageSize,
+          totalPages: result.totalPages,
+        });
       },
     });
 
@@ -435,6 +537,7 @@ export const agentsModule: BackendModule = {
 function toTemplateDto(template: AgentTemplateRecord) {
   return {
     ...template,
+    defaultApprovalPolicy: template.defaultApprovalPolicy ?? null,
     tools: [],
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
@@ -447,15 +550,48 @@ function toAgentDto(agent: AgentDefinitionWithTools) {
     organizationId: agent.organizationId,
     workspaceId: agent.workspaceId,
     agentTemplateId: agent.templateId,
+    agentKey: agent.agentKey,
     name: agent.name,
+    description: agent.description,
     status: agent.status,
-    configuration: {
+    enabled: agent.enabled,
+    instructions: agent.instructions ?? "",
+    modelProvider: agent.modelProvider,
+    modelSelection: agent.modelSelection,
+    humanApprovalPolicy: agent.humanApprovalPolicy ?? null,
+    configuration: redactSensitiveConfig({
       ...agent.configuration,
       tools: agent.tools.map((tool) => tool.toolKey),
-    },
-    enabled: agent.enabled,
+    }) as Record<string, unknown>,
+    tools: agent.tools.map((tool) => ({
+      id: tool.id,
+      toolKey: tool.toolKey,
+      status: tool.status,
+    })),
     createdAt: agent.createdAt.toISOString(),
     updatedAt: agent.updatedAt.toISOString(),
+  };
+}
+
+function toAuditEventDto(event: AgentAuditEvent) {
+  return {
+    id: event.id,
+    organizationId: event.organizationId,
+    workspaceId: event.workspaceId,
+    agentId: event.agentId,
+    actorUserId: event.actorUserId,
+    action: event.action,
+    operation: event.operation,
+    result: event.result,
+    beforeSnapshot: event.beforeSnapshot
+      ? (redactSensitiveConfig(event.beforeSnapshot) as Record<string, unknown>)
+      : null,
+    afterSnapshot: event.afterSnapshot
+      ? (redactSensitiveConfig(event.afterSnapshot) as Record<string, unknown>)
+      : null,
+    changedFields: event.changedFields,
+    metadata: event.metadata,
+    createdAt: event.createdAt.toISOString(),
   };
 }
 

@@ -1,6 +1,16 @@
-## [Unreleased]
+## [0.10.14-epic10n] - 2026-10-27
 
 ### Added
+- **Epic 10N: Enterprise System Hardening & Full Production Release**
+  - **Security Hardening (SEC-001 – SEC-005):** Strict authenticated actor context derived from server session, multi-tier login rate limiting (IP abuse and per-account failed attempts), HTTP security headers (CSP, Permissions-Policy, X-Frame-Options, X-Content-Type-Options), and configurable proxy trust resolution (`trustProxy`).
+  - **Transactional Integrity (TX-001 – TX-003):** Atomic transaction boundaries across SIS student lifecycle, admissions conversion, grade/section enrollments, student transfers, examination results publishing, and fee billing generation.
+  - **Database Migrations 0019 & 0020:** Unique tenant identifiers for portal update requests (`0019`) and deduplicated JSON identifier backfill (`0020`), verified with 207 foreign-key and 7 tenant-isolation checks.
+  - **Pagination & Completeness (PAG-001 – PAG-003):** Strict pagination validation, bounds checking, and truthful total-count metadata across all SIS endpoints.
+  - **Frontend UX Robustness (UX-001 – UX-002):** Double-submission safeguards (`useAsyncSubmission`) across admissions, examinations, and fee collection forms, along with consolidated attendance route handling.
+  - **Railway Production Infrastructure:** Pre-deploy migration execution via Railway hooks, container network binding to `0.0.0.0:$PORT` with `allowedHosts: true`, and live health/readiness monitoring.
+
+## [Unreleased]
+
 
 - **DB-18: Backup and Recovery Hardening**
   - Added guarded disposable MySQL backup/restore rehearsal and read-only foreign-key and tenant integrity checks.

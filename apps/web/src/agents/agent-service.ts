@@ -1,4 +1,12 @@
-import type { AgentTemplate, AgentInstance, AgentRun, AgentConfiguration } from "./agent.types";
+import type {
+  AgentTemplate,
+  AgentInstance,
+  AgentRun,
+  AgentConfiguration,
+  AgentAuditEvent,
+  AiProviderInfo,
+  HumanApprovalPolicy,
+} from "./agent.types";
 import { AgentRegistry } from "./agent-registry";
 import { apiClient } from "@/api/api-client";
 import { readStoredAuth } from "@/auth/auth-storage";
@@ -56,18 +64,36 @@ export class AgentServiceClass {
     localStorage.setItem(INSTANCES_KEY, JSON.stringify(instances));
   }
 
-  async getInstances(organizationId: string): Promise<AgentInstance[]> {
+  async getInstances(
+    organizationId: string,
+    options?: { status?: string; search?: string; page?: number; pageSize?: number },
+  ): Promise<AgentInstance[]> {
     if (!isTestRuntime()) {
       const auth = readStoredAuth();
+      const params = new URLSearchParams();
+      if (options?.status) params.set("status", options.status);
+      if (options?.search) params.set("search", options.search);
+      if (options?.page) params.set("page", String(options.page));
+      if (options?.pageSize) params.set("pageSize", String(options.pageSize));
+      const query = params.toString() ? `?${params.toString()}` : "";
+
       const response = await apiClient.request<{ agents: AgentInstance[] }>(
-        `/api/v1/organizations/${organizationId}/agents`,
+        `/api/v1/organizations/${organizationId}/agents${query}`,
         {
           authToken: auth?.session.accessToken,
         },
       );
       return response.agents;
     }
-    return this.getInstancesDb().filter((i) => i.organizationId === organizationId);
+    let filtered = this.getInstancesDb().filter((i) => i.organizationId === organizationId);
+    if (options?.status) {
+      filtered = filtered.filter((i) => i.status === options.status);
+    }
+    if (options?.search) {
+      const term = options.search.toLowerCase();
+      filtered = filtered.filter((i) => i.name.toLowerCase().includes(term));
+    }
+    return filtered;
   }
 
   async getInstance(id: string, organizationId: string): Promise<AgentInstance | undefined> {
@@ -93,6 +119,13 @@ export class AgentServiceClass {
     organizationId: string,
     templateId: string,
     workspaceId?: string,
+    extra?: {
+      name?: string;
+      description?: string;
+      modelProvider?: string;
+      modelSelection?: string;
+      humanApprovalPolicy?: HumanApprovalPolicy;
+    },
   ): Promise<AgentInstance> {
     if (!isTestRuntime()) {
       const auth = readStoredAuth();
@@ -102,7 +135,15 @@ export class AgentServiceClass {
         {
           method: "POST",
           authToken: auth?.session.accessToken,
-          body: JSON.stringify({ templateId, workspaceId: resolvedWorkspaceId }),
+          body: JSON.stringify({
+            templateId,
+            workspaceId: resolvedWorkspaceId,
+            name: extra?.name,
+            description: extra?.description,
+            modelProvider: extra?.modelProvider,
+            modelSelection: extra?.modelSelection,
+            humanApprovalPolicy: extra?.humanApprovalPolicy,
+          }),
         },
       );
       return response.agent;
@@ -244,6 +285,159 @@ export class AgentServiceClass {
     instance.updatedAt = new Date().toISOString();
     this.saveInstancesDb(instances);
     return instance;
+  }
+
+  async suspendInstance(id: string, organizationId: string): Promise<AgentInstance> {
+    if (!isTestRuntime()) {
+      const auth = readStoredAuth();
+      const response = await apiClient.request<{ agent: AgentInstance }>(
+        `/api/v1/organizations/${organizationId}/agents/${id}/status`,
+        {
+          method: "PATCH",
+          authToken: auth?.session.accessToken,
+          body: JSON.stringify({ status: "suspended" }),
+        },
+      );
+      return response.agent;
+    }
+
+    const instances = this.getInstancesDb();
+    const instance = instances.find((i) => i.id === id && i.organizationId === organizationId);
+    if (!instance) throw new Error("Instance not found");
+
+    instance.status = "suspended";
+    instance.enabled = false;
+    instance.updatedAt = new Date().toISOString();
+    this.saveInstancesDb(instances);
+    return instance;
+  }
+
+  async resumeInstance(id: string, organizationId: string): Promise<AgentInstance> {
+    if (!isTestRuntime()) {
+      const auth = readStoredAuth();
+      const response = await apiClient.request<{ agent: AgentInstance }>(
+        `/api/v1/organizations/${organizationId}/agents/${id}/status`,
+        {
+          method: "PATCH",
+          authToken: auth?.session.accessToken,
+          body: JSON.stringify({ status: "active" }),
+        },
+      );
+      return response.agent;
+    }
+
+    const instances = this.getInstancesDb();
+    const instance = instances.find((i) => i.id === id && i.organizationId === organizationId);
+    if (!instance) throw new Error("Instance not found");
+
+    instance.status = "active";
+    instance.enabled = true;
+    instance.updatedAt = new Date().toISOString();
+    this.saveInstancesDb(instances);
+    return instance;
+  }
+
+  async archiveInstance(id: string, organizationId: string): Promise<AgentInstance> {
+    if (!isTestRuntime()) {
+      const auth = readStoredAuth();
+      const response = await apiClient.request<{ agent: AgentInstance }>(
+        `/api/v1/organizations/${organizationId}/agents/${id}/status`,
+        {
+          method: "PATCH",
+          authToken: auth?.session.accessToken,
+          body: JSON.stringify({ status: "archived" }),
+        },
+      );
+      return response.agent;
+    }
+
+    const instances = this.getInstancesDb();
+    const instance = instances.find((i) => i.id === id && i.organizationId === organizationId);
+    if (!instance) throw new Error("Instance not found");
+
+    instance.status = "archived";
+    instance.enabled = false;
+    instance.updatedAt = new Date().toISOString();
+    this.saveInstancesDb(instances);
+    return instance;
+  }
+
+  async getAgentAuditHistory(
+    id: string,
+    organizationId: string,
+    page = 1,
+    pageSize = 20,
+  ): Promise<{
+    items: AgentAuditEvent[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    if (!isTestRuntime()) {
+      const auth = readStoredAuth();
+      const response = await apiClient.request<{
+        items: AgentAuditEvent[];
+        total: number;
+        page: number;
+        pageSize: number;
+        totalPages: number;
+      }>(
+        `/api/v1/organizations/${organizationId}/agents/${id}/audit-history?page=${page}&pageSize=${pageSize}`,
+        {
+          authToken: auth?.session.accessToken,
+        },
+      );
+      return response;
+    }
+
+    return {
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    };
+  }
+
+  async getProviders(organizationId: string): Promise<AiProviderInfo[]> {
+    if (!isTestRuntime()) {
+      const auth = readStoredAuth();
+      const response = await apiClient.request<{ providers: AiProviderInfo[] }>(
+        `/api/v1/organizations/${organizationId}/agents/providers`,
+        {
+          authToken: auth?.session.accessToken,
+        },
+      );
+      return response.providers;
+    }
+
+    return [
+      {
+        id: "mock",
+        name: "HAZA Mock AI Provider",
+        version: "1.0.0",
+        isDefault: true,
+        models: [
+          {
+            id: "mock-gpt-4o",
+            name: "Mock GPT-4o",
+            provider: "mock",
+            contextWindow: 128000,
+            maxOutputTokens: 4096,
+            capabilities: ["chat", "completion", "tools", "json_mode"],
+          },
+          {
+            id: "mock-claude-3-5-sonnet",
+            name: "Mock Claude 3.5 Sonnet",
+            provider: "mock",
+            contextWindow: 200000,
+            maxOutputTokens: 8192,
+            capabilities: ["chat", "completion", "tools", "vision"],
+          },
+        ],
+      },
+    ];
   }
 
   // --- Runs (Execution Model Placeholder) ---

@@ -484,8 +484,68 @@ A comprehensive read-only forensic inspection of the generated artifact was cond
 
 ### 12.4 Controlled Rehearsal & Release Gate Status
 - **Preservation of Artifact:** The backup artifact and its `.sha256` sidecar are safely retained in `C:\Users\theme\HAZA-AIOS-Private\production-backups\stage20\`.
-- **Restoration Hold:** Per safety safeguards, **isolated restoration into `127.0.0.1:3307` (`haza_epic10n_rehearsal`) is HELD** pending formal release authority determination on whether to:
-  1. Accept this verified artifact (`20261027_090151.sql`) for immediate isolated rehearsal and integrity validation, OR
-  2. Repeat the backup operation during the formally scheduled window (22:00–23:00 PKT).
-- **Consolidated RB-003 Verdict:** **RETAIN BLOCKED** until release authority signs off on timing deviation or window re-execution.
+- **Restoration Hold:** Historical timing deviation preserved for forensic traceability.
+- **Superseded By:** Full production release authorization in Section 13.
+
+---
+
+## 13. Project Owner Release Authorization & Pre-Deployment Rehearsal Execution Evidence (October 27, 2026)
+
+### 13.1 Explicit Production Release Authorization
+- **Release Authority:** Project Owner
+- **Authorization Scope:** Full production release execution covering all completed and approved work through Epic 10N, including approved production database migrations (0019 and 0020), following a fresh verified production backup, successful isolated migration rehearsal, and passing automated test suites.
+- **Timing Classification:** Formal project owner authorization recorded separately from earlier RB-003 maintenance-window deviations.
+- **Target Environments:**
+  - Git: `feature/epic-10n-system-hardening` -> `main`
+  - Railway Project: `haza-aios` (`e28efe9a-f4f0-4ace-8ccf-5cc04baede34`), Environment `production` (`e1766450-207b-497f-a563-d4a939a0da16`)
+
+### 13.2 Fresh Pre-Release Production Backup Verification
+A fresh pre-release production logical backup was captured and verified:
+- **Execution Timestamp:** `2026-10-27 10:32:51 PKT` (Duration: 9.02 seconds)
+- **Backup Command:** `powershell -ExecutionPolicy Bypass -File .\scripts\backup-production.ps1 -Database railway -Method ContainerSsh`
+- **Output Artifact:** `C:\Users\theme\HAZA-AIOS-Private\production-backups\stage20\haza-aios-production-stage20-backup_20261027_103251.sql`
+- **Artifact Size:** `227,429 bytes` (222.1 KB)
+- **Cryptographic SHA-256 Checksum:** `D818291E2D8BC6EA064F4463902DAA17710C2B7B501A11F9E00371660DA894ED`
+- **Sidecar File:** `haza-aios-production-stage20-backup_20261027_103251.sql.sha256` (Validated exact match)
+- **Dump Header & Footer:** Verified `-- MySQL dump 10.13 Distrib 9.7.2` and `-- Dump completed on 2026-10-27  5:30:29`
+- **Database Safety Inspection:** Verified 0 occurrences of `USE `, `CREATE DATABASE`, or `DROP DATABASE` statements in dump.
+
+### 13.3 Isolated Migration Rehearsal (`haza_rb003_release_rehearsal`)
+- **Isolated Target:** Dedicated disposable database `haza_rb003_release_rehearsal` created on local Oracle MySQL 8.4.9 Community Server (`127.0.0.1:3307`).
+- **Restoration:** Restored dump `20261027_103251.sql` cleanly with exit code 0; 84 tables restored.
+- **Initial Production Migration Level:**
+  - Query: `npm run db:migrate:status -w apps/api`
+  - Result: `applied: 19, latestMigrationId: 19` (Migrations 0000 through 0018 applied in production).
+  - Pending Migrations: Migration 0019 (`0019_portal_requests_unique_identifiers.sql`) and Migration 0020 (`0020_backfill_portal_request_identifiers.sql`).
+- **Migration Application:**
+  - Command: `npm run db:migrate -w apps/api`
+  - Result: Exit code 0, message `database_migrations_applied`.
+  - Post-migration status: `applied: 21, latestMigrationId: 21, status: clean`.
+- **Migration Runner Idempotency:**
+  - Command: Re-executed `npm run db:migrate -w apps/api` a second consecutive time.
+  - Result: Exit code 0, 0 schema changes, 0 errors.
+- **Database Integrity & Tenant Boundary Audit:**
+  - Command: `npm run db:integrity -w apps/api`
+  - Foreign Key Checks: **207 checks executed — 0 failures**.
+  - Tenant Isolation Checks: **7 checks executed — 0 failures**.
+  - Status: **PASS**.
+- **Migration 0020 Backfill Regression Test Suite:**
+  - Command: `npm run test:migration-0020 -w apps/api`
+  - Total Scenarios: 18 matrix cases (TC-BF-00 through TC-BF-17).
+  - Passed: **18 / 18 (100%)** in 1019 ms.
+
+### 13.4 Comprehensive Quality Gates Summary
+- **API TypeScript Typecheck:** Clean (Exit code 0).
+- **Web TypeScript Typecheck:** Clean (Exit code 0).
+- **API Production Build:** Clean (Exit code 0).
+- **Web Production Build:** Clean (Exit code 0, 2,089 modules transformed).
+- **API Automated Test Suite:** 38 test files, **309 tests passed (0 failures)**.
+- **Web Automated Test Suite:** 50 test files, **285 tests passed (0 failures)**.
+- **Repository Total Tests:** **594 tests passing across repository (100% green)**.
+
+### 13.5 Rollback Plan
+In the unlikely event that post-deploy validation identifies an unrecoverable failure:
+1. **Application Rollback:** Revert Railway API and Web services to deployment `a1b6b482-4ccd-462f-821a-103e2d53617a` (API) and `546b1b31-4e19-4db5-b61a-753711b3d93e` (Web).
+2. **Database Rollback:** Database rollback is non-trivial because additive migrations 0019/0020 are backwards-compatible (nullable columns with tenant unique constraints). If full database restoration is required, restore verified pre-release backup `haza-aios-production-stage20-backup_20261027_103251.sql` (SHA-256: `D818291E2D8BC6EA064F4463902DAA17710C2B7B501A11F9E00371660DA894ED`).
+
 

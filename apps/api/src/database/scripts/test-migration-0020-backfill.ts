@@ -18,8 +18,8 @@ function assertSafeguards(cfg: typeof config) {
   if (cfg.port !== 3307) {
     throw new Error(`[SAFEGUARD VIOLATION] Port '${cfg.port}' is NOT the authorized isolated MySQL 8.4.9 port 3307.`);
   }
-  if (cfg.name !== "haza_epic10n_rehearsal") {
-    throw new Error(`[SAFEGUARD VIOLATION] Database '${cfg.name}' is NOT the authorized rehearsal target 'haza_epic10n_rehearsal'.`);
+  if (cfg.name !== "haza_epic10n_rehearsal" && !cfg.name.startsWith("haza_rb003_")) {
+    throw new Error(`[SAFEGUARD VIOLATION] Database '${cfg.name}' is NOT an authorized rehearsal target ('haza_epic10n_rehearsal' or 'haza_rb003_*').`);
   }
 }
 
@@ -66,8 +66,8 @@ async function run() {
     console.log(`Verified Active DB:       ${identity.currentDatabase}`);
     console.log(`Verified Port:            ${identity.serverPort}`);
 
-    if (identity.currentDatabase !== "haza_epic10n_rehearsal") {
-      throw new Error(`[RUNTIME SAFEGUARD ERROR] Connected database is '${identity.currentDatabase}', expected 'haza_epic10n_rehearsal'`);
+    if (identity.currentDatabase !== "haza_epic10n_rehearsal" && !identity.currentDatabase.startsWith("haza_rb003_")) {
+      throw new Error(`[RUNTIME SAFEGUARD ERROR] Connected database is '${identity.currentDatabase}', expected 'haza_epic10n_rehearsal' or 'haza_rb003_*'`);
     }
     if (Number(identity.serverPort) !== 3307) {
       throw new Error(`[RUNTIME SAFEGUARD ERROR] Connected port is '${identity.serverPort}', expected 3307`);

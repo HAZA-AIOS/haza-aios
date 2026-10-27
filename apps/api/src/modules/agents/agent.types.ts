@@ -1,5 +1,12 @@
 export type AgentLifecycleStatus =
-  "draft" | "available" | "configured" | "active" | "paused" | "disabled" | "archived";
+  | "draft"
+  | "available"
+  | "configured"
+  | "active"
+  | "paused"
+  | "disabled"
+  | "archived"
+  | "suspended";
 
 export type JsonRecord = Record<string, unknown>;
 
@@ -7,6 +14,16 @@ export type AgentCapability = {
   key: string;
   name: string;
   description: string;
+  requiresApproval?: boolean;
+  riskLevel?: "low" | "medium" | "high";
+};
+
+export type HumanApprovalPolicy = {
+  required: boolean;
+  approverRoles: string[];
+  escalationTimeoutHours?: number;
+  fallbackAction?: "deny" | "escalate";
+  sensitiveCapabilities?: string[];
 };
 
 export type AgentTemplateRecord = {
@@ -24,6 +41,7 @@ export type AgentTemplateRecord = {
   configurationSchema: JsonRecord;
   inputSchema: JsonRecord;
   outputSchema: JsonRecord;
+  defaultApprovalPolicy?: HumanApprovalPolicy | null;
   metadata: JsonRecord;
   createdAt: Date;
   updatedAt: Date;
@@ -43,6 +61,7 @@ export type AgentDefinitionRecord = {
   configuration: JsonRecord;
   modelProvider: string;
   modelSelection: string;
+  humanApprovalPolicy?: HumanApprovalPolicy | null;
   createdBy: string;
   archivedAt: Date | null;
   createdAt: Date;
@@ -71,6 +90,12 @@ export type CreateAgentInput = {
   templateId: string;
   createdBy: string;
   name?: string;
+  description?: string;
+  instructions?: string;
+  configuration?: JsonRecord;
+  modelProvider?: string;
+  modelSelection?: string;
+  humanApprovalPolicy?: HumanApprovalPolicy;
 };
 
 export type UpdateAgentConfigurationInput = {
@@ -78,16 +103,42 @@ export type UpdateAgentConfigurationInput = {
   agentId: string;
   updatedBy: string;
   configuration: JsonRecord;
+  instructions?: string;
+  modelProvider?: string;
+  modelSelection?: string;
+  humanApprovalPolicy?: HumanApprovalPolicy;
 };
 
 export type UpdateAgentStatusInput = {
   organizationId: string;
   agentId: string;
-  status: "active" | "configured" | "paused" | "disabled" | "archived";
+  status: "active" | "configured" | "paused" | "disabled" | "archived" | "suspended";
+  updatedBy?: string;
+};
+
+export type AgentAuditEvent = {
+  id: string;
+  organizationId: string;
+  workspaceId: string | null;
+  agentId: string;
+  actorUserId: string | null;
+  action: string;
+  operation: string;
+  result: "success" | "failure" | "denied";
+  beforeSnapshot: JsonRecord | null;
+  afterSnapshot: JsonRecord | null;
+  changedFields: string[] | null;
+  metadata: JsonRecord;
+  createdAt: Date;
 };
 
 export type AgentRunStatus =
-  "queued" | "running" | "waiting" | "completed" | "failed" | "cancelled";
+  | "queued"
+  | "running"
+  | "waiting"
+  | "completed"
+  | "failed"
+  | "cancelled";
 export type AgentConversationStatus = "active" | "archived" | "deleted";
 export type AgentMessageRole = "user" | "assistant" | "system" | "tool";
 

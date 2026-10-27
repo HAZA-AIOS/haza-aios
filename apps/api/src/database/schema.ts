@@ -30,6 +30,7 @@ export const agentLifecycleStatus = mysqlEnum("agent_lifecycle_status", [
   "paused",
   "disabled",
   "archived",
+  "suspended",
 ]);
 export const agentRunStatus = mysqlEnum("agent_run_status", [
   "queued",
@@ -169,6 +170,7 @@ export const aiAgentTemplates = mysqlTable(
     inputSchema: json("input_schema").$type<Record<string, unknown>>().notNull(),
     outputSchema: json("output_schema").$type<Record<string, unknown>>().notNull(),
     metadata: json("metadata").$type<Record<string, unknown>>().notNull(),
+    defaultApprovalPolicy: json("default_approval_policy").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
   },
@@ -206,6 +208,7 @@ export const aiAgentDefinitions = mysqlTable(
     createdBy: char("created_by", { length: 36 })
       .notNull()
       .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    humanApprovalPolicy: json("human_approval_policy").$type<Record<string, unknown>>(),
     archivedAt: timestamp("archived_at", { fsp: 3 }),
     createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),

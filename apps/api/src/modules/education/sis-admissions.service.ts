@@ -1,8 +1,10 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { ApiError } from "../../common/errors/api-error.js";
+import type { PaginationParams } from "../../common/pagination/pagination.js";
 import type { DatabaseClient } from "../../database/client.js";
 import { mapDatabaseError } from "../../database/errors.js";
+import { withTransaction } from "../../database/transactions.js";
 import {
   portalUpdateRequests,
   students,
@@ -13,6 +15,26 @@ import { SisService } from "./sis.service.js";
 type JsonRecord = Record<string, unknown>;
 type Tenant = { organizationId: string; workspaceId: string };
 type Actor = { userId?: string; role?: string } | undefined;
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (error instanceof ApiError && error.code === "DATABASE_UNIQUE_CONSTRAINT") return true;
+  const candidate = error as { code?: string; errno?: number; cause?: unknown };
+  if (
+    candidate.code === "DATABASE_UNIQUE_CONSTRAINT" ||
+    candidate.errno === 1062 ||
+    candidate.code === "ER_DUP_ENTRY" ||
+    candidate.errno === 1213 ||
+    candidate.code === "ER_LOCK_DEADLOCK" ||
+    candidate.errno === 1205 ||
+    candidate.code === "ER_LOCK_WAIT_TIMEOUT"
+  ) {
+    return true;
+  }
+  if (candidate.cause) {
+    return isUniqueConstraintError(candidate.cause);
+  }
+  return false;
+}
 
 export type AdmissionEnquiryStatus =
   | "new"
@@ -79,7 +101,7 @@ function dbError(error: unknown): never {
   throw error;
 }
 
-function dto<T extends JsonRecord>(tenant: Tenant, row: { payload: JsonRecord }): T {
+function dto<T extends JsonRecord>(tenant: Tenant, row: { payload: unknown }): T {
   return { ...payloadOf(row.payload), organizationId: tenant.organizationId } as unknown as T;
 }
 
@@ -157,23 +179,32 @@ export class SisAdmissionsService {
   /* ─────────────────────────────────────────────────────────────
    * 2. ENQUIRY MANAGEMENT (CRUD & CONVERT)
    * ───────────────────────────────────────────────────────────── */
-  async listEnquiries(tenant: Tenant, filters?: { status?: string; search?: string; gradeId?: string; campus?: string }) {
-    const rows = await this.database.db
+  async listEnquiries(
+    tenant: Tenant,
+    filters?: { status?: string; search?: string; gradeId?: string; campus?: string },
+    pagination?: PaginationParams
+  ) {
+    const conditions = [
+      eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
+      eq(portalUpdateRequests.requestType, "admission_enquiry"),
+    ];
+    if (filters?.status) {
+      conditions.push(eq(portalUpdateRequests.status, filters.status));
+    }
+
+    let query = this.database.db
       .select()
       .from(portalUpdateRequests)
-      .where(
-        and(
-          eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
-          eq(portalUpdateRequests.requestType, "admission_enquiry")
-        )
-      )
-      .orderBy(desc(portalUpdateRequests.createdAt));
+      .where(and(...conditions))
+      .orderBy(desc(portalUpdateRequests.createdAt), asc(portalUpdateRequests.id));
 
+    if (pagination && !filters?.gradeId && !filters?.campus && !filters?.search) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+
+    const rows = await query;
     let list = rows.map((r) => dto<JsonRecord & { id: string; status: string; studentName: string; referenceNumber: string; desiredGradeId?: string; preferredCampus?: string }>(tenant, r));
 
-    if (filters?.status) {
-      list = list.filter((e) => e.status === filters.status);
-    }
     if (filters?.gradeId) {
       list = list.filter((e) => e.desiredGradeId === filters.gradeId);
     }
@@ -191,7 +222,35 @@ export class SisAdmissionsService {
       );
     }
 
+    if (pagination && (filters?.gradeId || filters?.campus || filters?.search)) {
+      list = list.slice(pagination.offset, pagination.offset + pagination.limit);
+    }
+
     return list;
+  }
+
+  async countEnquiries(
+    tenant: Tenant,
+    filters?: { status?: string; search?: string; gradeId?: string; campus?: string }
+  ): Promise<number> {
+    if (filters?.gradeId || filters?.campus || filters?.search) {
+      const all = await this.listEnquiries(tenant, filters);
+      return all.length;
+    }
+
+    const conditions = [
+      eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
+      eq(portalUpdateRequests.requestType, "admission_enquiry"),
+    ];
+    if (filters?.status) {
+      conditions.push(eq(portalUpdateRequests.status, filters.status));
+    }
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(portalUpdateRequests)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
 
   async getEnquiry(tenant: Tenant, id: string) {
@@ -213,6 +272,32 @@ export class SisAdmissionsService {
     return dto<JsonRecord & { id: string }>(tenant, row);
   }
 
+  private async nextEnquiryNumber(workspaceId: string, tx?: DatabaseClient["db"]): Promise<string> {
+    const currentYear = new Date().getFullYear();
+    const client = tx ?? this.database.db;
+    const [rows] = (await client.execute(
+      sql`SELECT reference_number as referenceNumber, payload FROM portal_update_requests WHERE workspace_id = ${workspaceId} AND request_type = 'admission_enquiry' FOR UPDATE`
+    )) as unknown as [Array<{ referenceNumber?: string; payload: unknown }>];
+
+    const pattern = new RegExp(`^ENQ-${currentYear}-(\\d+)$`);
+    let max = 0;
+    for (const row of rows) {
+      let ref = row.referenceNumber;
+      if (!ref && row.payload) {
+        const p = payloadOf(row.payload);
+        ref = str(p.referenceNumber);
+      }
+      if (ref) {
+        const match = pattern.exec(ref);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > max) max = num;
+        }
+      }
+    }
+    return `ENQ-${currentYear}-${String(max + 1).padStart(5, "0")}`;
+  }
+
   async createEnquiry(tenant: Tenant, data: JsonRecord, actor?: Actor) {
     const studentName = assertText(data.studentName, "Student name");
     const guardianName = assertText(data.guardianName, "Guardian name");
@@ -220,57 +305,71 @@ export class SisAdmissionsService {
     const email = str(data.email);
     const desiredGradeId = assertText(data.desiredGradeId, "Desired grade");
 
-    const count = (
-      await this.database.db
-        .select()
-        .from(portalUpdateRequests)
-        .where(
-          and(
-            eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
-            eq(portalUpdateRequests.requestType, "admission_enquiry")
-          )
-        )
-    ).length;
+    const maxRetries = 12;
+    let attempt = 0;
 
-    const currentYear = new Date().getFullYear();
-    const referenceNumber = `ENQ-${currentYear}-${String(count + 1).padStart(5, "0")}`;
+    while (attempt < maxRetries) {
+      attempt++;
+      try {
+        return await withTransaction(this.database, async ({ tx }) => {
+          const referenceNumber = await this.nextEnquiryNumber(tenant.workspaceId, tx);
+          const id = uuid();
+          const enquiryRecord: JsonRecord = {
+            ...data,
+            id,
+            organizationId: tenant.organizationId,
+            referenceNumber,
+            studentName,
+            guardianName,
+            phone,
+            email: email || undefined,
+            desiredGradeId,
+            status: str(data.status) || "new",
+            enquiryDate: str(data.enquiryDate) || now().slice(0, 10),
+            followUpDate: str(data.followUpDate) || undefined,
+            notes: str(data.notes) || undefined,
+            source: str(data.source) || "direct",
+            preferredCampus: str(data.preferredCampus) || "Main Campus",
+            assignedStaffId: str(data.assignedStaffId) || undefined,
+            createdAt: now(),
+            updatedAt: now(),
+          };
 
-    const id = uuid();
-    const enquiryRecord: JsonRecord = {
-      ...data,
-      id,
-      organizationId: tenant.organizationId,
-      referenceNumber,
-      studentName,
-      guardianName,
-      phone,
-      email: email || undefined,
-      desiredGradeId,
-      status: str(data.status) || "new",
-      enquiryDate: str(data.enquiryDate) || now().slice(0, 10),
-      followUpDate: str(data.followUpDate) || undefined,
-      notes: str(data.notes) || undefined,
-      source: str(data.source) || "direct",
-      preferredCampus: str(data.preferredCampus) || "Main Campus",
-      assignedStaffId: str(data.assignedStaffId) || undefined,
-      createdAt: now(),
-      updatedAt: now(),
-    };
+          await tx
+            .insert(portalUpdateRequests)
+            .values({
+              id,
+              workspaceId: tenant.workspaceId,
+              requesterUserId: str(actor?.userId) || "system",
+              requesterRole: str(actor?.role) || "staff",
+              requestType: "admission_enquiry",
+              status: String(enquiryRecord.status),
+              referenceNumber,
+              payload: enquiryRecord,
+            })
+            .catch(dbError);
 
-    await this.database.db
-      .insert(portalUpdateRequests)
-      .values({
-        id,
-        workspaceId: tenant.workspaceId,
-        requesterUserId: str(actor?.userId) || "system",
-        requesterRole: str(actor?.role) || "staff",
-        requestType: "admission_enquiry",
-        status: String(enquiryRecord.status),
-        payload: enquiryRecord,
-      })
-      .catch(dbError);
-
-    return enquiryRecord;
+          return enquiryRecord;
+        });
+      } catch (error) {
+        const isUnique = isUniqueConstraintError(error);
+        if (isUnique && attempt < maxRetries) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.floor(Math.random() * 60) + attempt * 20)
+          );
+          continue;
+        }
+        if (isUnique && attempt >= maxRetries) {
+          throw new ApiError(
+            409,
+            "DATABASE_UNIQUE_CONSTRAINT",
+            "Unable to allocate a unique enquiry reference number after maximum retries due to concurrent creation."
+          );
+        }
+        throw error;
+      }
+    }
+    throw new ApiError(500, "INTERNAL_SERVER_ERROR", "Failed to create enquiry after retries.");
   }
 
   async updateEnquiry(tenant: Tenant, id: string, data: JsonRecord, _actor?: Actor) {
@@ -315,83 +414,129 @@ export class SisAdmissionsService {
   }
 
   async convertEnquiryToApplication(tenant: Tenant, enquiryId: string, actor?: Actor) {
-    const enquiry = await this.getEnquiry(tenant, enquiryId);
-    if (enquiry.status === "converted" && enquiry.convertedApplicationId) {
-      return this.getApplication(tenant, String(enquiry.convertedApplicationId));
-    }
+    return withTransaction(this.database, async ({ tx }) => {
+      const txDatabase: DatabaseClient = {
+        ...this.database,
+        db: tx,
+        transaction: (work) => work(tx),
+      };
+      const txAdmissionsService = new SisAdmissionsService(txDatabase);
 
-    const names = String(enquiry.studentName ?? "").trim().split(/\s+/);
-    const firstName = names[0] || "Student";
-    const lastName = names.slice(1).join(" ") || "Applicant";
+      const [rows] = (await tx.execute(
+        sql`SELECT id, workspace_id as workspaceId, request_type as requestType, status, payload FROM portal_update_requests WHERE workspace_id = ${tenant.workspaceId} AND id = ${enquiryId} AND request_type = 'admission_enquiry' FOR UPDATE`
+      )) as unknown as [Array<{ id: string; status: string; payload: unknown }>];
 
-    const guardianNames = String(enquiry.guardianName ?? "").trim().split(/\s+/);
-    const guardianFirstName = guardianNames[0] || "Guardian";
-    const guardianLastName = guardianNames.slice(1).join(" ") || "Contact";
+      const enquiryRow = rows[0];
+      if (!enquiryRow) {
+        throw new ApiError(404, "NOT_FOUND", "Admission enquiry not found.");
+      }
 
-    const applicationData: JsonRecord = {
-      enquiryId: enquiry.id,
-      enquiryReference: enquiry.referenceNumber,
-      desiredGradeId: enquiry.desiredGradeId,
-      campus: enquiry.preferredCampus || "Main Campus",
-      admissionCategory: "regular",
-      status: "draft",
-      student: {
-        firstName,
-        lastName,
-        dateOfBirth: enquiry.dateOfBirth || "2015-01-01",
-        gender: enquiry.gender || "male",
-        email: enquiry.email,
-        phone: enquiry.phone,
-        address: enquiry.address,
-        previousSchool: enquiry.previousSchool,
-      },
-      guardians: [
-        {
-          id: uuid(),
-          firstName: guardianFirstName,
-          lastName: guardianLastName,
-          relationship: "guardian",
-          email: enquiry.email || "guardian@example.com",
+      const enquiry = dto<JsonRecord & { id: string; status: string; referenceNumber: string; studentName?: string; guardianName?: string; desiredGradeId?: string; preferredCampus?: string; convertedApplicationId?: string }>(tenant, enquiryRow);
+
+      if (enquiry.status === "converted" && enquiry.convertedApplicationId) {
+        return txAdmissionsService.getApplication(tenant, String(enquiry.convertedApplicationId));
+      }
+
+      const names = String(enquiry.studentName ?? "").trim().split(/\s+/);
+      const firstName = names[0] || "Student";
+      const lastName = names.slice(1).join(" ") || "Applicant";
+
+      const guardianNames = String(enquiry.guardianName ?? "").trim().split(/\s+/);
+      const guardianFirstName = guardianNames[0] || "Guardian";
+      const guardianLastName = guardianNames.slice(1).join(" ") || "Contact";
+
+      const applicationData: JsonRecord = {
+        enquiryId: enquiry.id,
+        enquiryReference: enquiry.referenceNumber,
+        desiredGradeId: enquiry.desiredGradeId,
+        campus: enquiry.preferredCampus || "Main Campus",
+        admissionCategory: "regular",
+        status: "draft",
+        student: {
+          firstName,
+          lastName,
+          dateOfBirth: enquiry.dateOfBirth || "2015-01-01",
+          gender: enquiry.gender || "male",
+          email: enquiry.email,
           phone: enquiry.phone,
-          isPrimaryContact: true,
-          isEmergencyContact: true,
+          address: enquiry.address,
+          previousSchool: enquiry.previousSchool,
         },
-      ],
-      documents: [],
-    };
+        guardians: [
+          {
+            id: uuid(),
+            firstName: guardianFirstName,
+            lastName: guardianLastName,
+            relationship: "guardian",
+            email: enquiry.email || "guardian@example.com",
+            phone: enquiry.phone,
+            isPrimaryContact: true,
+            isEmergencyContact: true,
+          },
+        ],
+        documents: [],
+      };
 
-    const newApplication = await this.createApplication(tenant, applicationData, actor);
+      const newApplication = await txAdmissionsService.createApplication(tenant, applicationData, actor);
 
-    // Update enquiry to converted status
-    await this.updateEnquiry(tenant, enquiryId, {
-      status: "converted",
-      convertedApplicationId: newApplication.id,
-      convertedAt: now(),
-    }, actor);
+      const updatedEnquiryPayload: JsonRecord = {
+        ...enquiry,
+        status: "converted",
+        convertedApplicationId: newApplication.id,
+        convertedAt: now(),
+        updatedAt: now(),
+      };
 
-    return newApplication;
+      const [updateResult] = (await tx.execute(sql`
+        UPDATE portal_update_requests
+        SET status = 'converted',
+            payload = ${JSON.stringify(updatedEnquiryPayload)},
+            updated_at = NOW()
+        WHERE workspace_id = ${tenant.workspaceId}
+          AND id = ${enquiryId}
+          AND status != 'converted'
+      `)) as unknown as [ { affectedRows?: number } ];
+
+      if (!updateResult || updateResult.affectedRows !== 1) {
+        const currentEnquiry = await txAdmissionsService.getEnquiry(tenant, enquiryId);
+        if (currentEnquiry.convertedApplicationId) {
+          return txAdmissionsService.getApplication(tenant, String(currentEnquiry.convertedApplicationId));
+        }
+      }
+
+      return newApplication;
+    });
   }
 
   /* ─────────────────────────────────────────────────────────────
    * 3. APPLICATION MANAGEMENT (CRUD, DRAFT, SUBMIT, WITHDRAW)
    * ───────────────────────────────────────────────────────────── */
-  async listApplications(tenant: Tenant, filters?: { status?: string; search?: string; gradeId?: string; academicYear?: string; campus?: string }) {
-    const rows = await this.database.db
+  async listApplications(
+    tenant: Tenant,
+    filters?: { status?: string; search?: string; gradeId?: string; academicYear?: string; campus?: string },
+    pagination?: PaginationParams
+  ) {
+    const conditions = [
+      eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
+      eq(portalUpdateRequests.requestType, "admission_application"),
+    ];
+    if (filters?.status) {
+      conditions.push(eq(portalUpdateRequests.status, filters.status));
+    }
+
+    let query = this.database.db
       .select()
       .from(portalUpdateRequests)
-      .where(
-        and(
-          eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
-          eq(portalUpdateRequests.requestType, "admission_application")
-        )
-      )
-      .orderBy(desc(portalUpdateRequests.createdAt));
+      .where(and(...conditions))
+      .orderBy(desc(portalUpdateRequests.createdAt), asc(portalUpdateRequests.id));
 
+    if (pagination && !filters?.gradeId && !filters?.academicYear && !filters?.campus && !filters?.search) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+
+    const rows = await query;
     let list = rows.map((r) => dto<JsonRecord & { id: string; status: string; applicationNumber: string; desiredGradeId?: string; academicYear?: string; campus?: string; student?: JsonRecord }>(tenant, r));
 
-    if (filters?.status) {
-      list = list.filter((a) => a.status === filters.status);
-    }
     if (filters?.gradeId) {
       list = list.filter((a) => a.desiredGradeId === filters.gradeId);
     }
@@ -414,7 +559,35 @@ export class SisAdmissionsService {
       });
     }
 
+    if (pagination && (filters?.gradeId || filters?.academicYear || filters?.campus || filters?.search)) {
+      list = list.slice(pagination.offset, pagination.offset + pagination.limit);
+    }
+
     return list;
+  }
+
+  async countApplications(
+    tenant: Tenant,
+    filters?: { status?: string; search?: string; gradeId?: string; academicYear?: string; campus?: string }
+  ): Promise<number> {
+    if (filters?.gradeId || filters?.academicYear || filters?.campus || filters?.search) {
+      const all = await this.listApplications(tenant, filters);
+      return all.length;
+    }
+
+    const conditions = [
+      eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
+      eq(portalUpdateRequests.requestType, "admission_application"),
+    ];
+    if (filters?.status) {
+      conditions.push(eq(portalUpdateRequests.status, filters.status));
+    }
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(portalUpdateRequests)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
 
   async getApplication(tenant: Tenant, id: string) {
@@ -445,66 +618,108 @@ export class SisAdmissionsService {
     const desiredGradeId = assertText(data.desiredGradeId, "Desired grade");
     const campus = str(data.campus) || "Main Campus";
 
-    const count = (
-      await this.database.db
-        .select()
-        .from(portalUpdateRequests)
-        .where(
-          and(
-            eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
-            eq(portalUpdateRequests.requestType, "admission_application")
-          )
-        )
-    ).length;
+    const maxRetries = 12;
+    let attempt = 0;
 
+    while (attempt < maxRetries) {
+      attempt++;
+      try {
+        return await withTransaction(this.database, async ({ tx }) => {
+          const currentYear = new Date().getFullYear();
+          const applicationNumber = await this.nextApplicationNumber(tenant.workspaceId, tx);
+
+          const id = uuid();
+          const status = str(data.status) || "draft";
+
+          const appRecord: JsonRecord = {
+            ...data,
+            id,
+            organizationId: tenant.organizationId,
+            applicationNumber,
+            desiredGradeId,
+            campus,
+            status,
+            academicYear: str(data.academicYear) || `${currentYear}-${currentYear + 1}`,
+            student: {
+              ...student,
+              gender: str(student.gender) || "male",
+            },
+            guardians: Array.isArray(data.guardians) ? data.guardians : [],
+            documents: Array.isArray(data.documents) ? data.documents : [],
+            auditTrail: [
+              {
+                action: "created",
+                actorUserId: actor?.userId,
+                actorRole: actor?.role,
+                timestamp: now(),
+                details: `Application created with status ${status}`,
+              },
+            ],
+            createdAt: now(),
+            updatedAt: now(),
+          };
+
+          await tx
+            .insert(portalUpdateRequests)
+            .values({
+              id,
+              workspaceId: tenant.workspaceId,
+              requesterUserId: str(actor?.userId) || "system",
+              requesterRole: str(actor?.role) || "applicant",
+              requestType: "admission_application",
+              status,
+              applicationNumber,
+              payload: appRecord,
+            })
+            .catch(dbError);
+
+          return appRecord;
+        });
+      } catch (error) {
+        const isUnique = isUniqueConstraintError(error);
+        if (isUnique && attempt < maxRetries) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.floor(Math.random() * 60) + attempt * 20)
+          );
+          continue;
+        }
+        if (isUnique && attempt >= maxRetries) {
+          throw new ApiError(
+            409,
+            "DATABASE_UNIQUE_CONSTRAINT",
+            "Unable to allocate a unique application number after maximum retries due to concurrent creation."
+          );
+        }
+        throw error;
+      }
+    }
+    throw new ApiError(500, "INTERNAL_SERVER_ERROR", "Failed to create application after retries.");
+  }
+
+  private async nextApplicationNumber(workspaceId: string, tx?: DatabaseClient["db"]): Promise<string> {
     const currentYear = new Date().getFullYear();
-    const applicationNumber = `APP-${currentYear}-${String(count + 1).padStart(5, "0")}`;
+    const client = tx ?? this.database.db;
+    const [rows] = (await client.execute(
+      sql`SELECT application_number as applicationNumber, payload FROM portal_update_requests WHERE workspace_id = ${workspaceId} AND request_type = 'admission_application' FOR UPDATE`
+    )) as unknown as [Array<{ applicationNumber?: string; payload: unknown }>];
 
-    const id = uuid();
-    const status = str(data.status) || "draft";
-
-    const appRecord: JsonRecord = {
-      ...data,
-      id,
-      organizationId: tenant.organizationId,
-      applicationNumber,
-      desiredGradeId,
-      campus,
-      status,
-      academicYear: str(data.academicYear) || `${currentYear}-${currentYear + 1}`,
-      student: {
-        ...student,
-        gender: str(student.gender) || "male",
-      },
-      guardians: Array.isArray(data.guardians) ? data.guardians : [],
-      documents: Array.isArray(data.documents) ? data.documents : [],
-      auditTrail: [
-        {
-          action: "created",
-          actorUserId: actor?.userId,
-          actorRole: actor?.role,
-          timestamp: now(),
-          details: `Application created with status ${status}`,
-        },
-      ],
-      createdAt: now(),
-      updatedAt: now(),
-    };
-
-    await this.database.db
-      .insert(portalUpdateRequests)
-      .values({
-        id,
-        workspaceId: tenant.workspaceId,
-        requesterUserId: str(actor?.userId) || "system",
-        requesterRole: str(actor?.role) || "applicant",
-        requestType: "admission_application",
-        status,
-        payload: appRecord,
-      })
-      .catch(dbError);
-
-    return appRecord;
+    const pattern = new RegExp(`^APP-${currentYear}-(\\d+)$`);
+    let max = 0;
+    for (const row of rows) {
+      let appNum = row.applicationNumber;
+      if (!appNum && row.payload) {
+        const p = payloadOf(row.payload);
+        appNum = str(p.applicationNumber);
+      }
+      if (appNum) {
+        const match = pattern.exec(appNum);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num > max) max = num;
+        }
+      }
+    }
+    return `APP-${currentYear}-${String(max + 1).padStart(5, "0")}`;
   }
 
   async updateApplication(tenant: Tenant, id: string, data: JsonRecord, actor?: Actor) {
@@ -935,164 +1150,233 @@ export class SisAdmissionsService {
     },
     actor?: Actor
   ) {
-    const app = await this.getApplication(tenant, applicationId);
-
-    // Idempotency: If already converted, return existing records
-    if (app.status === "enrolled" && app.enrolledStudentId && app.enrolledEnrollmentId) {
-      const sisService = new SisService(this.database);
-      const student = await sisService.getStudent(tenant, String(app.enrolledStudentId));
-      const enrollmentRows = await sisService.listEnrollments(tenant, { studentId: String(app.enrolledStudentId) });
-      const enrollment = enrollmentRows.find((e) => e.id === app.enrolledEnrollmentId) || enrollmentRows[0];
-      return {
-        success: true,
-        isExisting: true,
-        applicationId,
-        student,
-        enrollment,
-        message: "Application is already enrolled. Idempotent result returned.",
+    return withTransaction(this.database, async ({ tx }) => {
+      const txDatabase: DatabaseClient = {
+        ...this.database,
+        db: tx,
+        transaction: (work) => work(tx),
       };
-    }
+      const txSisService = new SisService(txDatabase);
+      const txFinanceService = new SisFinanceService(txDatabase);
 
-    if (app.status !== "approved") {
-      throw new ApiError(
-        400,
-        "VALIDATION_FAILED",
-        `Only approved applications can be converted into active enrollments. Current status: ${app.status}`
-      );
-    }
+      // 1. Lock application row with FOR UPDATE to serialize concurrent conversions
+      const [appRows] = (await tx.execute(
+        sql`SELECT id, workspace_id as workspaceId, request_type as requestType, status, student_id as studentId, payload FROM portal_update_requests WHERE workspace_id = ${tenant.workspaceId} AND id = ${applicationId} AND request_type = 'admission_application' FOR UPDATE`
+      )) as unknown as [Array<{ id: string; status: string; studentId?: string; payload: unknown }>];
 
-    const studentData = app.student as JsonRecord;
-    const guardiansData = (Array.isArray(app.guardians) ? app.guardians : []) as JsonRecord[];
-
-    const sisService = new SisService(this.database);
-    const financeService = new SisFinanceService(this.database);
-
-    let studentId: string;
-
-    if (options.reuseExistingStudentId) {
-      // Reuse existing student record
-      const existing = await sisService.getStudent(tenant, options.reuseExistingStudentId);
-      if (!existing) {
-        throw new ApiError(404, "NOT_FOUND", "Specified existing student to reuse was not found.");
+      const freshAppRow = appRows[0];
+      if (!freshAppRow) {
+        throw new ApiError(404, "NOT_FOUND", "Admission application not found.");
       }
-      studentId = existing.id;
-      // Update status to active if was applicant/inactive
-      await this.database.db.update(students).set({ status: "active", updatedAt: new Date() }).where(and(eq(students.id, studentId), eq(students.workspaceId, tenant.workspaceId)));
-    } else {
-      // Check for duplicate students by name and date of birth
-      const allStudents = await sisService.listStudents(tenant);
-      const dup = allStudents.find(
-        (s) =>
-          s.firstName.toLowerCase() === String(studentData.firstName).toLowerCase() &&
-          s.lastName.toLowerCase() === String(studentData.lastName).toLowerCase() &&
-          s.dateOfBirth === studentData.dateOfBirth &&
-          s.status !== "archived"
+
+      const freshApp = dto<JsonRecord & { status: string; enrolledStudentId?: string; enrolledEnrollmentId?: string; student?: JsonRecord; guardians?: JsonRecord[]; feePackage?: { feeStructureIds?: string[] }; auditTrail?: JsonRecord[] }>(
+        tenant,
+        freshAppRow
       );
-      if (dup) {
+
+      // 2. Database-backed Idempotency: If already enrolled (committed by another process), return existing records
+      const existingStudentId = freshApp.enrolledStudentId || freshApp.studentId;
+      if (freshApp.status === "enrolled" && existingStudentId) {
+        const student = await txSisService.getStudent(tenant, String(existingStudentId));
+        const enrollmentRows = await txSisService.listEnrollments(tenant, { studentId: String(existingStudentId) });
+        const enrollment = enrollmentRows.find((e) => e.id === freshApp.enrolledEnrollmentId) || enrollmentRows[0];
+        return {
+          success: true,
+          isExisting: true,
+          applicationId,
+          student,
+          enrollment,
+          message: "Application is already enrolled. Idempotent result returned.",
+        };
+      }
+
+      if (freshApp.status !== "approved") {
         throw new ApiError(
-          409,
-          "DATABASE_UNIQUE_CONSTRAINT",
-          `Duplicate student detected: '${dup.firstName} ${dup.lastName}' (DOB: ${dup.dateOfBirth}) already exists with admission number ${dup.admissionNumber}.`
+          400,
+          "VALIDATION_FAILED",
+          `Only approved applications can be converted into active enrollments. Current status: ${freshApp.status}`
         );
       }
 
-      // Create student record
-      const createdStudent = await sisService.createStudent(tenant, {
-        firstName: studentData.firstName,
-        middleName: studentData.middleName,
-        lastName: studentData.lastName,
-        dateOfBirth: studentData.dateOfBirth,
-        gender: studentData.gender || "male",
-        email: studentData.email || undefined,
-        phone: studentData.phone || undefined,
-        address: studentData.address || undefined,
-        photoUrl: studentData.photoUrl || undefined,
-        admissionDate: options.admissionDate || now().slice(0, 10),
+      const studentData = (freshApp.student || {}) as JsonRecord;
+      const guardiansData = (Array.isArray(freshApp.guardians) ? freshApp.guardians : []) as JsonRecord[];
+
+      let studentId: string;
+
+      if (options.reuseExistingStudentId) {
+        // Reuse existing student record
+        const existing = await txSisService.getStudent(tenant, options.reuseExistingStudentId);
+        if (!existing) {
+          throw new ApiError(404, "NOT_FOUND", "Specified existing student to reuse was not found.");
+        }
+        studentId = existing.id;
+        // Update status to active if was applicant/inactive
+        await tx
+          .update(students)
+          .set({ status: "active", updatedAt: new Date() })
+          .where(and(eq(students.id, studentId), eq(students.workspaceId, tenant.workspaceId)));
+      } else {
+        // Check for duplicate students by name and date of birth
+        const allStudents = await txSisService.listStudents(tenant);
+        const dup = allStudents.find(
+          (s) =>
+            s.firstName.toLowerCase() === String(studentData.firstName).toLowerCase() &&
+            s.lastName.toLowerCase() === String(studentData.lastName).toLowerCase() &&
+            s.dateOfBirth === studentData.dateOfBirth &&
+            s.status !== "archived"
+        );
+        if (dup) {
+          throw new ApiError(
+            409,
+            "DATABASE_UNIQUE_CONSTRAINT",
+            `Duplicate student detected: '${dup.firstName} ${dup.lastName}' (DOB: ${dup.dateOfBirth}) already exists with admission number ${dup.admissionNumber}.`
+          );
+        }
+
+        if (!studentData.dateOfBirth || typeof studentData.dateOfBirth !== "string" || !studentData.dateOfBirth.trim()) {
+          throw new ApiError(400, "VALIDATION_FAILED", "Application student date of birth is required for enrollment conversion.");
+        }
+        const studentDob = (studentData.dateOfBirth as string).trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(studentDob.slice(0, 10)) || isNaN(new Date(studentDob).getTime())) {
+          throw new ApiError(400, "VALIDATION_FAILED", "Application student date of birth must be a valid date in YYYY-MM-DD format.");
+        }
+
+        const validGuardians = guardiansData.map((g, idx) => {
+          if (!g.firstName || typeof g.firstName !== "string" || !g.firstName.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", `Guardian ${idx + 1} first name is required for admission conversion.`);
+          }
+          if (!g.lastName || typeof g.lastName !== "string" || !g.lastName.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", `Guardian ${idx + 1} last name is required for admission conversion.`);
+          }
+          if (!g.phone || typeof g.phone !== "string" || !g.phone.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", `Guardian ${idx + 1} phone is required for admission conversion.`);
+          }
+          if (!g.email || typeof g.email !== "string" || !g.email.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", `Guardian ${idx + 1} email is required for admission conversion.`);
+          }
+          const email = g.email.trim().toLowerCase();
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            throw new ApiError(400, "VALIDATION_FAILED", `Guardian ${idx + 1} email must be a valid email address.`);
+          }
+          const allowedRel = ["father", "mother", "guardian", "other"];
+          const rawRel = typeof g.relationship === "string" ? g.relationship.trim().toLowerCase() : "";
+          let relationship: "father" | "mother" | "guardian" | "other";
+          if (!rawRel) {
+            relationship = "guardian";
+          } else if (allowedRel.includes(rawRel)) {
+            relationship = rawRel as "father" | "mother" | "guardian" | "other";
+          } else {
+            throw new ApiError(400, "VALIDATION_FAILED", `Invalid guardian relationship: "${g.relationship}".`);
+          }
+
+          return {
+            firstName: g.firstName.trim(),
+            lastName: g.lastName.trim(),
+            relationship,
+            email,
+            phone: g.phone.trim(),
+            address: g.address,
+            occupation: g.occupation,
+            isPrimaryContact: Boolean(g.isPrimaryContact),
+            isEmergencyContact: Boolean(g.isEmergencyContact),
+            portalAccessEnabled: true,
+            authorizedForPortal: true,
+          };
+        });
+
+        // Create student record inside transaction
+        const createdStudent = await txSisService.createStudent(tenant, {
+          firstName: studentData.firstName,
+          middleName: studentData.middleName,
+          lastName: studentData.lastName,
+          dateOfBirth: studentDob,
+          gender: studentData.gender || "male",
+          email: studentData.email || undefined,
+          phone: studentData.phone || undefined,
+          address: studentData.address || undefined,
+          photoUrl: studentData.photoUrl || undefined,
+          admissionDate: options.admissionDate || now().slice(0, 10),
+          status: "active",
+          guardians: validGuardians,
+        });
+        if (!createdStudent) {
+          throw new ApiError(500, "INTERNAL_SERVER_ERROR", "Failed to create student during admission conversion.");
+        }
+        studentId = createdStudent.id;
+      }
+
+      // Create enrollment record inside transaction
+      const createdEnrollment = await txSisService.createEnrollment(tenant, {
+        studentId,
+        academicYear: options.academicYear,
+        gradeId: options.gradeId,
+        sectionId: options.sectionId,
+        enrollmentDate: options.admissionDate || now().slice(0, 10),
         status: "active",
-        guardians: guardiansData.map((g) => ({
-          firstName: g.firstName,
-          lastName: g.lastName,
-          relationship: g.relationship || "guardian",
-          email: g.email,
-          phone: g.phone,
-          address: g.address,
-          occupation: g.occupation,
-          isPrimaryContact: Boolean(g.isPrimaryContact),
-          isEmergencyContact: Boolean(g.isEmergencyContact),
-          portalAccessEnabled: true,
-          authorizedForPortal: true,
-        })),
       });
-      studentId = createdStudent.id;
-    }
 
-    // Create enrollment record
-    const createdEnrollment = await sisService.createEnrollment(tenant, {
-      studentId,
-      academicYear: options.academicYear,
-      gradeId: options.gradeId,
-      sectionId: options.sectionId,
-      enrollmentDate: options.admissionDate || now().slice(0, 10),
-      status: "active",
-    });
-
-    // Integrate Fee Package Assignments if configured
-    const feePackage = app.feePackage as { feeStructureIds?: string[] } | undefined;
-    if (feePackage?.feeStructureIds && Array.isArray(feePackage.feeStructureIds)) {
-      for (const structureId of feePackage.feeStructureIds) {
-        try {
-          await financeService.assignFee(tenant, studentId, createdEnrollment.id, structureId, actor);
-        } catch {
-          // Continue gracefully if structure assignment succeeds or already assigned
+      // Integrate Fee Package Assignments if configured
+      const feePackage = freshApp.feePackage;
+      if (feePackage?.feeStructureIds && Array.isArray(feePackage.feeStructureIds)) {
+        for (const structureId of feePackage.feeStructureIds) {
+          try {
+            await txFinanceService.assignFee(tenant, studentId, createdEnrollment.id, structureId, actor);
+          } catch {
+            // Continue gracefully if structure assignment succeeds or already assigned
+          }
         }
       }
-    }
 
-    // Update application state to enrolled
-    const auditTrail = Array.isArray(app.auditTrail) ? [...app.auditTrail] : [];
-    auditTrail.push({
-      action: "converted_to_enrollment",
-      actorUserId: actor?.userId,
-      actorRole: actor?.role,
-      timestamp: now(),
-      details: `Converted to active student ${studentId} and enrollment ${createdEnrollment.id}`,
-    });
+      // Update application state to enrolled inside transaction with affectedRows verification
+      const auditTrail = Array.isArray(freshApp.auditTrail) ? [...freshApp.auditTrail] : [];
+      auditTrail.push({
+        action: "converted_to_enrollment",
+        actorUserId: actor?.userId,
+        actorRole: actor?.role,
+        timestamp: now(),
+        details: `Converted to active student ${studentId} and enrollment ${createdEnrollment.id}`,
+      });
 
-    const updatedRecord: JsonRecord = {
-      ...app,
-      status: "enrolled",
-      enrolledStudentId: studentId,
-      enrolledEnrollmentId: createdEnrollment.id,
-      enrolledAt: now(),
-      auditTrail,
-      updatedAt: now(),
-    };
-
-    await this.database.db
-      .update(portalUpdateRequests)
-      .set({
+      const updatedRecord: JsonRecord = {
+        ...freshApp,
         status: "enrolled",
-        studentId,
-        payload: updatedRecord,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(portalUpdateRequests.workspaceId, tenant.workspaceId),
-          eq(portalUpdateRequests.id, applicationId)
-        )
-      );
+        enrolledStudentId: studentId,
+        enrolledEnrollmentId: createdEnrollment.id,
+        enrolledAt: now(),
+        auditTrail,
+        updatedAt: now(),
+      };
 
-    const finalStudent = await sisService.getStudent(tenant, studentId);
+      const [updateResult] = (await tx.execute(sql`
+        UPDATE portal_update_requests
+        SET status = 'enrolled',
+            student_id = ${studentId},
+            payload = ${JSON.stringify(updatedRecord)},
+            updated_at = NOW()
+        WHERE workspace_id = ${tenant.workspaceId}
+          AND id = ${applicationId}
+          AND status = 'approved'
+      `)) as unknown as [ { affectedRows?: number } ];
 
-    return {
-      success: true,
-      isExisting: false,
-      applicationId,
-      student: finalStudent,
-      enrollment: createdEnrollment,
-      message: "Student successfully enrolled.",
-    };
+      if (!updateResult || updateResult.affectedRows !== 1) {
+        throw new ApiError(
+          409,
+          "DATABASE_TRANSACTION_FAILED",
+          "Application status was concurrently modified during enrollment conversion. Transaction rolled back."
+        );
+      }
+
+      const finalStudent = await txSisService.getStudent(tenant, studentId);
+
+      return {
+        success: true,
+        isExisting: false,
+        applicationId,
+        student: finalStudent,
+        enrollment: createdEnrollment,
+        message: "Student successfully enrolled.",
+      };
+    });
   }
 
   /* ─────────────────────────────────────────────────────────────

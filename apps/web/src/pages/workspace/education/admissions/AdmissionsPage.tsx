@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AdmissionStatusBadge,
   EnquiryStatusBadge,
@@ -109,6 +109,26 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
   const [showAssessmentModal, setShowAssessmentModal] = useState(false);
   const [showDecisionModal, setShowDecisionModal] = useState(false);
   const [showConversionModal, setShowConversionModal] = useState(false);
+
+  // Synchronous in-flight guards & submission states (UX-002)
+  const isSubmittingEnquiryRef = useRef(false);
+  const [isSubmittingEnquiry, setIsSubmittingEnquiry] = useState(false);
+
+  const isSubmittingAppRef = useRef(false);
+  const [isSubmittingApp, setIsSubmittingApp] = useState(false);
+
+  const isSubmittingAssessmentRef = useRef(false);
+  const [isSubmittingAssessment, setIsSubmittingAssessment] = useState(false);
+
+  const isSubmittingDecisionRef = useRef(false);
+  const [isSubmittingDecision, setIsSubmittingDecision] = useState(false);
+
+  const isSubmittingConversionRef = useRef(false);
+  const [isSubmittingConversion, setIsSubmittingConversion] = useState(false);
+
+  const isConvertingEnquiryRef = useRef(false);
+  const isSubmittingApplicationActionRef = useRef(false);
+  const isAssigningFeesRef = useRef(false);
 
   // Form States - Enquiry
   const [enqStudentName, setEnqStudentName] = useState("");
@@ -230,10 +250,13 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
     refreshData();
   }, [orgId, activeTab, selectedYear, selectedCampus, selectedGradeId]);
 
-  // Handlers
+  // Handlers with Synchronous In-Flight Guards (UX-002)
   const handleCreateEnquiry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!orgId) return;
+    if (isSubmittingEnquiryRef.current) return;
+    isSubmittingEnquiryRef.current = true;
+    setIsSubmittingEnquiry(true);
     setLoading(true);
     setError(null);
     try {
@@ -258,12 +281,16 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
     } catch (err: any) {
       setError(err?.message || "Failed to create enquiry.");
     } finally {
+      isSubmittingEnquiryRef.current = false;
+      setIsSubmittingEnquiry(false);
       setLoading(false);
     }
   };
 
   const handleConvertEnquiry = async (enquiryId: string) => {
     if (!orgId) return;
+    if (isConvertingEnquiryRef.current) return;
+    isConvertingEnquiryRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -274,6 +301,7 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
     } catch (err: any) {
       setError(err?.message || "Failed to convert enquiry.");
     } finally {
+      isConvertingEnquiryRef.current = false;
       setLoading(false);
     }
   };
@@ -281,6 +309,9 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
   const handleCreateApplication = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!orgId) return;
+    if (isSubmittingAppRef.current) return;
+    isSubmittingAppRef.current = true;
+    setIsSubmittingApp(true);
     setLoading(true);
     setError(null);
     try {
@@ -319,12 +350,16 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
     } catch (err: any) {
       setError(err?.message || "Failed to create application.");
     } finally {
+      isSubmittingAppRef.current = false;
+      setIsSubmittingApp(false);
       setLoading(false);
     }
   };
 
   const handleSubmitApplication = async (appId: string) => {
     if (!orgId) return;
+    if (isSubmittingApplicationActionRef.current) return;
+    isSubmittingApplicationActionRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -334,6 +369,7 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
     } catch (err: any) {
       setError(err?.message || "Failed to submit application.");
     } finally {
+      isSubmittingApplicationActionRef.current = false;
       setLoading(false);
     }
   };
@@ -341,6 +377,9 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
   const handleRecordAssessment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!orgId || !selectedAppId) return;
+    if (isSubmittingAssessmentRef.current) return;
+    isSubmittingAssessmentRef.current = true;
+    setIsSubmittingAssessment(true);
     setLoading(true);
     setError(null);
     try {
@@ -360,6 +399,8 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
     } catch (err: any) {
       setError(err?.message || "Failed to record assessment.");
     } finally {
+      isSubmittingAssessmentRef.current = false;
+      setIsSubmittingAssessment(false);
       setLoading(false);
     }
   };
@@ -367,6 +408,9 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
   const handleRecordDecision = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!orgId || !selectedAppId) return;
+    if (isSubmittingDecisionRef.current) return;
+    isSubmittingDecisionRef.current = true;
+    setIsSubmittingDecision(true);
     setLoading(true);
     setError(null);
     try {
@@ -383,6 +427,8 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
     } catch (err: any) {
       setError(err?.message || "Failed to record decision.");
     } finally {
+      isSubmittingDecisionRef.current = false;
+      setIsSubmittingDecision(false);
       setLoading(false);
     }
   };
@@ -400,6 +446,8 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
 
   const handleAssignFees = async (feeStructureIds: string[]) => {
     if (!orgId || !selectedAppId) return;
+    if (isAssigningFeesRef.current) return;
+    isAssigningFeesRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -412,6 +460,7 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
     } catch (err: any) {
       setError(err?.message || "Failed to assign fees.");
     } finally {
+      isAssigningFeesRef.current = false;
       setLoading(false);
     }
   };
@@ -422,6 +471,9 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
     const targetApp = applications.find((a) => a.id === selectedAppId);
     if (!targetApp) return;
 
+    if (isSubmittingConversionRef.current) return;
+    isSubmittingConversionRef.current = true;
+    setIsSubmittingConversion(true);
     setLoading(true);
     setError(null);
     try {
@@ -437,6 +489,8 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
     } catch (err: any) {
       setError(err?.message || "Enrollment conversion failed.");
     } finally {
+      isSubmittingConversionRef.current = false;
+      setIsSubmittingConversion(false);
       setLoading(false);
     }
   };
@@ -1497,13 +1551,25 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
                     type="button"
                     variant="outline"
                     size="sm"
+                    disabled={isSubmittingEnquiry}
                     onClick={() => setShowEnquiryModal(false)}
                     className="border-white/10 text-slate-400"
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" size="sm" className="bg-cyan-600 hover:bg-cyan-500 text-white">
-                    Save Enquiry
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isSubmittingEnquiry}
+                    className="bg-cyan-600 hover:bg-cyan-500 text-white"
+                  >
+                    {isSubmittingEnquiry ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Saving...
+                      </>
+                    ) : (
+                      "Save Enquiry"
+                    )}
                   </Button>
                 </div>
               </form>
@@ -1618,13 +1684,25 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
                     type="button"
                     variant="outline"
                     size="sm"
+                    disabled={isSubmittingApp}
                     onClick={() => setShowApplicationModal(false)}
                     className="border-white/10 text-slate-400"
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-white">
-                    Submit Application
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isSubmittingApp}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white"
+                  >
+                    {isSubmittingApp ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Submitting...
+                      </>
+                    ) : (
+                      "Submit Application"
+                    )}
                   </Button>
                 </div>
               </form>
@@ -1684,13 +1762,25 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
                     type="button"
                     variant="outline"
                     size="sm"
+                    disabled={isSubmittingAssessment}
                     onClick={() => setShowAssessmentModal(false)}
                     className="border-white/10 text-slate-400"
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-white">
-                    Save Assessment
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isSubmittingAssessment}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white"
+                  >
+                    {isSubmittingAssessment ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Saving...
+                      </>
+                    ) : (
+                      "Save Assessment"
+                    )}
                   </Button>
                 </div>
               </form>
@@ -1744,13 +1834,25 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
                     type="button"
                     variant="outline"
                     size="sm"
+                    disabled={isSubmittingDecision}
                     onClick={() => setShowDecisionModal(false)}
                     className="border-white/10 text-slate-400"
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-white">
-                    Submit Decision
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isSubmittingDecision}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white"
+                  >
+                    {isSubmittingDecision ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Submitting...
+                      </>
+                    ) : (
+                      "Submit Decision"
+                    )}
                   </Button>
                 </div>
               </form>
@@ -1794,13 +1896,25 @@ export const AdmissionsPage: React.FC<AdmissionsPageProps> = ({ initialTab = "ov
                     type="button"
                     variant="outline"
                     size="sm"
+                    disabled={isSubmittingConversion}
                     onClick={() => setShowConversionModal(false)}
                     className="border-white/10 text-slate-400"
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white">
-                    Finalize Enrollment
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isSubmittingConversion}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                  >
+                    {isSubmittingConversion ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Enrolling...
+                      </>
+                    ) : (
+                      "Finalize Enrollment"
+                    )}
                   </Button>
                 </div>
               </form>

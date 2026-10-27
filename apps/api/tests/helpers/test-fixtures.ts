@@ -98,6 +98,7 @@ export async function createAcademicClassFixture(
   const staff = await sis.createStaff(tenant, {
     firstName: "Teacher",
     lastName: `Staff-${suffix}`,
+    hireDate: "2026-08-01",
     email: `teacher-${suffix}@example.test`,
     staffType: "teacher",
     employmentStatus: "full_time",

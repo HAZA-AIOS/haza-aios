@@ -6,12 +6,19 @@ type AttendanceSessionFilters = {
   date?: string;
   gradeId?: string;
   sectionId?: string;
+  page?: number;
+  pageSize?: number;
+  all?: boolean;
 };
 
-function query(filters: Record<string, string | number | undefined>): string {
+function query(filters: Record<string, string | number | boolean | undefined>, defaultAll = false): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const hasPage = params.has("page") || params.has("pageSize") || params.has("limit") || params.has("offset");
+  if (!hasPage && defaultAll && !params.has("all")) {
+    params.set("all", "true");
   }
   const text = params.toString();
   return text ? `?${text}` : "";

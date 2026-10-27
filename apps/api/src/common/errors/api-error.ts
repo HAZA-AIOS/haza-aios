@@ -10,6 +10,7 @@ export type ApiErrorCode =
   | "INVALID_RESET_TOKEN"
   | "NOT_FOUND"
   | "PAYLOAD_TOO_LARGE"
+  | "TOO_MANY_REQUESTS"
   | "UNAUTHENTICATED"
   | "USER_NOT_ACTIVE"
   | "VALIDATION_FAILED"
@@ -19,6 +20,7 @@ export class ApiError extends Error {
   readonly statusCode: number;
   readonly code: ApiErrorCode;
   readonly details?: unknown;
+  readonly cause?: unknown;
 
   constructor(statusCode: number, code: ApiErrorCode, message: string, details?: unknown) {
     super(message);
@@ -26,5 +28,6 @@ export class ApiError extends Error {
     this.statusCode = statusCode;
     this.code = code;
     this.details = details;
+    this.cause = { statusCode, code, message };
   }
 }

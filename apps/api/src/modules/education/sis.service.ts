@@ -1,6 +1,7 @@
-import { and, asc, desc, eq, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, ne, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { ApiError } from "../../common/errors/api-error.js";
+import type { PaginationParams } from "../../common/pagination/pagination.js";
 import type { DatabaseClient } from "../../database/client.js";
 import { mapDatabaseError } from "../../database/errors.js";
 import { createRepositoryContext } from "../../database/repositories/repository-context.js";
@@ -10,6 +11,7 @@ import {
   academicYears,
   attendanceRecords,
   attendanceSessions,
+  auditLogs,
   classSubjects,
   enrollments,
   gradeLevels,
@@ -24,14 +26,17 @@ import {
   teachingAssignments,
   timePeriods,
   timetableEntries,
+  users,
 } from "../../database/schema.js";
 import { OrganizationModuleRepository } from "../platform/repositories/organization-module.repository.js";
 import { WorkspaceRepository } from "../platform/repositories/workspace.repository.js";
+import { SisFinanceService } from "./sis-finance.service.js";
 
 const educationModuleKey = "education-sis";
 type JsonRecord = Record<string, unknown>;
 
 type Tenant = { organizationId: string; workspaceId: string };
+type Actor = { userId?: string; role?: string } | undefined;
 
 function iso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : value;
@@ -43,6 +48,26 @@ function clean<T extends JsonRecord>(input: T): T {
 
 function uuid() {
   return randomUUID();
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (error instanceof ApiError && error.code === "DATABASE_UNIQUE_CONSTRAINT") return true;
+  const candidate = error as { code?: string; errno?: number; cause?: unknown };
+  if (
+    candidate.code === "DATABASE_UNIQUE_CONSTRAINT" ||
+    candidate.errno === 1062 ||
+    candidate.code === "ER_DUP_ENTRY" ||
+    candidate.errno === 1213 ||
+    candidate.code === "ER_LOCK_DEADLOCK" ||
+    candidate.errno === 1205 ||
+    candidate.code === "ER_LOCK_WAIT_TIMEOUT"
+  ) {
+    return true;
+  }
+  if (candidate.cause) {
+    return isUniqueConstraintError(candidate.cause);
+  }
+  return false;
 }
 
 function databaseError(error: unknown): never {
@@ -116,18 +141,23 @@ export class SisService {
   }
 
   async getGrade(tenant: Tenant, id: string) {
-    return (await this.listGrades(tenant)).find((row) => row.id === id) ?? null;
+    const [row] = await this.database.db
+      .select()
+      .from(gradeLevels)
+      .where(and(eq(gradeLevels.workspaceId, tenant.workspaceId), eq(gradeLevels.id, id)))
+      .limit(1);
+    return row ? { ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) } : null;
   }
 
   async createGrade(tenant: Tenant, data: JsonRecord) {
     const id = uuid();
     await this.database.db.insert(gradeLevels).values({ id, workspaceId: tenant.workspaceId, ...clean(data) } as typeof gradeLevels.$inferInsert).catch(databaseError);
-    return (await this.listGrades(tenant)).find((row) => row.id === id)!;
+    return (await this.getGrade(tenant, id))!;
   }
 
   async updateGrade(tenant: Tenant, id: string, data: JsonRecord) {
     await this.database.db.update(gradeLevels).set({ ...clean(data), updatedAt: new Date() }).where(and(eq(gradeLevels.id, id), eq(gradeLevels.workspaceId, tenant.workspaceId))).catch(databaseError);
-    return (await this.listGrades(tenant)).find((row) => row.id === id) ?? this.notFound("Grade");
+    return (await this.getGrade(tenant, id)) ?? this.notFound("Grade");
   }
 
   async listSections(tenant: Tenant, gradeId?: string) {
@@ -137,7 +167,12 @@ export class SisService {
   }
 
   async getSection(tenant: Tenant, id: string) {
-    return (await this.listSections(tenant)).find((row) => row.id === id) ?? null;
+    const [row] = await this.database.db
+      .select()
+      .from(sections)
+      .where(and(eq(sections.workspaceId, tenant.workspaceId), eq(sections.id, id)))
+      .limit(1);
+    return row ? { ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) } : null;
   }
 
   async createSection(tenant: Tenant, data: JsonRecord) {
@@ -197,20 +232,102 @@ export class SisService {
     return (await this.listDepartments(tenant)).find((row) => row.id === id)!;
   }
 
-  async listStaff(tenant: Tenant) {
-    const rows = await this.database.db.select().from(staffMembers).where(eq(staffMembers.workspaceId, tenant.workspaceId)).orderBy(asc(staffMembers.lastName), asc(staffMembers.firstName));
+  async listStaff(tenant: Tenant, pagination?: PaginationParams) {
+    let query = this.database.db
+      .select()
+      .from(staffMembers)
+      .where(eq(staffMembers.workspaceId, tenant.workspaceId))
+      .orderBy(asc(staffMembers.lastName), asc(staffMembers.firstName), asc(staffMembers.id));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+    const rows = await query;
     return rows.map((row) => ({ ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) }));
   }
 
+  async countStaff(tenant: Tenant): Promise<number> {
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(staffMembers)
+      .where(eq(staffMembers.workspaceId, tenant.workspaceId));
+    return Number(result?.count ?? 0);
+  }
+
   async getStaff(tenant: Tenant, id: string) {
-    return (await this.listStaff(tenant)).find((row) => row.id === id) ?? null;
+    const [row] = await this.database.db
+      .select()
+      .from(staffMembers)
+      .where(and(eq(staffMembers.workspaceId, tenant.workspaceId), eq(staffMembers.id, id)))
+      .limit(1);
+    return row ? { ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) } : null;
   }
 
   async createStaff(tenant: Tenant, data: JsonRecord) {
-    const id = uuid();
-    const employeeNumber = typeof data.employeeNumber === "string" && data.employeeNumber ? data.employeeNumber : await this.nextEmployeeNumber(tenant.workspaceId);
-    await this.database.db.insert(staffMembers).values({ id, workspaceId: tenant.workspaceId, ...clean(data), employeeNumber } as typeof staffMembers.$inferInsert).catch(databaseError);
-    return (await this.listStaff(tenant)).find((row) => row.id === id)!;
+    const maxRetries = 12;
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+      attempt++;
+      try {
+        return await withTransaction(this.database, async ({ tx }) => {
+          const service = new SisService({
+            ...this.database,
+            db: tx,
+            transaction: (work) => work(tx),
+          });
+          const id = uuid();
+          const employeeNumber =
+            typeof data.employeeNumber === "string" && data.employeeNumber.trim()
+              ? data.employeeNumber.trim()
+              : await this.nextEmployeeNumber(tenant.workspaceId, tx);
+
+          if (!data.firstName || typeof data.firstName !== "string" || !data.firstName.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Staff first name is required.");
+          }
+          if (!data.lastName || typeof data.lastName !== "string" || !data.lastName.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Staff last name is required.");
+          }
+          if (!data.hireDate || typeof data.hireDate !== "string" || !data.hireDate.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Staff hire date is required.");
+          }
+          const hireDate = data.hireDate.trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(hireDate.slice(0, 10)) || isNaN(new Date(hireDate).getTime())) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Staff hire date must be a valid date in YYYY-MM-DD format.");
+          }
+
+          await tx
+            .insert(staffMembers)
+            .values({
+              id,
+              workspaceId: tenant.workspaceId,
+              hireDate,
+              ...clean(data),
+              employeeNumber,
+            } as typeof staffMembers.$inferInsert)
+            .catch(databaseError);
+
+          return (await service.getStaff(tenant, id))!;
+        });
+      } catch (error) {
+        const isUniqueConstraint = isUniqueConstraintError(error);
+        const isAutoGenerated = !data.employeeNumber;
+
+        if (isUniqueConstraint && isAutoGenerated && attempt < maxRetries) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.floor(Math.random() * 60) + attempt * 20)
+          );
+          continue;
+        }
+        if (isUniqueConstraint && isAutoGenerated && attempt >= maxRetries) {
+          throw new ApiError(
+            409,
+            "DATABASE_UNIQUE_CONSTRAINT",
+            "Unable to allocate a unique employee number after maximum retries due to concurrent staff creation."
+          );
+        }
+        throw error;
+      }
+    }
   }
 
   async updateStaff(tenant: Tenant, id: string, data: JsonRecord) {
@@ -218,14 +335,72 @@ export class SisService {
     delete updates.id;
     delete updates.organizationId;
     await this.database.db.update(staffMembers).set({ ...clean(updates), updatedAt: new Date() }).where(and(eq(staffMembers.id, id), eq(staffMembers.workspaceId, tenant.workspaceId))).catch(databaseError);
-    return (await this.listStaff(tenant)).find((row) => row.id === id) ?? this.notFound("Staff member");
+    return (await this.getStaff(tenant, id)) ?? this.notFound("Staff member");
   }
 
-  async listTeachingAssignments(tenant: Tenant, filters: { staffId?: string; academicYear?: string; gradeId?: string; sectionId?: string }) {
-    const rows = await this.database.db.select().from(teachingAssignments).where(eq(teachingAssignments.workspaceId, tenant.workspaceId));
-    return rows
-      .filter((row) => (!filters.staffId || row.staffId === filters.staffId) && (!filters.academicYear || row.academicYear === filters.academicYear) && (!filters.gradeId || row.gradeId === filters.gradeId) && (!filters.sectionId || row.sectionId === filters.sectionId))
-      .map((row) => ({ ...row, organizationId: tenant.organizationId, sectionId: row.sectionId ?? undefined, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) }));
+  async listTeachingAssignments(
+    tenant: Tenant,
+    filters: { staffId?: string; academicYear?: string; gradeId?: string; sectionId?: string; isActive?: boolean },
+    pagination?: PaginationParams
+  ) {
+    const conditions = [eq(teachingAssignments.workspaceId, tenant.workspaceId)];
+    if (filters.staffId) conditions.push(eq(teachingAssignments.staffId, filters.staffId));
+    if (filters.academicYear) conditions.push(eq(teachingAssignments.academicYear, filters.academicYear));
+    if (filters.gradeId) conditions.push(eq(teachingAssignments.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(teachingAssignments.sectionId, filters.sectionId));
+    if (filters.isActive !== undefined) conditions.push(eq(teachingAssignments.isActive, filters.isActive));
+
+    let query = this.database.db
+      .select()
+      .from(teachingAssignments)
+      .where(and(...conditions))
+      .orderBy(asc(teachingAssignments.createdAt), asc(teachingAssignments.id));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+    const rows = await query;
+    return rows.map((row) => ({
+      ...row,
+      organizationId: tenant.organizationId,
+      sectionId: row.sectionId ?? undefined,
+      createdAt: iso(row.createdAt),
+      updatedAt: iso(row.updatedAt),
+    }));
+  }
+
+  async countTeachingAssignments(
+    tenant: Tenant,
+    filters: { staffId?: string; academicYear?: string; gradeId?: string; sectionId?: string; isActive?: boolean }
+  ): Promise<number> {
+    const conditions = [eq(teachingAssignments.workspaceId, tenant.workspaceId)];
+    if (filters.staffId) conditions.push(eq(teachingAssignments.staffId, filters.staffId));
+    if (filters.academicYear) conditions.push(eq(teachingAssignments.academicYear, filters.academicYear));
+    if (filters.gradeId) conditions.push(eq(teachingAssignments.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(teachingAssignments.sectionId, filters.sectionId));
+    if (filters.isActive !== undefined) conditions.push(eq(teachingAssignments.isActive, filters.isActive));
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(teachingAssignments)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
+  }
+
+  async getTeachingAssignment(tenant: Tenant, id: string) {
+    const [row] = await this.database.db
+      .select()
+      .from(teachingAssignments)
+      .where(and(eq(teachingAssignments.workspaceId, tenant.workspaceId), eq(teachingAssignments.id, id)))
+      .limit(1);
+    return row
+      ? {
+          ...row,
+          organizationId: tenant.organizationId,
+          sectionId: row.sectionId ?? undefined,
+          createdAt: iso(row.createdAt),
+          updatedAt: iso(row.updatedAt),
+        }
+      : null;
   }
 
   async createTeachingAssignment(tenant: Tenant, data: JsonRecord) {
@@ -236,17 +411,48 @@ export class SisService {
     if (data.sectionId) await this.assertSection(tenant.workspaceId, String(data.sectionId));
     const id = uuid();
     await this.database.db.insert(teachingAssignments).values({ id, workspaceId: tenant.workspaceId, ...clean(data) } as typeof teachingAssignments.$inferInsert).catch(databaseError);
-    return (await this.listTeachingAssignments(tenant, {})).find((row) => row.id === id)!;
+    return (await this.getTeachingAssignment(tenant, id))!;
   }
 
   async updateTeachingAssignment(tenant: Tenant, id: string, data: JsonRecord) {
     await this.database.db.update(teachingAssignments).set({ ...clean(data), updatedAt: new Date() }).where(and(eq(teachingAssignments.id, id), eq(teachingAssignments.workspaceId, tenant.workspaceId))).catch(databaseError);
-    return (await this.listTeachingAssignments(tenant, {})).find((row) => row.id === id) ?? this.notFound("Teaching assignment");
+    return (await this.getTeachingAssignment(tenant, id)) ?? this.notFound("Teaching assignment");
   }
 
-  async listStudents(tenant: Tenant) {
-    const rows = await this.database.db.select().from(students).where(eq(students.workspaceId, tenant.workspaceId)).orderBy(asc(students.lastName), asc(students.firstName));
+  async listStudents(
+    tenant: Tenant,
+    filters?: { status?: string; admissionNumber?: string },
+    pagination?: PaginationParams
+  ) {
+    const conditions = [eq(students.workspaceId, tenant.workspaceId)];
+    if (filters?.status) conditions.push(eq(students.status, filters.status as NonNullable<typeof students.$inferInsert.status>));
+    if (filters?.admissionNumber) conditions.push(eq(students.admissionNumber, filters.admissionNumber));
+
+    let query = this.database.db
+      .select()
+      .from(students)
+      .where(and(...conditions))
+      .orderBy(asc(students.lastName), asc(students.firstName), asc(students.id));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+    const rows = await query;
     return Promise.all(rows.map((row) => this.studentDto(tenant, row)));
+  }
+
+  async countStudents(
+    tenant: Tenant,
+    filters?: { status?: string; admissionNumber?: string }
+  ): Promise<number> {
+    const conditions = [eq(students.workspaceId, tenant.workspaceId)];
+    if (filters?.status) conditions.push(eq(students.status, filters.status as NonNullable<typeof students.$inferInsert.status>));
+    if (filters?.admissionNumber) conditions.push(eq(students.admissionNumber, filters.admissionNumber));
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(students)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
 
   async getStudent(tenant: Tenant, id: string) {
@@ -255,26 +461,152 @@ export class SisService {
   }
 
   async createStudent(tenant: Tenant, data: JsonRecord) {
-    return withTransaction(this.database, async ({ tx }) => {
-      const service = new SisService({ ...this.database, db: tx });
-      const id = uuid();
-      const admissionNumber = typeof data.admissionNumber === "string" && data.admissionNumber ? data.admissionNumber : await this.nextAdmissionNumber(tenant.workspaceId);
-      await tx.insert(students).values({ id, workspaceId: tenant.workspaceId, ...clean(data), admissionNumber, status: data.status ?? "applicant" } as typeof students.$inferInsert).catch(databaseError);
-      for (const guardian of Array.isArray(data.guardians) ? data.guardians as JsonRecord[] : []) {
-        const guardianId = uuid();
-        await tx.insert(guardians).values({ id: guardianId, workspaceId: tenant.workspaceId, ...clean(guardian) } as typeof guardians.$inferInsert).catch(databaseError);
-        await tx.insert(studentGuardians).values({
-          id: uuid(),
-          studentId: id,
-          guardianId,
-          isEmergencyContact: Boolean(guardian.isEmergencyContact),
-          isPrimaryContact: Boolean(guardian.isPrimaryContact),
-          portalAccessEnabled: Boolean(guardian.portalAccessEnabled),
-          authorizedForPortal: Boolean(guardian.authorizedForPortal),
+    const maxRetries = 12;
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+      attempt++;
+      try {
+        return await withTransaction(this.database, async ({ tx }) => {
+          const service = new SisService({
+            ...this.database,
+            db: tx,
+            transaction: (work) => work(tx),
+          });
+          const id = uuid();
+          const admissionNumber =
+            typeof data.admissionNumber === "string" && data.admissionNumber.trim()
+              ? data.admissionNumber.trim()
+              : await this.nextAdmissionNumber(tenant.workspaceId, tx);
+
+          if (!data.firstName || typeof data.firstName !== "string" || !data.firstName.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Student first name is required.");
+          }
+          if (!data.lastName || typeof data.lastName !== "string" || !data.lastName.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Student last name is required.");
+          }
+          if (!data.dateOfBirth || typeof data.dateOfBirth !== "string" || !data.dateOfBirth.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Student date of birth is required.");
+          }
+          const dateOfBirth = data.dateOfBirth.trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth.slice(0, 10)) || isNaN(new Date(dateOfBirth).getTime())) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Student date of birth must be a valid date in YYYY-MM-DD format.");
+          }
+
+          const rawAdmissionDate = (data.admissionDate as string) || (data.enrollmentDate as string) || (data.startDate as string);
+          if (!rawAdmissionDate || typeof rawAdmissionDate !== "string" || !rawAdmissionDate.trim()) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Student admission date is required.");
+          }
+          const admissionDate = rawAdmissionDate.trim();
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(admissionDate.slice(0, 10)) || isNaN(new Date(admissionDate).getTime())) {
+            throw new ApiError(400, "VALIDATION_FAILED", "Student admission date must be a valid date in YYYY-MM-DD format.");
+          }
+
+          const allowedGenders = ["male", "female", "other", "prefer_not_to_say"];
+          let gender: "male" | "female" | "other" | "prefer_not_to_say";
+          if (data.gender !== undefined && data.gender !== null && String(data.gender).trim() !== "") {
+            const rawGender = String(data.gender).trim().toLowerCase();
+            if (!allowedGenders.includes(rawGender)) {
+              throw new ApiError(400, "VALIDATION_FAILED", `Student gender must be one of: ${allowedGenders.join(", ")}.`);
+            }
+            gender = rawGender as "male" | "female" | "other" | "prefer_not_to_say";
+          } else {
+            gender = "prefer_not_to_say";
+          }
+
+          await tx
+            .insert(students)
+            .values({
+              id,
+              workspaceId: tenant.workspaceId,
+              ...clean(data),
+              dateOfBirth,
+              gender,
+              admissionDate,
+              admissionNumber,
+              status: data.status ?? "applicant",
+            } as typeof students.$inferInsert)
+            .catch(databaseError);
+
+          for (const guardian of Array.isArray(data.guardians) ? (data.guardians as JsonRecord[]) : []) {
+            if (!guardian.firstName || typeof guardian.firstName !== "string" || !guardian.firstName.trim()) {
+              throw new ApiError(400, "VALIDATION_FAILED", "Guardian first name is required.");
+            }
+            if (!guardian.lastName || typeof guardian.lastName !== "string" || !guardian.lastName.trim()) {
+              throw new ApiError(400, "VALIDATION_FAILED", "Guardian last name is required.");
+            }
+            if (!guardian.phone || typeof guardian.phone !== "string" || !guardian.phone.trim()) {
+              throw new ApiError(400, "VALIDATION_FAILED", "Guardian phone is required.");
+            }
+            const guardianPhone = guardian.phone.trim();
+
+            if (!guardian.email || typeof guardian.email !== "string" || !guardian.email.trim()) {
+              throw new ApiError(400, "VALIDATION_FAILED", "Guardian email is required.");
+            }
+            const guardianEmail = guardian.email.trim().toLowerCase();
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guardianEmail)) {
+              throw new ApiError(400, "VALIDATION_FAILED", "Guardian email must be a valid email address.");
+            }
+
+            const allowedRel = ["father", "mother", "guardian", "other"];
+            const rawRel = typeof guardian.relationship === "string" ? guardian.relationship.trim().toLowerCase() : "";
+            let relationship: "father" | "mother" | "guardian" | "other";
+            if (!rawRel) {
+              relationship = "guardian";
+            } else if (allowedRel.includes(rawRel)) {
+              relationship = rawRel as "father" | "mother" | "guardian" | "other";
+            } else {
+              throw new ApiError(400, "VALIDATION_FAILED", `Invalid guardian relationship: "${guardian.relationship}". Allowed relationships: ${allowedRel.join(", ")}.`);
+            }
+
+            const guardianId = uuid();
+            await tx
+              .insert(guardians)
+              .values({
+                id: guardianId,
+                workspaceId: tenant.workspaceId,
+                ...clean(guardian),
+                firstName: guardian.firstName.trim(),
+                lastName: guardian.lastName.trim(),
+                relationship,
+                email: guardianEmail,
+                phone: guardianPhone,
+              } as typeof guardians.$inferInsert)
+              .catch(databaseError);
+
+            await tx.insert(studentGuardians).values({
+              id: uuid(),
+              studentId: id,
+              guardianId,
+              isEmergencyContact: Boolean(guardian.isEmergencyContact),
+              isPrimaryContact: Boolean(guardian.isPrimaryContact),
+              portalAccessEnabled: Boolean(guardian.portalAccessEnabled),
+              authorizedForPortal: Boolean(guardian.authorizedForPortal),
+            });
+          }
+
+          return service.getStudent(tenant, id).then((row) => row!);
         });
+      } catch (error) {
+        const isUniqueConstraint = isUniqueConstraintError(error);
+        const isAutoGenerated = !data.admissionNumber;
+
+        if (isUniqueConstraint && isAutoGenerated && attempt < maxRetries) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.floor(Math.random() * 60) + attempt * 20)
+          );
+          continue;
+        }
+        if (isUniqueConstraint && isAutoGenerated && attempt >= maxRetries) {
+          throw new ApiError(
+            409,
+            "DATABASE_UNIQUE_CONSTRAINT",
+            "Unable to allocate a unique admission number after maximum retries due to concurrent student creation."
+          );
+        }
+        throw error;
       }
-      return service.getStudent(tenant, id).then((row) => row!);
-    });
+    }
   }
 
   async updateStudent(tenant: Tenant, id: string, data: JsonRecord) {
@@ -286,44 +618,386 @@ export class SisService {
     return await this.getStudent(tenant, id) ?? this.notFound("Student");
   }
 
-  async deleteStudent(tenant: Tenant, id: string) {
-    const student = await this.getStudent(tenant, id);
-    if (!student) this.notFound("Student");
-    await this.database.db.update(students).set({ status: "archived", updatedAt: new Date() }).where(and(eq(students.id, id), eq(students.workspaceId, tenant.workspaceId)));
+  async deleteStudent(
+    tenant: Tenant,
+    id: string,
+    options?: { forceWithOutstandingDues?: boolean },
+    actor?: Actor
+  ) {
+    return withTransaction(this.database, async ({ tx }) => {
+      // 1. Lock the student row with FOR UPDATE to serialize concurrent operations
+      const [studentRows] = (await tx.execute(
+        sql`SELECT id, student_status as status FROM students WHERE workspace_id = ${tenant.workspaceId} AND id = ${id} FOR UPDATE`
+      )) as unknown as [Array<{ id: string; status: string }>];
+
+      const student = studentRows[0];
+      if (!student) this.notFound("Student");
+
+      // Idempotency: If already archived, return safely without modifying data
+      if (student.status === "archived") {
+        return { success: true, isExisting: true, id, status: "archived", message: "Student is already archived." };
+      }
+
+      // 2. Check for outstanding financial obligations before archival inside the lock
+      const txDatabase: DatabaseClient = {
+        ...this.database,
+        db: tx,
+        transaction: (work) => work(tx),
+      };
+      const financeService = new SisFinanceService(txDatabase);
+      const invoices = (await financeService.listInvoices(tenant, { studentId: id })) as Array<{
+        status: string;
+        balanceCents?: number;
+        id: string;
+      }>;
+      const unpaidInvoices = invoices.filter(
+        (inv) => !["cancelled", "voided", "paid"].includes(inv.status) && Number(inv.balanceCents ?? 0) > 0
+      );
+      const outstandingBalanceCents = unpaidInvoices.reduce(
+        (sum, inv) => sum + Number(inv.balanceCents ?? 0),
+        0
+      );
+
+      if (outstandingBalanceCents > 0 && !options?.forceWithOutstandingDues) {
+        throw new ApiError(
+          400,
+          "VALIDATION_FAILED",
+          `Cannot archive student with outstanding balance of ${outstandingBalanceCents} cents across ${unpaidInvoices.length} unpaid invoice(s). Settle dues or explicitly authorize archival with outstanding balance.`
+        );
+      }
+
+      // 3. Conditionally transition student status to archived and verify affectedRows
+      const [updateResult] = (await tx.execute(sql`
+        UPDATE students
+        SET student_status = 'archived', updated_at = NOW()
+        WHERE workspace_id = ${tenant.workspaceId}
+          AND id = ${id}
+          AND student_status != 'archived'
+      `)) as unknown as [ { affectedRows?: number } ];
+
+      if (!updateResult || updateResult.affectedRows !== 1) {
+        return { success: true, isExisting: true, id, status: "archived", message: "Student is already archived." };
+      }
+
+      // 4. Transition active enrollments to dropped
+      await tx
+        .update(enrollments)
+        .set({ status: "dropped", updatedAt: new Date() })
+        .where(
+          and(
+            eq(enrollments.workspaceId, tenant.workspaceId),
+            eq(enrollments.studentId, id),
+            eq(enrollments.status, "active")
+          )
+        );
+
+      // 5. Write structured audit log
+      let validActorUserId: string | undefined = undefined;
+      if (actor?.userId) {
+        const [u] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, actor.userId))
+          .limit(1);
+        if (u) validActorUserId = u.id;
+      }
+
+      await tx.insert(auditLogs).values({
+        id: uuid(),
+        organizationId: tenant.organizationId,
+        workspaceId: tenant.workspaceId,
+        actorType: actor?.role ?? "system",
+        actorUserId: validActorUserId,
+        action: "student.archive",
+        resourceType: "student",
+        resourceId: id,
+        operation: "archive",
+        result: "success",
+        source: "sis_service",
+        beforeSnapshot: { status: student.status },
+        afterSnapshot: { status: "archived", activeEnrollmentsDropped: true },
+        metadata: {
+          hadOutstandingBalance: outstandingBalanceCents > 0,
+          outstandingBalanceCents,
+          unpaidInvoicesCount: unpaidInvoices.length,
+          forcedWithDues: Boolean(options?.forceWithOutstandingDues),
+        },
+      });
+
+      return {
+        success: true,
+        id,
+        status: "archived",
+        message: "Student archived and active enrollments transitioned successfully.",
+      };
+    });
   }
 
-  async listEnrollments(tenant: Tenant, filters: { studentId?: string; academicYear?: string; gradeId?: string; sectionId?: string; status?: string }) {
-    const rows = await this.database.db.select().from(enrollments).where(eq(enrollments.workspaceId, tenant.workspaceId)).orderBy(desc(enrollments.enrollmentDate));
-    return rows
-      .filter((row) => (!filters.studentId || row.studentId === filters.studentId) && (!filters.academicYear || row.academicYear === filters.academicYear) && (!filters.gradeId || row.gradeId === filters.gradeId) && (!filters.sectionId || row.sectionId === filters.sectionId) && (!filters.status || row.status === filters.status))
-      .map((row) => ({ ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) }));
+  async listEnrollments(
+    tenant: Tenant,
+    filters: { studentId?: string; academicYear?: string; gradeId?: string; sectionId?: string; status?: string },
+    pagination?: PaginationParams
+  ) {
+    const conditions = [eq(enrollments.workspaceId, tenant.workspaceId)];
+    if (filters.studentId) conditions.push(eq(enrollments.studentId, filters.studentId));
+    if (filters.academicYear) conditions.push(eq(enrollments.academicYear, filters.academicYear));
+    if (filters.gradeId) conditions.push(eq(enrollments.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(enrollments.sectionId, filters.sectionId));
+    if (filters.status) conditions.push(eq(enrollments.status, filters.status as NonNullable<typeof enrollments.$inferInsert.status>));
+
+    let query = this.database.db
+      .select()
+      .from(enrollments)
+      .where(and(...conditions))
+      .orderBy(desc(enrollments.enrollmentDate), asc(enrollments.id));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+    const rows = await query;
+    return rows.map((row) => ({ ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) }));
+  }
+
+  async countEnrollments(
+    tenant: Tenant,
+    filters: { studentId?: string; academicYear?: string; gradeId?: string; sectionId?: string; status?: string }
+  ): Promise<number> {
+    const conditions = [eq(enrollments.workspaceId, tenant.workspaceId)];
+    if (filters.studentId) conditions.push(eq(enrollments.studentId, filters.studentId));
+    if (filters.academicYear) conditions.push(eq(enrollments.academicYear, filters.academicYear));
+    if (filters.gradeId) conditions.push(eq(enrollments.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(enrollments.sectionId, filters.sectionId));
+    if (filters.status) conditions.push(eq(enrollments.status, filters.status as NonNullable<typeof enrollments.$inferInsert.status>));
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(enrollments)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
+  }
+
+  async getEnrollment(tenant: Tenant, id: string) {
+    const [row] = await this.database.db
+      .select()
+      .from(enrollments)
+      .where(and(eq(enrollments.workspaceId, tenant.workspaceId), eq(enrollments.id, id)))
+      .limit(1);
+    return row ? { ...row, organizationId: tenant.organizationId, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) } : null;
   }
 
   async createEnrollment(tenant: Tenant, data: JsonRecord) {
     await Promise.all([this.assertStudent(tenant.workspaceId, String(data.studentId)), this.assertGrade(tenant.workspaceId, String(data.gradeId)), this.assertSection(tenant.workspaceId, String(data.sectionId))]);
     const id = uuid();
-    await this.database.db.insert(enrollments).values({ id, workspaceId: tenant.workspaceId, ...clean(data) } as typeof enrollments.$inferInsert).catch(databaseError);
-    return (await this.listEnrollments(tenant, {})).find((row) => row.id === id)!;
+    const rawDate = (data.enrollmentDate as string) || (data.startDate as string);
+    if (!rawDate || typeof rawDate !== "string" || !rawDate.trim()) {
+      throw new ApiError(400, "VALIDATION_FAILED", "Enrollment date is required.");
+    }
+    const enrollmentDate = rawDate.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(enrollmentDate.slice(0, 10)) || isNaN(new Date(enrollmentDate).getTime())) {
+      throw new ApiError(400, "VALIDATION_FAILED", "Enrollment date must be a valid date in YYYY-MM-DD format.");
+    }
+
+    const allowedStatuses = ["active", "completed", "dropped", "transferred"];
+    let status: typeof enrollments.$inferInsert.status;
+    if (typeof data.status === "string" && allowedStatuses.includes(data.status)) {
+      status = data.status as typeof enrollments.$inferInsert.status;
+    } else if (data.status === "withdrawn" || data.status === "archived") {
+      status = "dropped";
+    } else if (data.status === undefined || data.status === null || String(data.status).trim() === "") {
+      status = "active";
+    } else {
+      throw new ApiError(400, "VALIDATION_FAILED", `Invalid enrollment status: "${data.status}". Allowed values: ${allowedStatuses.join(", ")}.`);
+    }
+    await this.database.db.insert(enrollments).values({ id, workspaceId: tenant.workspaceId, ...clean(data), enrollmentDate, status } as typeof enrollments.$inferInsert).catch(databaseError);
+    return (await this.getEnrollment(tenant, id))!;
   }
 
   async updateEnrollment(tenant: Tenant, id: string, data: JsonRecord) {
     await this.database.db.update(enrollments).set({ ...clean(data), updatedAt: new Date() }).where(and(eq(enrollments.id, id), eq(enrollments.workspaceId, tenant.workspaceId))).catch(databaseError);
-    return (await this.listEnrollments(tenant, {})).find((row) => row.id === id) ?? this.notFound("Enrollment");
+    return (await this.getEnrollment(tenant, id)) ?? this.notFound("Enrollment");
   }
 
-  async transferStudent(tenant: Tenant, studentId: string, newSectionId: string) {
-    const current = (await this.listEnrollments(tenant, { studentId, status: "active" }))[0];
-    if (!current) throw new ApiError(400, "VALIDATION_FAILED", "Student does not have an active enrollment to transfer from.");
-    if (current.sectionId === newSectionId) throw new ApiError(400, "VALIDATION_FAILED", "Student is already in this section.");
-    await this.updateEnrollment(tenant, current.id, { status: "transferred" });
-    return this.createEnrollment(tenant, { studentId, academicYear: current.academicYear, gradeId: current.gradeId, sectionId: newSectionId, enrollmentDate: new Date().toISOString(), status: "active" });
+  async transferStudent(
+    tenant: Tenant,
+    studentId: string,
+    newSectionId: string,
+    options?: { academicYear?: string; gradeId?: string },
+    actor?: Actor
+  ) {
+    return withTransaction(this.database, async ({ tx }) => {
+      // 1. Lock student row with FOR UPDATE
+      const [studentRows] = (await tx.execute(
+        sql`SELECT id, student_status as status FROM students WHERE workspace_id = ${tenant.workspaceId} AND id = ${studentId} FOR UPDATE`
+      )) as unknown as [Array<{ id: string; status: string }>];
+
+      const student = studentRows[0];
+      if (!student) this.notFound("Student");
+      if (student.status !== "active") {
+        throw new ApiError(
+          400,
+          "VALIDATION_FAILED",
+          `Cannot transfer student with status '${student.status}'. Student must be active.`
+        );
+      }
+
+      // 2. Validate destination section exists in the tenant's workspace
+      const targetSectionRows = await tx
+        .select()
+        .from(sections)
+        .where(and(eq(sections.workspaceId, tenant.workspaceId), eq(sections.id, newSectionId)))
+        .limit(1);
+      const targetSection = targetSectionRows[0];
+      if (!targetSection) {
+        throw new ApiError(404, "NOT_FOUND", "Destination section not found in this organization.");
+      }
+
+      // 3. Lock active enrollment with FOR UPDATE to serialize concurrent section transfers
+      const [activeRows] = (await tx.execute(
+        sql`SELECT id, workspace_id as workspaceId, student_id as studentId, academic_year as academicYear, grade_id as gradeId, section_id as sectionId, enrollment_status as status FROM enrollments WHERE workspace_id = ${tenant.workspaceId} AND student_id = ${studentId} AND enrollment_status = 'active' FOR UPDATE`
+      )) as unknown as [Array<{ id: string; workspaceId: string; studentId: string; academicYear: string; gradeId: string; sectionId: string; status: string }>];
+
+      const current = activeRows[0];
+      if (!current) {
+        throw new ApiError(400, "VALIDATION_FAILED", "Student does not have an active enrollment to transfer from.");
+      }
+      if (current.sectionId === newSectionId) {
+        throw new ApiError(400, "VALIDATION_FAILED", "Student is already in this section.");
+      }
+
+      const targetGradeId = options?.gradeId ?? targetSection.gradeId;
+      if (targetSection.gradeId !== targetGradeId) {
+        throw new ApiError(400, "VALIDATION_FAILED", "Destination section does not belong to the target grade level.");
+      }
+      const targetAcademicYear = options?.academicYear ?? current.academicYear;
+
+      // 4. Transition previous active enrollment to transferred and verify affectedRows === 1
+      const [updateResult] = (await tx.execute(sql`
+        UPDATE enrollments
+        SET enrollment_status = 'transferred', updated_at = NOW()
+        WHERE workspace_id = ${tenant.workspaceId}
+          AND id = ${current.id}
+          AND enrollment_status = 'active'
+      `)) as unknown as [ { affectedRows?: number } ];
+
+      if (!updateResult || updateResult.affectedRows !== 1) {
+        throw new ApiError(
+          409,
+          "DATABASE_TRANSACTION_FAILED",
+          "Source active enrollment has been concurrently modified or already transferred. Transfer aborted."
+        );
+      }
+
+      // 5. Create destination enrollment inside transaction
+      const newEnrollmentId = uuid();
+      const enrollmentDate = new Date().toISOString().slice(0, 10);
+      await tx
+        .insert(enrollments)
+        .values({
+          id: newEnrollmentId,
+          workspaceId: tenant.workspaceId,
+          studentId,
+          academicYear: targetAcademicYear,
+          gradeId: targetGradeId,
+          sectionId: newSectionId,
+          enrollmentDate,
+          status: "active",
+        } as typeof enrollments.$inferInsert)
+        .catch(databaseError);
+
+      // 6. Record transfer in audit log
+      let validActorUserId: string | undefined = undefined;
+      if (actor?.userId) {
+        const [u] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, actor.userId))
+          .limit(1);
+        if (u) validActorUserId = u.id;
+      }
+
+      await tx.insert(auditLogs).values({
+        id: uuid(),
+        organizationId: tenant.organizationId,
+        workspaceId: tenant.workspaceId,
+        actorType: actor?.role ?? "system",
+        actorUserId: validActorUserId,
+        action: "student.section_transfer",
+        resourceType: "student",
+        resourceId: studentId,
+        operation: "transfer",
+        result: "success",
+        source: "sis_service",
+        beforeSnapshot: {
+          previousEnrollmentId: current.id,
+          previousSectionId: current.sectionId,
+          previousGradeId: current.gradeId,
+          previousAcademicYear: current.academicYear,
+        },
+        afterSnapshot: {
+          newEnrollmentId,
+          newSectionId,
+          newGradeId: targetGradeId,
+          newAcademicYear: targetAcademicYear,
+        },
+        metadata: {
+          rawActorUserId: actor?.userId,
+          sourceSectionId: current.sectionId,
+          destinationSectionId: newSectionId,
+          academicYear: targetAcademicYear,
+        },
+      });
+
+      const rows = await tx.select().from(enrollments).where(eq(enrollments.id, newEnrollmentId)).limit(1);
+      return {
+        ...rows[0],
+        organizationId: tenant.organizationId,
+        createdAt: iso(rows[0].createdAt),
+        updatedAt: iso(rows[0].updatedAt),
+      };
+    });
   }
 
-  async listAttendanceSessions(tenant: Tenant, filters: { academicYearId?: string; date?: string; gradeId?: string; sectionId?: string }) {
-    const rows = await this.database.db.select().from(attendanceSessions).where(eq(attendanceSessions.workspaceId, tenant.workspaceId)).orderBy(desc(attendanceSessions.attendanceDate));
-    return rows
-      .filter((row) => (!filters.academicYearId || row.academicYearId === filters.academicYearId) && (!filters.date || row.attendanceDate === filters.date) && (!filters.gradeId || row.gradeId === filters.gradeId) && (!filters.sectionId || row.sectionId === filters.sectionId))
-      .map((row) => this.attendanceSessionDto(tenant, row));
+  async listAttendanceSessions(
+    tenant: Tenant,
+    filters: { academicYearId?: string; date?: string; gradeId?: string; sectionId?: string; sessionType?: string; status?: string },
+    pagination?: PaginationParams
+  ) {
+    const conditions = [eq(attendanceSessions.workspaceId, tenant.workspaceId)];
+    if (filters.academicYearId) conditions.push(eq(attendanceSessions.academicYearId, filters.academicYearId));
+    if (filters.date) conditions.push(eq(attendanceSessions.attendanceDate, filters.date));
+    if (filters.gradeId) conditions.push(eq(attendanceSessions.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(attendanceSessions.sectionId, filters.sectionId));
+    if (filters.sessionType) conditions.push(eq(attendanceSessions.sessionType, filters.sessionType as "daily" | "period" | "subject"));
+    if (filters.status) conditions.push(eq(attendanceSessions.status, filters.status as "draft" | "completed"));
+
+    let query = this.database.db
+      .select()
+      .from(attendanceSessions)
+      .where(and(...conditions))
+      .orderBy(desc(attendanceSessions.attendanceDate), asc(attendanceSessions.id));
+    if (pagination) {
+      query = query.limit(pagination.limit).offset(pagination.offset) as typeof query;
+    }
+    const rows = await query;
+    return rows.map((row) => this.attendanceSessionDto(tenant, row));
+  }
+
+  async countAttendanceSessions(
+    tenant: Tenant,
+    filters: { academicYearId?: string; date?: string; gradeId?: string; sectionId?: string; sessionType?: string; status?: string }
+  ): Promise<number> {
+    const conditions = [eq(attendanceSessions.workspaceId, tenant.workspaceId)];
+    if (filters.academicYearId) conditions.push(eq(attendanceSessions.academicYearId, filters.academicYearId));
+    if (filters.date) conditions.push(eq(attendanceSessions.attendanceDate, filters.date));
+    if (filters.gradeId) conditions.push(eq(attendanceSessions.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(attendanceSessions.sectionId, filters.sectionId));
+    if (filters.sessionType) conditions.push(eq(attendanceSessions.sessionType, filters.sessionType as "daily" | "period" | "subject"));
+    if (filters.status) conditions.push(eq(attendanceSessions.status, filters.status as "draft" | "completed"));
+
+    const [result] = await this.database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(attendanceSessions)
+      .where(and(...conditions));
+    return Number(result?.count ?? 0);
   }
 
   async getAttendanceSession(tenant: Tenant, id: string) {
@@ -340,13 +1014,18 @@ export class SisService {
     if (data.subjectId) await this.assertSubject(tenant.workspaceId, String(data.subjectId));
     if (data.teacherId) await this.assertStaff(tenant.workspaceId, String(data.teacherId));
 
+    const allowedTypes = ["daily", "period", "subject"];
+    const allowedStatuses = ["draft", "completed"];
+    const sessionType = typeof data.sessionType === "string" && allowedTypes.includes(data.sessionType) ? (data.sessionType as "daily" | "period" | "subject") : "daily";
+    const status = typeof data.status === "string" && allowedStatuses.includes(data.status) ? (data.status as "draft" | "completed") : "draft";
+
     const targetSubjectId = typeof data.subjectId === "string" && data.subjectId.trim() ? data.subjectId.trim() : undefined;
     const existing = (await this.listAttendanceSessions(tenant, {
       academicYearId: String(data.academicYearId),
       date: String(data.date),
       gradeId: String(data.gradeId),
       sectionId: String(data.sectionId),
-    })).find((row) => row.sessionType === (data.sessionType ?? "daily") && (row.subjectId || undefined) === targetSubjectId);
+    })).find((row) => row.sessionType === sessionType && (row.subjectId || undefined) === targetSubjectId);
     if (existing) return existing;
 
     const id = uuid();
@@ -359,8 +1038,8 @@ export class SisService {
       sectionId: String(data.sectionId),
       subjectId: typeof data.subjectId === "string" ? data.subjectId : undefined,
       teacherId: typeof data.teacherId === "string" ? data.teacherId : undefined,
-      sessionType: typeof data.sessionType === "string" ? data.sessionType : "daily",
-      status: typeof data.status === "string" ? data.status : "draft",
+      sessionType,
+      status,
       markedBy: typeof data.markedBy === "string" ? data.markedBy : undefined,
     } as typeof attendanceSessions.$inferInsert).catch(databaseError);
     return (await this.getAttendanceSession(tenant, id))!;
@@ -392,10 +1071,20 @@ export class SisService {
 
     await withTransaction(this.database, async ({ tx }) => {
       for (const record of records) {
+        const allowedStatuses = ["present", "absent", "late", "excused"];
+        const rawStatus = typeof record.status === "string" ? record.status.trim().toLowerCase() : "";
+        if (!rawStatus || !allowedStatuses.includes(rawStatus)) {
+          throw new ApiError(
+            400,
+            "VALIDATION_FAILED",
+            `Attendance status is invalid or missing for student ${record.studentId}: "${record.status}". Allowed values: ${allowedStatuses.join(", ")}.`
+          );
+        }
+        const recordStatus = rawStatus as typeof attendanceRecords.$inferInsert.status;
         const enrollment = await this.findEnrollmentForAttendance(tenant.workspaceId, String(record.studentId), academicYear.name, session.academicYearId, session.gradeId, session.sectionId);
         const existing = await tx.select().from(attendanceRecords).where(and(eq(attendanceRecords.workspaceId, tenant.workspaceId), eq(attendanceRecords.sessionId, sessionId), eq(attendanceRecords.enrollmentId, enrollment.id))).limit(1);
         if (existing[0]) {
-          await tx.update(attendanceRecords).set({ status: record.status as typeof attendanceRecords.$inferInsert.status, note: record.note, markedBy, updatedAt: new Date() }).where(eq(attendanceRecords.id, existing[0].id));
+          await tx.update(attendanceRecords).set({ status: recordStatus, note: record.note, markedBy, updatedAt: new Date() }).where(eq(attendanceRecords.id, existing[0].id));
           savedIds.push(existing[0].id);
         } else {
           const id = uuid();
@@ -405,7 +1094,7 @@ export class SisService {
             sessionId,
             enrollmentId: enrollment.id,
             studentId: record.studentId,
-            status: record.status as typeof attendanceRecords.$inferInsert.status,
+            status: recordStatus,
             note: record.note,
             markedBy,
           });
@@ -488,12 +1177,28 @@ export class SisService {
     await this.database.db.delete(timePeriods).where(and(eq(timePeriods.workspaceId, tenant.workspaceId), eq(timePeriods.id, id)));
   }
 
-  async listTimetableEntries(tenant: Tenant, filters: { academicYearId?: string; termId?: string; gradeId?: string; sectionId?: string; teacherId?: string; dayOfWeek?: string; periodId?: string }) {
-    const rows = await this.database.db.select().from(timetableEntries).where(eq(timetableEntries.workspaceId, tenant.workspaceId));
-    return rows
-      .filter((row) => (!filters.academicYearId || row.academicYearId === filters.academicYearId) && (!filters.termId || row.termId === filters.termId) && (!filters.gradeId || row.gradeId === filters.gradeId) && (!filters.sectionId || row.sectionId === filters.sectionId) && (!filters.teacherId || row.teacherId === filters.teacherId) && (filters.dayOfWeek === undefined || row.dayOfWeek === Number(filters.dayOfWeek)) && (!filters.periodId || row.periodId === filters.periodId))
-      .sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.periodId.localeCompare(b.periodId))
-      .map((row) => this.timetableEntryDto(tenant, row));
+  async listTimetableEntries(
+    tenant: Tenant,
+    filters: { academicYearId?: string; termId?: string; gradeId?: string; sectionId?: string; teacherId?: string; dayOfWeek?: string | number; periodId?: string }
+  ) {
+    const conditions = [eq(timetableEntries.workspaceId, tenant.workspaceId)];
+    if (filters.academicYearId) conditions.push(eq(timetableEntries.academicYearId, filters.academicYearId));
+    if (filters.termId) conditions.push(eq(timetableEntries.termId, filters.termId));
+    if (filters.gradeId) conditions.push(eq(timetableEntries.gradeId, filters.gradeId));
+    if (filters.sectionId) conditions.push(eq(timetableEntries.sectionId, filters.sectionId));
+    if (filters.teacherId) conditions.push(eq(timetableEntries.teacherId, filters.teacherId));
+    if (filters.dayOfWeek !== undefined && filters.dayOfWeek !== null && String(filters.dayOfWeek).trim() !== "") {
+      conditions.push(eq(timetableEntries.dayOfWeek, Number(filters.dayOfWeek)));
+    }
+    if (filters.periodId) conditions.push(eq(timetableEntries.periodId, filters.periodId));
+
+    const rows = await this.database.db
+      .select()
+      .from(timetableEntries)
+      .where(and(...conditions))
+      .orderBy(asc(timetableEntries.dayOfWeek), asc(timetableEntries.periodId), asc(timetableEntries.id));
+
+    return rows.map((row) => this.timetableEntryDto(tenant, row));
   }
 
   async saveTimetableEntry(tenant: Tenant, data: JsonRecord) {
@@ -707,17 +1412,40 @@ export class SisService {
     return { ...row, organizationId: tenant.organizationId, termId: row.termId ?? undefined, roomId: row.roomId ?? undefined, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt) };
   }
 
-  private async nextEmployeeNumber(workspaceId: string) {
-    const rows = await this.database.db.select().from(staffMembers).where(eq(staffMembers.workspaceId, workspaceId));
-    const max = rows.reduce((current, row) => Math.max(current, Number(row.employeeNumber.replace(/^EMP-/, "")) || 0), 0);
+  private async nextEmployeeNumber(workspaceId: string, tx?: DatabaseClient["db"]): Promise<string> {
+    const client = tx ?? this.database.db;
+    const [rows] = (await client.execute(
+      sql`SELECT employee_number as employeeNumber FROM staff_members WHERE workspace_id = ${workspaceId} FOR UPDATE`
+    )) as unknown as [Array<{ employeeNumber: string }>];
+
+    let max = 0;
+    for (const row of rows) {
+      const match = /^EMP-(\d+)$/.exec(row.employeeNumber);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > max) max = num;
+      }
+    }
     return `EMP-${String(max + 1).padStart(3, "0")}`;
   }
 
-  private async nextAdmissionNumber(workspaceId: string) {
+  private async nextAdmissionNumber(workspaceId: string, tx?: DatabaseClient["db"]): Promise<string> {
     const year = new Date().getFullYear();
-    const rows = await this.database.db.select().from(students).where(eq(students.workspaceId, workspaceId));
-    const next = rows.filter((row) => row.admissionNumber.includes(`-${year}-`)).length + 1;
-    return `TMS-${year}-${String(next).padStart(5, "0")}`;
+    const client = tx ?? this.database.db;
+    const [rows] = (await client.execute(
+      sql`SELECT admission_number as admissionNumber FROM students WHERE workspace_id = ${workspaceId} FOR UPDATE`
+    )) as unknown as [Array<{ admissionNumber: string }>];
+
+    const pattern = new RegExp(`^(?:TMS|ADM)-${year}-(\\d+)$`);
+    let max = 0;
+    for (const row of rows) {
+      const match = pattern.exec(row.admissionNumber);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > max) max = num;
+      }
+    }
+    return `TMS-${year}-${String(max + 1).padStart(5, "0")}`;
   }
 
   private async insertAndGet<T>(insert: () => Promise<unknown>, get: () => Promise<T>): Promise<T> {

@@ -1,4 +1,4 @@
-import { jsonBody, sisRequest } from "./sis-api";
+import { fetchCompleteSisDataset, jsonBody, sisRequest } from "./sis-api";
 import type {
   AdmissionApplication,
   AdmissionAssessment,
@@ -27,15 +27,24 @@ export class AdmissionsServiceClass {
   // 2. Enquiries
   async listEnquiries(
     organizationId: string,
-    filters?: { status?: string; search?: string; gradeId?: string; campus?: string }
+    filters?: { status?: string; search?: string; gradeId?: string; campus?: string; page?: number; pageSize?: number; all?: boolean; signal?: AbortSignal }
   ): Promise<AdmissionEnquiry[]> {
     const params = new URLSearchParams();
     if (filters?.status) params.set("status", filters.status);
     if (filters?.search) params.set("search", filters.search);
     if (filters?.gradeId) params.set("gradeId", filters.gradeId);
     if (filters?.campus) params.set("campus", filters.campus);
+
+    if (filters?.page || filters?.pageSize) {
+      if (filters.page) params.set("page", String(filters.page));
+      if (filters.pageSize) params.set("pageSize", String(filters.pageSize));
+      const query = params.toString() ? `?${params.toString()}` : "";
+      const body = await sisRequest<{ enquiries?: AdmissionEnquiry[]; data?: AdmissionEnquiry[] }>(organizationId, `/admissions/enquiries${query}`, { signal: filters?.signal });
+      return body.enquiries ?? body.data ?? [];
+    }
+
     const query = params.toString() ? `?${params.toString()}` : "";
-    return (await sisRequest<{ enquiries: AdmissionEnquiry[] }>(organizationId, `/admissions/enquiries${query}`)).enquiries;
+    return fetchCompleteSisDataset<AdmissionEnquiry>(organizationId, `/admissions/enquiries${query}`, { signal: filters?.signal });
   }
 
   async getEnquiry(organizationId: string, id: string): Promise<AdmissionEnquiry> {
@@ -81,7 +90,7 @@ export class AdmissionsServiceClass {
   // 3. Applications
   async listApplications(
     organizationId: string,
-    filters?: { status?: string; search?: string; gradeId?: string; academicYear?: string; campus?: string }
+    filters?: { status?: string; search?: string; gradeId?: string; academicYear?: string; campus?: string; page?: number; pageSize?: number; all?: boolean; signal?: AbortSignal }
   ): Promise<AdmissionApplication[]> {
     const params = new URLSearchParams();
     if (filters?.status) params.set("status", filters.status);
@@ -89,8 +98,17 @@ export class AdmissionsServiceClass {
     if (filters?.gradeId) params.set("gradeId", filters.gradeId);
     if (filters?.academicYear) params.set("academicYear", filters.academicYear);
     if (filters?.campus) params.set("campus", filters.campus);
+
+    if (filters?.page || filters?.pageSize) {
+      if (filters.page) params.set("page", String(filters.page));
+      if (filters.pageSize) params.set("pageSize", String(filters.pageSize));
+      const query = params.toString() ? `?${params.toString()}` : "";
+      const body = await sisRequest<{ applications?: AdmissionApplication[]; data?: AdmissionApplication[] }>(organizationId, `/admissions/applications${query}`, { signal: filters?.signal });
+      return body.applications ?? body.data ?? [];
+    }
+
     const query = params.toString() ? `?${params.toString()}` : "";
-    return (await sisRequest<{ applications: AdmissionApplication[] }>(organizationId, `/admissions/applications${query}`)).applications;
+    return fetchCompleteSisDataset<AdmissionApplication>(organizationId, `/admissions/applications${query}`, { signal: filters?.signal });
   }
 
   async getApplication(organizationId: string, id: string): Promise<AdmissionApplication> {

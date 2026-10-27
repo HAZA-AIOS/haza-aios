@@ -6,7 +6,10 @@
  * matchers (toBeInTheDocument, toHaveValue, toBeDisabled, etc.).
  */
 import "@testing-library/jest-dom";
+import { configure } from "@testing-library/dom";
 import { vi } from "vitest";
+
+configure({ asyncUtilTimeout: 5000 });
 
 const originalFetch = globalThis.fetch?.bind(globalThis);
 
@@ -226,7 +229,7 @@ function examinations(method: string, orgId: string, id: string | undefined, inp
   const rows = read<ExaminationRow>("haza-aios.sis.examinations");
   if (method === "GET") return json({ examinations: rows.filter((row) => row.organizationId === orgId) });
   if (method === "POST") {
-    const row = makeRow(orgId, { ...input, name: String(input.name ?? "").trim() }, `exam-${Date.now()}`) as ExaminationRow;
+    const row = makeRow(orgId, { ...input, name: String(input.name ?? "").trim() }, `exam-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`) as ExaminationRow;
     rows.push(row); write("haza-aios.sis.examinations", rows); return json({ examination: row }, 201);
   }
   const row = update(rows, orgId, id, input, "Examination"); write("haza-aios.sis.examinations", rows); return json({ examination: row });
@@ -698,8 +701,11 @@ function update<T extends Row>(rows: T[], orgId: string, id: string | undefined,
   return rows[index];
 }
 
+const PAGINATION_QUERY_KEYS = new Set(["all", "unbounded", "page", "pageSize", "limit", "offset"]);
+
 function matches(row: Record<string, unknown>, url: URL): boolean {
   for (const [key, value] of url.searchParams.entries()) {
+    if (PAGINATION_QUERY_KEYS.has(key)) continue;
     if (String(row[key]) !== value) return false;
   }
   return true;

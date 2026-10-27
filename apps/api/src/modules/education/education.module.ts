@@ -2,6 +2,28 @@ import { sendJson } from "../../common/http/json.js";
 import type { BackendModule } from "../module-registry.js";
 import { AuthService } from "../auth/services/auth.service.js";
 import { assertUuid, createTenantContext } from "../platform/tenant-context.js";
+import { parsePagination, buildPaginationMetadata } from "../../common/pagination/pagination.js";
+import {
+  validateCreateAcademicYear,
+  validateUpdateAcademicYear,
+  validateCreateGrade,
+  validateCreateSection,
+  validateCreateStudent,
+  validateUpdateStudent,
+  validateCreateEnrollment,
+  validateTransferStudent,
+  validateCreateAttendanceSession,
+  validateRecordAttendance,
+  validateCreateStaff,
+  validateCreateTeachingAssignment,
+  validateCreateEnquiry,
+  validateCreateApplication,
+  validateCreateInvoice,
+  validateRecordPayment,
+  validateGenerateRecurringInvoices,
+  validateCreateExpense,
+  validateCreateIncome,
+} from "./validation/sis-validation.js";
 import { SisAnalyticsService } from "./sis-analytics.service.js";
 import { SisCommunicationService } from "./sis-communication.service.js";
 import { SisExaminationService } from "./sis-examination.service.js";
@@ -20,19 +42,24 @@ function body(request: { body?: unknown }) {
   return request.body && typeof request.body === "object" ? request.body as Record<string, unknown> : {};
 }
 
-function actor(request: { body?: unknown }, fallback?: Record<string, unknown>) {
-  const payload = body(request);
-  return (payload.actor && typeof payload.actor === "object" ? payload.actor : fallback) as Record<string, unknown> | undefined;
-}
-
-async function readTenantAuth(request: Parameters<AuthService["requireOrganizationPermission"]>[0] & { body?: unknown }, database: ConstructorParameters<typeof SisService>[0], organizationId: string, permission: "workspace.read" | "workspace.manage") {
+async function readTenantAuth(
+  request: Parameters<AuthService["requireOrganizationPermission"]>[0] & { body?: unknown },
+  database: ConstructorParameters<typeof SisService>[0],
+  organizationId: string,
+  permission: "workspace.read" | "workspace.manage",
+) {
   const tenantContext = createTenantContext(organizationId);
   const auth = await new AuthService(database).requireOrganizationPermission(request, tenantContext.organizationId, permission);
   const tenant = await new SisService(database).getTenant(tenantContext.organizationId);
-  const membership = auth.memberships.find((item) => item.organizationId === tenantContext.organizationId);
-  const defaultActor = { userId: auth.user.id, role: membership?.role ?? "Member" };
-  const userActor = actor(request, defaultActor);
-  return { tenant, auth, actor: userActor };
+  const membership = auth.memberships.find((item) => item.organizationId === tenantContext.organizationId && item.status === "active");
+  // SEC-001: Derive actor strictly from verified server-side authentication and active membership.
+  // Any client-supplied body.actor is completely ignored to prevent actor spoofing and privilege escalation.
+  const authoritativeActor = {
+    userId: auth.user.id,
+    role: membership?.role ?? "Member",
+    email: auth.user.email,
+  };
+  return { tenant, auth, actor: authoritativeActor };
 }
 
 export const educationModule: BackendModule = {
@@ -44,12 +71,12 @@ export const educationModule: BackendModule = {
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/academic-years", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { academicYear: await new SisService(database).createAcademicYear(tenant, body(request)) });
+      sendJson(response, 201, { academicYear: await new SisService(database).createAcademicYear(tenant, validateCreateAcademicYear(body(request))) });
     }});
     router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/academic-years/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { academicYear: await new SisService(database).updateAcademicYear(tenant, routeParams.id, body(request)) });
+      sendJson(response, 200, { academicYear: await new SisService(database).updateAcademicYear(tenant, routeParams.id, validateUpdateAcademicYear(body(request))) });
     }});
 
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/terms", async handler(request, response, { database, routeParams, url }) {
@@ -72,7 +99,7 @@ export const educationModule: BackendModule = {
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/grades", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { grade: await new SisService(database).createGrade(tenant, body(request)) });
+      sendJson(response, 201, { grade: await new SisService(database).createGrade(tenant, validateCreateGrade(body(request))) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/grades/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -91,7 +118,7 @@ export const educationModule: BackendModule = {
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/sections", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { section: await new SisService(database).createSection(tenant, body(request)) });
+      sendJson(response, 201, { section: await new SisService(database).createSection(tenant, validateCreateSection(body(request))) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/sections/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -146,13 +173,23 @@ export const educationModule: BackendModule = {
       sendJson(response, 201, { department: await new SisService(database).createDepartment(tenant, body(request)) });
     }});
 
-    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/staff", async handler(request, response, { database, routeParams }) {
+    router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/staff", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { staff: await new SisService(database).listStaff(tenant) });
+      const pagination = parsePagination(url);
+      const service = new SisService(database);
+      const [staff, total] = await Promise.all([
+        service.listStaff(tenant, pagination),
+        service.countStaff(tenant),
+      ]);
+      sendJson(response, 200, {
+        staff,
+        data: staff,
+        pagination: buildPaginationMetadata(total, pagination),
+      });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/staff", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { staffMember: await new SisService(database).createStaff(tenant, body(request)) });
+      sendJson(response, 201, { staffMember: await new SisService(database).createStaff(tenant, validateCreateStaff(body(request))) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/staff/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -167,11 +204,27 @@ export const educationModule: BackendModule = {
 
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/teaching-assignments", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { assignments: await new SisService(database).listTeachingAssignments(tenant, { staffId: url.searchParams.get("staffId") ?? undefined, academicYear: url.searchParams.get("academicYear") ?? undefined, gradeId: url.searchParams.get("gradeId") ?? undefined, sectionId: url.searchParams.get("sectionId") ?? undefined }) });
+      const pagination = parsePagination(url);
+      const filters = {
+        staffId: url.searchParams.get("staffId") ?? undefined,
+        academicYear: url.searchParams.get("academicYear") ?? undefined,
+        gradeId: url.searchParams.get("gradeId") ?? undefined,
+        sectionId: url.searchParams.get("sectionId") ?? undefined,
+      };
+      const service = new SisService(database);
+      const [assignments, total] = await Promise.all([
+        service.listTeachingAssignments(tenant, filters, pagination),
+        service.countTeachingAssignments(tenant, filters),
+      ]);
+      sendJson(response, 200, {
+        assignments,
+        data: assignments,
+        pagination: buildPaginationMetadata(total, pagination),
+      });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/teaching-assignments", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { assignment: await new SisService(database).createTeachingAssignment(tenant, body(request)) });
+      sendJson(response, 201, { assignment: await new SisService(database).createTeachingAssignment(tenant, validateCreateTeachingAssignment(body(request))) });
     }});
     router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/teaching-assignments/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -181,13 +234,23 @@ export const educationModule: BackendModule = {
 
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/students", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      const students = await new SisService(database).listStudents(tenant);
+      const pagination = parsePagination(url);
       const admissionNumber = url.searchParams.get("admissionNumber")?.toLowerCase();
-      sendJson(response, 200, { students: admissionNumber ? students.filter((student) => student.admissionNumber.toLowerCase() === admissionNumber) : students });
+      const status = url.searchParams.get("status") ?? undefined;
+      const service = new SisService(database);
+      const [students, total] = await Promise.all([
+        service.listStudents(tenant, { admissionNumber, status }, pagination),
+        service.countStudents(tenant, { admissionNumber, status }),
+      ]);
+      sendJson(response, 200, {
+        students,
+        data: students,
+        pagination: buildPaginationMetadata(total, pagination),
+      });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/students", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { student: await new SisService(database).createStudent(tenant, body(request)) });
+      sendJson(response, 201, { student: await new SisService(database).createStudent(tenant, validateCreateStudent(body(request))) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/students/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -197,22 +260,41 @@ export const educationModule: BackendModule = {
     router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/students/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { student: await new SisService(database).updateStudent(tenant, routeParams.id, body(request)) });
+      sendJson(response, 200, { student: await new SisService(database).updateStudent(tenant, routeParams.id, validateUpdateStudent(body(request))) });
     }});
-    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/students/:id", async handler(request, response, { database, routeParams }) {
+    router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/students/:id", async handler(request, response, { database, routeParams, url }) {
       assertUuid(routeParams.id, "id");
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      await new SisService(database).deleteStudent(tenant, routeParams.id);
+      const actor = (request as unknown as { actor?: { userId?: string; role?: string } }).actor;
+      const forceWithOutstandingDues = url.searchParams.get("forceWithOutstandingDues") === "true";
+      await new SisService(database).deleteStudent(tenant, routeParams.id, { forceWithOutstandingDues }, actor);
       sendJson(response, 200, { ok: true });
     }});
 
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/enrollments", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { enrollments: await new SisService(database).listEnrollments(tenant, { studentId: url.searchParams.get("studentId") ?? undefined, academicYear: url.searchParams.get("academicYear") ?? undefined, gradeId: url.searchParams.get("gradeId") ?? undefined, sectionId: url.searchParams.get("sectionId") ?? undefined, status: url.searchParams.get("status") ?? undefined }) });
+      const pagination = parsePagination(url);
+      const filters = {
+        studentId: url.searchParams.get("studentId") ?? undefined,
+        academicYear: url.searchParams.get("academicYear") ?? undefined,
+        gradeId: url.searchParams.get("gradeId") ?? undefined,
+        sectionId: url.searchParams.get("sectionId") ?? undefined,
+        status: url.searchParams.get("status") ?? undefined,
+      };
+      const service = new SisService(database);
+      const [enrollments, total] = await Promise.all([
+        service.listEnrollments(tenant, filters, pagination),
+        service.countEnrollments(tenant, filters),
+      ]);
+      sendJson(response, 200, {
+        enrollments,
+        data: enrollments,
+        pagination: buildPaginationMetadata(total, pagination),
+      });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/enrollments", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { enrollment: await new SisService(database).createEnrollment(tenant, body(request)) });
+      sendJson(response, 201, { enrollment: await new SisService(database).createEnrollment(tenant, validateCreateEnrollment(body(request))) });
     }});
     router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/enrollments/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -222,16 +304,45 @@ export const educationModule: BackendModule = {
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/students/:studentId/transfer", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.studentId, "studentId");
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { enrollment: await new SisService(database).transferStudent(tenant, routeParams.studentId, String(body(request).sectionId ?? "")) });
+      const actor = (request as unknown as { actor?: { userId?: string; role?: string } }).actor;
+      const validatedTransfer = validateTransferStudent(body(request));
+      sendJson(response, 201, {
+        enrollment: await new SisService(database).transferStudent(
+          tenant,
+          routeParams.studentId,
+          validatedTransfer.sectionId,
+          {
+            gradeId: validatedTransfer.gradeId,
+            academicYear: validatedTransfer.academicYear,
+          },
+          actor
+        ),
+      });
     }});
 
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/attendance/sessions", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { sessions: await new SisService(database).listAttendanceSessions(tenant, { academicYearId: url.searchParams.get("academicYearId") ?? undefined, date: url.searchParams.get("date") ?? undefined, gradeId: url.searchParams.get("gradeId") ?? undefined, sectionId: url.searchParams.get("sectionId") ?? undefined }) });
+      const pagination = parsePagination(url);
+      const filters = {
+        academicYearId: url.searchParams.get("academicYearId") ?? undefined,
+        date: url.searchParams.get("date") ?? undefined,
+        gradeId: url.searchParams.get("gradeId") ?? undefined,
+        sectionId: url.searchParams.get("sectionId") ?? undefined,
+      };
+      const service = new SisService(database);
+      const [sessions, total] = await Promise.all([
+        service.listAttendanceSessions(tenant, filters, pagination),
+        service.countAttendanceSessions(tenant, filters),
+      ]);
+      sendJson(response, 200, {
+        sessions,
+        data: sessions,
+        pagination: buildPaginationMetadata(total, pagination),
+      });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/attendance/sessions", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { session: await new SisService(database).createAttendanceSession(tenant, body(request)) });
+      sendJson(response, 201, { session: await new SisService(database).createAttendanceSession(tenant, validateCreateAttendanceSession(body(request))) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/attendance/sessions/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -251,8 +362,15 @@ export const educationModule: BackendModule = {
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/attendance/sessions/:id/records", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      const payload = body(request);
-      sendJson(response, 200, { records: await new SisService(database).saveAttendanceRecords(tenant, routeParams.id, Array.isArray(payload.records) ? payload.records as Array<{ studentId: string; status: string; note?: string }> : [], String(payload.markedBy ?? "")) });
+      const validated = validateRecordAttendance(body(request));
+      sendJson(response, 200, {
+        records: await new SisService(database).saveAttendanceRecords(
+          tenant,
+          routeParams.id,
+          validated.records as Array<{ studentId: string; status: string; note?: string }>,
+          String(validated.markedBy ?? "")
+        ),
+      });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/attendance/students/:studentId/history", async handler(request, response, { database, routeParams, url }) {
       assertUuid(routeParams.studentId, "studentId");
@@ -460,8 +578,8 @@ export const educationModule: BackendModule = {
 
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/audience/resolve", async handler(request, response, { database, routeParams }) {
       const payload = body(request);
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { recipients: await new SisCommunicationService(database).resolveAudience(tenant, payload.audience as Record<string, unknown>, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { recipients: await new SisCommunicationService(database).resolveAudience(tenant, payload.audience as Record<string, unknown>, actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/templates/render", async handler(request, response, { database, routeParams }) {
       const payload = body(request);
@@ -478,18 +596,18 @@ export const educationModule: BackendModule = {
       sendJson(response, 200, { template: await new SisCommunicationService(database).getTemplate(tenant, routeParams.id) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/templates", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { template: await new SisCommunicationService(database).createTemplate(tenant, body(request), actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { template: await new SisCommunicationService(database).createTemplate(tenant, body(request), actor) });
     }});
     router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/communication/templates/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { template: await new SisCommunicationService(database).updateTemplate(tenant, routeParams.id, body(request), actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { template: await new SisCommunicationService(database).updateTemplate(tenant, routeParams.id, body(request), actor) });
     }});
     router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/communication/templates/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, await new SisCommunicationService(database).deleteTemplate(tenant, routeParams.id, actor(request)));
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisCommunicationService(database).deleteTemplate(tenant, routeParams.id, actor));
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/announcements", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
@@ -516,36 +634,36 @@ export const educationModule: BackendModule = {
       sendJson(response, 200, { announcement: await new SisCommunicationService(database).getAnnouncement(tenant, routeParams.id) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/announcements", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { announcement: await new SisCommunicationService(database).createAnnouncement(tenant, body(request), actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { announcement: await new SisCommunicationService(database).createAnnouncement(tenant, body(request), actor) });
     }});
     router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { announcement: await new SisCommunicationService(database).updateAnnouncement(tenant, routeParams.id, body(request), actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { announcement: await new SisCommunicationService(database).updateAnnouncement(tenant, routeParams.id, body(request), actor) });
     }});
     router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, await new SisCommunicationService(database).deleteAnnouncement(tenant, routeParams.id, actor(request)));
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, await new SisCommunicationService(database).deleteAnnouncement(tenant, routeParams.id, actor));
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id/publish", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { announcement: await new SisCommunicationService(database).publishAnnouncement(tenant, routeParams.id, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { announcement: await new SisCommunicationService(database).publishAnnouncement(tenant, routeParams.id, actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/announcements/:id/archive", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { announcement: await new SisCommunicationService(database).archiveAnnouncement(tenant, routeParams.id, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { announcement: await new SisCommunicationService(database).archiveAnnouncement(tenant, routeParams.id, actor) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/messages", async handler(request, response, { database, routeParams }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
       sendJson(response, 200, { messages: await new SisCommunicationService(database).listMessages(tenant) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/messages", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { message: await new SisCommunicationService(database).sendCommunication(tenant, body(request), actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 201, { message: await new SisCommunicationService(database).sendCommunication(tenant, body(request), actor) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/notifications", async handler(request, response, { database, routeParams, url }) {
       const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
@@ -578,44 +696,44 @@ export const educationModule: BackendModule = {
       sendJson(response, 200, { deliveries: await new SisCommunicationService(database).deliveryHistory(tenant) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/contacts", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { contacts: await new SisCommunicationService(database).getDirectMessageContacts(tenant, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { contacts: await new SisCommunicationService(database).getDirectMessageContacts(tenant, actor) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/conversations", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { conversations: await new SisCommunicationService(database).listConversations(tenant, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { conversations: await new SisCommunicationService(database).listConversations(tenant, actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/conversations", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 201, { message: await new SisCommunicationService(database).sendDirectMessage(tenant, body(request) as any, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 201, { message: await new SisCommunicationService(database).sendDirectMessage(tenant, body(request) as unknown as Parameters<SisCommunicationService["sendDirectMessage"]>[1], actor) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/conversations/:id/messages", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { messages: await new SisCommunicationService(database).getConversationMessages(tenant, routeParams.id, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { messages: await new SisCommunicationService(database).getConversationMessages(tenant, routeParams.id, actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/conversations/:id/reply", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       const payload = body(request);
-      sendJson(response, 201, { message: await new SisCommunicationService(database).sendDirectMessage(tenant, { ...payload, conversationId: routeParams.id } as any, actor(request)) });
+      sendJson(response, 201, { message: await new SisCommunicationService(database).sendDirectMessage(tenant, { ...payload, conversationId: routeParams.id } as unknown as Parameters<SisCommunicationService["sendDirectMessage"]>[1], actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/conversations/:id/archive", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, await new SisCommunicationService(database).archiveConversation(tenant, routeParams.id, actor(request)));
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, await new SisCommunicationService(database).archiveConversation(tenant, routeParams.id, actor));
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/deliveries/:id/retry", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, { delivery: await new SisCommunicationService(database).retryDelivery(tenant, routeParams.id, actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
+      sendJson(response, 200, { delivery: await new SisCommunicationService(database).retryDelivery(tenant, routeParams.id, actor) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/communication/preferences", async handler(request, response, { database, routeParams, url }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
       const kind = url.searchParams.get("kind") || "user";
-      const id = url.searchParams.get("id") || String(actor(request)?.userId || "");
+      const id = url.searchParams.get("id") || String(actor.userId || "");
       sendJson(response, 200, { preference: await new SisCommunicationService(database).getPreferences(tenant, { kind, id }) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/preferences", async handler(request, response, { database, routeParams }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { preference: await new SisCommunicationService(database).savePreference(tenant, body(request), actor(request)) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 200, { preference: await new SisCommunicationService(database).savePreference(tenant, body(request), actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/communication/domain-notifications", async handler(request, response, { database, routeParams }) {
       const payload = body(request);
@@ -636,13 +754,18 @@ export const educationModule: BackendModule = {
       sendJson(response, 200, { policy: await new SisPortalService(database).savePolicy(tenant, body(request)) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/portal/requests", async handler(request, response, { database, routeParams, url }) {
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { requests: await new SisPortalService(database).listRequests(tenant, { userId: url.searchParams.get("userId") ?? "", role: url.searchParams.get("role") ?? "" }) });
+      const { tenant, auth, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      const membership = auth.memberships.find((item) => item.organizationId === tenant.organizationId && item.status === "active");
+      const isPrivileged = membership?.role === "Owner" || membership?.role === "Admin";
+      const filterActor = isPrivileged && url.searchParams.get("userId")
+        ? { userId: url.searchParams.get("userId") ?? "", role: url.searchParams.get("role") ?? "" }
+        : actor;
+      sendJson(response, 200, { requests: await new SisPortalService(database).listRequests(tenant, filterActor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/portal/requests", async handler(request, response, { database, routeParams }) {
       const payload = body(request);
-      const tenant = await readTenant(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 201, { request: await new SisPortalService(database).submitRequest(tenant, payload.actor as Record<string, unknown> ?? {}, payload.input as Record<string, unknown> ?? {}) });
+      const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
+      sendJson(response, 201, { request: await new SisPortalService(database).submitRequest(tenant, actor, payload.input as Record<string, unknown> ?? {}) });
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/portal/parent-dashboard", async handler(request, response, { database, routeParams, url }) {
       const auth = await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
@@ -751,7 +874,7 @@ export const educationModule: BackendModule = {
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/assignments/bulk", async handler(request, response, { database, routeParams }) {
       const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, await new SisFinanceService(database).bulkAssignFee(tenant, body(request) as any, actor));
+      sendJson(response, 200, await new SisFinanceService(database).bulkAssignFee(tenant, body(request) as unknown as Parameters<SisFinanceService["bulkAssignFee"]>[1], actor));
     }});
     router.register({ method: "DELETE", path: "/api/v1/organizations/:organizationId/sis/finance/assignments/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -772,11 +895,21 @@ export const educationModule: BackendModule = {
     // Invoices & Billing
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/invoices", async handler(request, response, { database, routeParams, url }) {
       const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { invoices: await new SisFinanceService(database).listInvoices(tenant, url.searchParams) });
+      const pagination = parsePagination(url);
+      const service = new SisFinanceService(database);
+      const [invoices, total] = await Promise.all([
+        service.listInvoices(tenant, url.searchParams, pagination),
+        service.countInvoices(tenant, url.searchParams),
+      ]);
+      sendJson(response, 200, {
+        invoices,
+        data: invoices,
+        pagination: buildPaginationMetadata(total, pagination),
+      });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/invoices", async handler(request, response, { database, routeParams }) {
       const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { invoice: await new SisFinanceService(database).createInvoice(tenant, body(request), actor) });
+      sendJson(response, 201, { invoice: await new SisFinanceService(database).createInvoice(tenant, validateCreateInvoice(body(request)), actor) });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/invoices/:id/issue", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -790,17 +923,27 @@ export const educationModule: BackendModule = {
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/invoices/generate-recurring", async handler(request, response, { database, routeParams }) {
       const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 200, await new SisFinanceService(database).generateRecurringInvoices(tenant, body(request) as any, actor));
+      sendJson(response, 200, await new SisFinanceService(database).generateRecurringInvoices(tenant, validateGenerateRecurringInvoices(body(request)) as unknown as Parameters<SisFinanceService["generateRecurringInvoices"]>[1], actor));
     }});
 
     // Payments & Receipts & Reconciliation
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/payments", async handler(request, response, { database, routeParams, url }) {
       const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { payments: await new SisFinanceService(database).listPayments(tenant, url.searchParams.get("studentId") ?? undefined) });
+      const pagination = parsePagination(url);
+      const service = new SisFinanceService(database);
+      const [payments, total] = await Promise.all([
+        service.listPayments(tenant, url.searchParams, pagination),
+        service.countPayments(tenant, url.searchParams),
+      ]);
+      sendJson(response, 200, {
+        payments,
+        data: payments,
+        pagination: buildPaginationMetadata(total, pagination),
+      });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/payments", async handler(request, response, { database, routeParams }) {
       const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, await new SisFinanceService(database).recordPayment(tenant, body(request), actor));
+      sendJson(response, 201, await new SisFinanceService(database).recordPayment(tenant, validateRecordPayment(body(request)), actor));
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/payments/:id/void", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -883,11 +1026,21 @@ export const educationModule: BackendModule = {
     }});
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/expenses", async handler(request, response, { database, routeParams, url }) {
       const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { expenses: await new SisFinanceService(database).listExpenses(tenant, url.searchParams) });
+      const pagination = parsePagination(url);
+      const service = new SisFinanceService(database);
+      const [expenses, total] = await Promise.all([
+        service.listExpenses(tenant, url.searchParams, pagination),
+        service.countExpenses(tenant, url.searchParams),
+      ]);
+      sendJson(response, 200, {
+        expenses,
+        data: expenses,
+        pagination: buildPaginationMetadata(total, pagination),
+      });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/expenses", async handler(request, response, { database, routeParams }) {
       const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { expense: await new SisFinanceService(database).createExpense(tenant, body(request), actor) });
+      sendJson(response, 201, { expense: await new SisFinanceService(database).createExpense(tenant, validateCreateExpense(body(request)), actor) });
     }});
     router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/finance/expenses/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -923,11 +1076,21 @@ export const educationModule: BackendModule = {
     // Non-Tuition Incomes
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/finance/incomes", async handler(request, response, { database, routeParams, url }) {
       const { tenant } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.read");
-      sendJson(response, 200, { incomes: await new SisFinanceService(database).listIncomes(tenant, url.searchParams) });
+      const pagination = parsePagination(url);
+      const service = new SisFinanceService(database);
+      const [incomes, total] = await Promise.all([
+        service.listIncomes(tenant, url.searchParams, pagination),
+        service.countIncomes(tenant, url.searchParams),
+      ]);
+      sendJson(response, 200, {
+        incomes,
+        data: incomes,
+        pagination: buildPaginationMetadata(total, pagination),
+      });
     }});
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/finance/incomes", async handler(request, response, { database, routeParams }) {
       const { tenant, actor } = await readTenantAuth(request, database, routeParams.organizationId, "workspace.manage");
-      sendJson(response, 201, { income: await new SisFinanceService(database).createIncome(tenant, body(request), actor) });
+      sendJson(response, 201, { income: await new SisFinanceService(database).createIncome(tenant, validateCreateIncome(body(request)), actor) });
     }});
     router.register({ method: "PATCH", path: "/api/v1/organizations/:organizationId/sis/finance/incomes/:id", async handler(request, response, { database, routeParams }) {
       assertUuid(routeParams.id, "id");
@@ -991,13 +1154,23 @@ export const educationModule: BackendModule = {
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/admissions/enquiries", async handler(request, response, { database, routeParams, url }) {
       await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
       const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const pagination = parsePagination(url);
       const filters = {
         status: url.searchParams.get("status") ?? undefined,
         search: url.searchParams.get("search") ?? undefined,
         gradeId: url.searchParams.get("gradeId") ?? undefined,
         campus: url.searchParams.get("campus") ?? undefined,
       };
-      sendJson(response, 200, { enquiries: await new SisAdmissionsService(database).listEnquiries(tenant, filters) });
+      const service = new SisAdmissionsService(database);
+      const [enquiries, total] = await Promise.all([
+        service.listEnquiries(tenant, filters, pagination),
+        service.countEnquiries(tenant, filters),
+      ]);
+      sendJson(response, 200, {
+        enquiries,
+        data: enquiries,
+        pagination: buildPaginationMetadata(total, pagination),
+      });
     }});
 
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/admissions/enquiries", async handler(request, response, { database, routeParams }) {
@@ -1005,7 +1178,7 @@ export const educationModule: BackendModule = {
       const tenant = await new SisService(database).getTenant(routeParams.organizationId);
       const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
       sendJson(response, 201, {
-        enquiry: await new SisAdmissionsService(database).createEnquiry(tenant, body(request), {
+        enquiry: await new SisAdmissionsService(database).createEnquiry(tenant, validateCreateEnquiry(body(request)), {
           userId: auth.user.id,
           role: membership?.role ?? "Staff",
         }),
@@ -1060,6 +1233,7 @@ export const educationModule: BackendModule = {
     router.register({ method: "GET", path: "/api/v1/organizations/:organizationId/sis/admissions/applications", async handler(request, response, { database, routeParams, url }) {
       await new AuthService(database).requireOrganizationPermission(request, routeParams.organizationId, "workspace.read");
       const tenant = await new SisService(database).getTenant(routeParams.organizationId);
+      const pagination = parsePagination(url);
       const filters = {
         status: url.searchParams.get("status") ?? undefined,
         search: url.searchParams.get("search") ?? undefined,
@@ -1067,7 +1241,16 @@ export const educationModule: BackendModule = {
         academicYear: url.searchParams.get("academicYear") ?? undefined,
         campus: url.searchParams.get("campus") ?? undefined,
       };
-      sendJson(response, 200, { applications: await new SisAdmissionsService(database).listApplications(tenant, filters) });
+      const service = new SisAdmissionsService(database);
+      const [applications, total] = await Promise.all([
+        service.listApplications(tenant, filters, pagination),
+        service.countApplications(tenant, filters),
+      ]);
+      sendJson(response, 200, {
+        applications,
+        data: applications,
+        pagination: buildPaginationMetadata(total, pagination),
+      });
     }});
 
     router.register({ method: "POST", path: "/api/v1/organizations/:organizationId/sis/admissions/applications", async handler(request, response, { database, routeParams }) {
@@ -1075,7 +1258,7 @@ export const educationModule: BackendModule = {
       const tenant = await new SisService(database).getTenant(routeParams.organizationId);
       const membership = auth.memberships.find((item) => item.organizationId === routeParams.organizationId);
       sendJson(response, 201, {
-        application: await new SisAdmissionsService(database).createApplication(tenant, body(request), {
+        application: await new SisAdmissionsService(database).createApplication(tenant, validateCreateApplication(body(request)), {
           userId: auth.user.id,
           role: membership?.role ?? "Staff",
         }),

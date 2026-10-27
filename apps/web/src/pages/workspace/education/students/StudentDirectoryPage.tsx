@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Card, CardContent, Button, Input, Badge } from "@haza-aios/ui";
+import { Card, CardContent, Button, Input, Badge, Pagination } from "@haza-aios/ui";
 import type { Student } from "@/modules/education/sis/sis.types";
-import { StudentService } from "@/modules/education/sis/student.service";
+import { StudentService, type PaginationMetadata } from "@/modules/education/sis/student.service";
 import { useOrganization } from "@/org/use-organization";
 import { Link } from "@/routes/router";
 import { navigate } from "@/routes/navigation";
@@ -13,13 +13,22 @@ export const StudentDirectoryPage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [paginationMeta, setPaginationMeta] = useState<PaginationMetadata | null>(null);
 
-  const fetchStudents = async () => {
+  const fetchStudents = async (targetPage = page) => {
     if (!currentOrganization) return;
     setLoading(true);
     try {
-      const data = await StudentService.getStudents(currentOrganization.id);
-      setStudents(data);
+      if (searchQuery.trim()) {
+        const results = await StudentService.searchStudents(currentOrganization.id, searchQuery);
+        setStudents(results);
+        setPaginationMeta(null);
+      } else {
+        const res = await StudentService.getPaginatedStudents(currentOrganization.id, { page: targetPage, pageSize: 25 });
+        setStudents(res.students);
+        setPaginationMeta(res.pagination);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -28,7 +37,7 @@ export const StudentDirectoryPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchStudents();
+    fetchStudents(1);
   }, [currentOrganization]);
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -170,6 +179,19 @@ export const StudentDirectoryPage: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+            )}
+
+            {paginationMeta && paginationMeta.totalPages > 1 && (
+              <Pagination
+                currentPage={paginationMeta.page}
+                totalPages={paginationMeta.totalPages}
+                totalItems={paginationMeta.totalItems}
+                pageSize={paginationMeta.pageSize}
+                onPageChange={(newPage) => {
+                  setPage(newPage);
+                  fetchStudents(newPage);
+                }}
+              />
             )}
           </CardContent>
         </Card>

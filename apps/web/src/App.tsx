@@ -80,6 +80,15 @@ function WorkspaceRedirect() {
   return null;
 }
 
+function LegacyRedirect({ to }: { to: string }) {
+  useEffect(() => {
+    const search = window.location.search || "";
+    const hash = window.location.hash || "";
+    navigate(`${to}${search}${hash}`);
+  }, [to]);
+  return null;
+}
+
 
 function LandingPage() {
   return <PublicLandingPage />;
@@ -330,6 +339,16 @@ function App() {
           </WorkspaceGuard>
         </ProtectedRoute>
       );
+    case "/attendance":
+    case "/workspace/attendance":
+    case "/education/attendance":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <LegacyRedirect to="/workspace/education/attendance" />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
     case "/workspace/education/attendance/mark":
       return (
         <ProtectedRoute>
@@ -338,11 +357,31 @@ function App() {
           </WorkspaceGuard>
         </ProtectedRoute>
       );
+    case "/attendance/mark":
+    case "/workspace/attendance/mark":
+    case "/education/attendance/mark":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <LegacyRedirect to="/workspace/education/attendance/mark" />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
     case "/workspace/education/attendance/history":
       return (
         <ProtectedRoute>
           <WorkspaceGuard>
             <AttendanceHistoryPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/attendance/history":
+    case "/workspace/attendance/history":
+    case "/education/attendance/history":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <LegacyRedirect to="/workspace/education/attendance/history" />
           </WorkspaceGuard>
         </ProtectedRoute>
       );
@@ -543,30 +582,6 @@ function App() {
         <ProtectedRoute>
           <WorkspaceGuard>
             <SisHealthPage />
-          </WorkspaceGuard>
-        </ProtectedRoute>
-      );
-    case "/workspace/education/attendance":
-      return (
-        <ProtectedRoute>
-          <WorkspaceGuard>
-            <AttendanceOverviewPage />
-          </WorkspaceGuard>
-        </ProtectedRoute>
-      );
-    case "/workspace/education/attendance/mark":
-      return (
-        <ProtectedRoute>
-          <WorkspaceGuard>
-            <MarkAttendancePage />
-          </WorkspaceGuard>
-        </ProtectedRoute>
-      );
-    case "/workspace/education/attendance/history":
-      return (
-        <ProtectedRoute>
-          <WorkspaceGuard>
-            <AttendanceHistoryPage />
           </WorkspaceGuard>
         </ProtectedRoute>
       );

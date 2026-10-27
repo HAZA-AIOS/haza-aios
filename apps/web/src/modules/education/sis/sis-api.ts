@@ -12,3 +12,11 @@ export async function sisRequest<T>(organizationId: string, path: string, option
 export function jsonBody(value: unknown): RequestInit {
   return { body: JSON.stringify(value) };
 }
+
+export {
+  fetchCompleteDataset,
+  fetchCompleteSisDataset,
+  CompleteDatasetRetrievalError,
+  type CompleteRetrievalOptions,
+} from "./complete-retrieval";
+

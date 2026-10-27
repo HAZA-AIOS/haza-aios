@@ -110,4 +110,48 @@ describe("loadConfig", () => {
       }),
     ).toThrow("DATABASE_NAME is required");
   });
+
+  it("configures trustProxy correctly based on environment and explicit setting", () => {
+    // Missing / unset -> false
+    expect(loadConfig({}).trustProxy).toBe(false);
+    expect(loadConfig({ NODE_ENV: "test" }).trustProxy).toBe(false);
+
+    // false and 0 -> false
+    expect(loadConfig({ TRUST_PROXY: "false" }).trustProxy).toBe(false);
+    expect(loadConfig({ TRUST_PROXY: "0" }).trustProxy).toBe(false);
+
+    // true and 1 -> true (boolean mode)
+    expect(loadConfig({ TRUST_PROXY: "true" }).trustProxy).toBe(true);
+    expect(loadConfig({ TRUST_PROXY: "1" }).trustProxy).toBe(true);
+
+    // cloudflare -> explicit "cloudflare" mode
+    expect(loadConfig({ TRUST_PROXY: "cloudflare" }).trustProxy).toBe("cloudflare");
+    expect(loadConfig({ TRUST_PROXY: "CLOUDFLARE" }).trustProxy).toBe("cloudflare");
+
+    // Invalid values -> rejected with descriptive startup error
+    expect(() => loadConfig({ TRUST_PROXY: "invalid" })).toThrow(
+      /Invalid TRUST_PROXY configuration: "invalid"/,
+    );
+    expect(() => loadConfig({ TRUST_PROXY: "yes" })).toThrow(
+      /Invalid TRUST_PROXY configuration: "yes"/,
+    );
+
+    // Never trust forwarding headers solely because APP_ENV is production or staging
+    const baseProdEnv = {
+      APP_ENV: "production",
+      NODE_ENV: "production",
+      API_HOST: "0.0.0.0",
+      DATABASE_HOST: "127.0.0.1",
+      DATABASE_NAME: "test_db",
+      DATABASE_USER: "root",
+      DATABASE_PASSWORD: "secret-password",
+      RESEND_API_KEY: "re_test_key",
+      EMAIL_FROM: "notifications@haza-aios.com",
+      WEB_ORIGIN: "https://haza-aios.com",
+      APP_URL: "https://haza-aios.com",
+    };
+    expect(loadConfig(baseProdEnv).trustProxy).toBe(false);
+    expect(loadConfig({ ...baseProdEnv, TRUST_PROXY: "true" }).trustProxy).toBe(true);
+    expect(loadConfig({ ...baseProdEnv, TRUST_PROXY: "cloudflare" }).trustProxy).toBe("cloudflare");
+  });
 });

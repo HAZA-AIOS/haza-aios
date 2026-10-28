@@ -19,6 +19,7 @@ import type {
   PublishingStatus,
 } from "./marketplace.types.js";
 import type { AgentTemplateRecord, UpsertAgentTemplateInput } from "../agents/agent.types.js";
+import { AgentTemplateRepository } from "../agents/repositories/agent-template.repository.js";
 import { randomUUID } from "node:crypto";
 
 export class MarketplaceRepository {
@@ -29,7 +30,9 @@ export class MarketplaceRepository {
    * to guarantee that every platform agent has an immutable version record.
    */
   async ensurePlatformTemplateVersions(templates: UpsertAgentTemplateInput[]): Promise<void> {
+    const templateRepo = new AgentTemplateRepository(this.context);
     for (const t of templates) {
+      await templateRepo.upsert(t);
       const existingVersion = await this.context.db
         .select({ id: aiAgentTemplateVersions.id })
         .from(aiAgentTemplateVersions)

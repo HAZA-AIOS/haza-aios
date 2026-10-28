@@ -23,7 +23,7 @@ import {
 } from "../validation/agent-validation.js";
 import { AiProviderRegistry } from "../providers/provider-registry.js";
 
-const systemTemplates: UpsertAgentTemplateInput[] = [
+export const systemTemplates: UpsertAgentTemplateInput[] = [
   {
     id: "00000000-0000-4100-8000-000000000101",
     name: "Worksheet Creator",

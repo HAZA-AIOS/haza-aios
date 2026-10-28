@@ -135,3 +135,113 @@ export function useAgentInstances() {
     fetchProviders,
   };
 }
+
+export function useMarketplaceCatalog(initialFilter?: {
+  search?: string;
+  category?: string;
+  industry?: string;
+  publisher?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const { currentOrganization } = useOrganization();
+  const [catalog, setCatalog] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(initialFilter?.page ?? 1);
+  const [pageSize] = useState(initialFilter?.pageSize ?? 20);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchCatalog = useCallback(
+    async (overrideFilter?: typeof initialFilter) => {
+      if (!currentOrganization) return;
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await AgentService.listMarketplaceCatalog(currentOrganization.id, {
+          ...initialFilter,
+          ...overrideFilter,
+          page,
+          pageSize,
+        });
+        setCatalog(res.items);
+        setTotal(res.total);
+        setPage(res.page);
+        setTotalPages(res.totalPages);
+      } catch (err: any) {
+        setError(err.message || "Failed to load marketplace catalog");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [currentOrganization, initialFilter, page, pageSize],
+  );
+
+  useEffect(() => {
+    fetchCatalog();
+  }, [fetchCatalog]);
+
+  return {
+    catalog,
+    total,
+    page,
+    pageSize,
+    totalPages,
+    isLoading,
+    error,
+    fetchCatalog,
+    setPage,
+  };
+}
+
+export function useInstalledMarketplaceAgents() {
+  const { currentOrganization } = useOrganization();
+  const [installedAgents, setInstalledAgents] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchInstalled = useCallback(async () => {
+    if (!currentOrganization) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await AgentService.listInstalledMarketplaceAgents(currentOrganization.id);
+      setInstalledAgents(data);
+    } catch (err: any) {
+      setError(err.message || "Failed to load installed agents");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentOrganization]);
+
+  useEffect(() => {
+    fetchInstalled();
+  }, [fetchInstalled]);
+
+  const upgradeAgent = async (agentId: string, targetVersion: string) => {
+    if (!currentOrganization) return;
+    const res = await AgentService.upgradeMarketplaceAgent(
+      currentOrganization.id,
+      agentId,
+      targetVersion,
+    );
+    await fetchInstalled();
+    return res;
+  };
+
+  const uninstallAgent = async (agentId: string, reason?: string) => {
+    if (!currentOrganization) return;
+    await AgentService.uninstallMarketplaceAgent(currentOrganization.id, agentId, reason);
+    await fetchInstalled();
+  };
+
+  return {
+    installedAgents,
+    isLoading,
+    error,
+    fetchInstalled,
+    upgradeAgent,
+    uninstallAgent,
+  };
+}

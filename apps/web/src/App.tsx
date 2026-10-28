@@ -21,6 +21,10 @@ import { WorkspaceModulesPage } from "./pages/workspace/WorkspaceModulesPage";
 import { WorkspaceSettingsPage } from "./pages/workspace/WorkspaceSettingsPage";
 import { WorkspaceDomainsPage } from "./pages/workspace/WorkspaceDomainsPage";
 import { WorkspaceDiscoverPage, WorkspaceActiveAgentsPage, AgentDetailsPage } from "./pages/workspace/agents";
+import { MarketplaceAgentProfilePage } from "./pages/workspace/marketplace/MarketplaceAgentProfilePage";
+import { InstalledAgentsPage } from "./pages/workspace/marketplace/InstalledAgentsPage";
+import { PublisherWorkspacePage } from "./pages/workspace/marketplace/PublisherWorkspacePage";
+import { MarketplaceReviewPage } from "./pages/admin/MarketplaceReviewPage";
 import { AgentBuilderPage } from "./pages/workspace/agents/builder/AgentBuilderPage";
 import { AgentRunPage } from "./pages/workspace/agents/run/AgentRunPage";
 import { AgentRunHistory } from "./pages/workspace/agents/run/AgentRunHistory";
@@ -585,12 +589,39 @@ function App() {
           </WorkspaceGuard>
         </ProtectedRoute>
       );
+    case "/workspace/marketplace":
+    case "/workspace/marketplace/catalog":
     case "/workspace/agents":
     case "/workspace/agents/discover":
       return (
         <ProtectedRoute>
           <WorkspaceGuard>
             <WorkspaceDiscoverPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/marketplace/installed":
+    case "/workspace/agents/installed":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <InstalledAgentsPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/marketplace/publisher":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <PublisherWorkspacePage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case (pathname.match(/^\/workspace\/marketplace\/agents\/[^/]+$/) || {}).input:
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <MarketplaceAgentProfilePage />
           </WorkspaceGuard>
         </ProtectedRoute>
       );
@@ -679,6 +710,15 @@ function App() {
         <ProtectedRoute>
           <AdminGuard>
             <AdminModulesPage />
+          </AdminGuard>
+        </ProtectedRoute>
+      );
+    case "/admin/marketplace":
+    case "/admin/marketplace/reviews":
+      return (
+        <ProtectedRoute>
+          <AdminGuard>
+            <MarketplaceReviewPage />
           </AdminGuard>
         </ProtectedRoute>
       );

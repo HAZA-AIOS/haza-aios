@@ -14,6 +14,7 @@ import { authModule } from "./modules/auth/auth.module.js";
 import { educationModule } from "./modules/education/education.module.js";
 import { foundationModule } from "./modules/foundation/foundation.module.js";
 import { healthModule } from "./modules/health/health.module.js";
+import { marketplaceModule } from "./modules/marketplace/marketplace.module.js";
 import { registerModules } from "./modules/module-registry.js";
 import { meteringModule } from "./modules/metering/metering.module.js";
 import { operationsModule } from "./modules/operations/operations.module.js";
@@ -34,6 +35,7 @@ export function createApp(
     authModule,
     platformModule,
     agentsModule,
+    marketplaceModule,
     knowledgeModule,
     workflowsModule,
     operationsModule,

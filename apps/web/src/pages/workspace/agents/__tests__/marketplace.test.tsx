@@ -41,7 +41,13 @@ vi.mock("@haza-aios/ui/components/agent-marketplace-primitives", () => ({
     <div data-testid="category-nav">
       <button onClick={() => onSelectCategory("Productivity")}>Productivity</button>
     </div>
-  )
+  ),
+  VersionBadge: ({ version }: { version: string }) => <span>{version}</span>,
+  PublishingStatusBadge: ({ status }: { status: string }) => <span>{status}</span>,
+  PublisherBadge: () => <span>Publisher</span>,
+  UpgradeNoticeBadge: () => <span>Upgrade</span>,
+  MarketplaceMetricCard: () => null,
+  CapabilityTagList: () => null,
 }));
 
 describe("Agent Marketplace Discover Page", () => {

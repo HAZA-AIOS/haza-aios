@@ -125,7 +125,9 @@ export interface AgentTemplate {
   name: string;
   slug: string;
   description: string;
+  summary?: string | null;
   version: string;
+  latestVersion?: string;
   category: AgentCategory;
   industry: string; // e.g. "education", "healthcare", "general"
   status: AgentLifecycleStatus;
@@ -136,6 +138,12 @@ export interface AgentTemplate {
   inputSchema: Record<string, any>;
   outputSchema: Record<string, any>;
   defaultApprovalPolicy?: HumanApprovalPolicy | null;
+  publisherType?: "platform" | "organization" | "developer";
+  publisherOrganizationId?: string | null;
+  visibility?: "platform" | "private_organization" | "approved_shared";
+  publishingStatus?: "draft" | "submitted" | "under_review" | "approved" | "rejected" | "published" | "deprecated" | "withdrawn";
+  reviewNotes?: string | null;
+  publishedAt?: string | null;
   tools: Tool[];
   metadata: Record<string, any>;
   createdAt: string;
@@ -242,6 +250,11 @@ export interface AgentInstance {
   modelProvider?: string;
   modelSelection?: string;
   humanApprovalPolicy?: HumanApprovalPolicy | null;
+  installedVersion?: string;
+  templateVersionId?: string | null;
+  installedFromMarketplace?: boolean;
+  latestTemplateVersion?: string;
+  isUpgradeAvailable?: boolean;
   tools?: Array<{ id: string; toolKey: string; status: string }>;
   createdAt: string;
   updatedAt: string;
@@ -362,3 +375,124 @@ export interface Memory {
   updatedAt: string;
   expiresAt?: string;
 }
+
+// --- Epic 12 Marketplace DTOs ---
+
+export interface MarketplaceCatalogItem {
+  id: string;
+  slug: string;
+  name: string;
+  summary: string | null;
+  description: string;
+  latestVersion: string;
+  category: string;
+  industry: string;
+  icon: string;
+  publisherType: "platform" | "organization" | "developer";
+  publisherOrganizationId: string | null;
+  publisherOrganizationName: string | null;
+  visibility: "platform" | "private_organization" | "approved_shared";
+  publishingStatus: "draft" | "submitted" | "under_review" | "approved" | "rejected" | "published" | "deprecated" | "withdrawn";
+  capabilities: Array<{ key?: string; name?: string; description?: string }>;
+  publishedAt: string | null;
+}
+
+export interface AgentTemplateVersion {
+  id: string;
+  templateId: string;
+  version: string;
+  name: string;
+  description: string;
+  instructions: string | null;
+  configurationSchema: Record<string, any>;
+  inputSchema: Record<string, any>;
+  outputSchema: Record<string, any>;
+  capabilities: Array<{ key?: string; name?: string; description?: string }>;
+  requiredPermissions: string[];
+  defaultApprovalPolicy?: HumanApprovalPolicy | null;
+  changelog: string | null;
+  status: string;
+  reviewNotes: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketplaceAgentProfile {
+  id: string;
+  slug: string;
+  name: string;
+  summary: string | null;
+  description: string;
+  category: string;
+  industry: string;
+  icon: string;
+  publisherType: "platform" | "organization" | "developer";
+  publisherOrganizationId: string | null;
+  publisherOrganizationName: string | null;
+  visibility: "platform" | "private_organization" | "approved_shared";
+  publishingStatus: string;
+  reviewNotes: string | null;
+  publishedAt: string | null;
+  versions: AgentTemplateVersion[];
+  activeVersion: AgentTemplateVersion;
+  installedInstance: {
+    id: string;
+    name: string;
+    status: string;
+    installedVersion: string;
+    isUpgradeAvailable: boolean;
+    latestVersion: string;
+    installedAt: string;
+  } | null;
+}
+
+export interface InstalledAgentItem {
+  agentDefinitionId: string;
+  agentName: string;
+  agentKey: string;
+  status: string;
+  enabled: boolean;
+  workspaceId: string;
+  templateId: string;
+  templateName: string;
+  templateSlug: string;
+  category: string;
+  industry: string;
+  icon: string;
+  publisherType: string;
+  installedVersion: string;
+  latestTemplateVersion: string;
+  isUpgradeAvailable: boolean;
+  installedAt: string;
+  installationId: string;
+}
+
+export interface MarketplaceAnalytics {
+  publishedAgentsCount: number;
+  totalInstallationsCount: number;
+  activeInstallationsCount: number;
+  pendingReviewsCount: number;
+  agentsByIndustry: Record<string, number>;
+  agentsByCategory: Record<string, number>;
+  versionAdoptionCounts: Record<string, number>;
+}
+
+export interface MarketplaceReviewSubmission {
+  id: string;
+  slug: string;
+  name: string;
+  summary: string | null;
+  description: string;
+  category: string;
+  industry: string;
+  publisherType: string;
+  publisherOrganizationId: string | null;
+  publisherOrganizationName: string | null;
+  publisherUserId: string | null;
+  publisherUserEmail: string | null;
+  publishingStatus: string;
+  reviewNotes: string | null;
+  updatedAt: string;
+}
+

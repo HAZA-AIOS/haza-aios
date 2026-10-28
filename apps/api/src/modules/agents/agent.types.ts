@@ -43,6 +43,18 @@ export type AgentTemplateRecord = {
   outputSchema: JsonRecord;
   defaultApprovalPolicy?: HumanApprovalPolicy | null;
   metadata: JsonRecord;
+  publisherType?: "platform" | "organization" | "developer";
+  publisherOrganizationId?: string | null;
+  publisherUserId?: string | null;
+  visibility?: "platform" | "private_organization" | "approved_shared";
+  publishingStatus?: "draft" | "submitted" | "under_review" | "approved" | "rejected" | "published" | "deprecated" | "withdrawn";
+  summary?: string | null;
+  latestVersion?: string;
+  minPlatformVersion?: string | null;
+  reviewNotes?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: Date | null;
+  publishedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -63,6 +75,9 @@ export type AgentDefinitionRecord = {
   modelSelection: string;
   humanApprovalPolicy?: HumanApprovalPolicy | null;
   createdBy: string;
+  installedVersion?: string;
+  templateVersionId?: string | null;
+  installedFromMarketplace?: boolean;
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

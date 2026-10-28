@@ -36,6 +36,7 @@
 param(
     [string]$DestinationDir = 'C:\Users\theme\HAZA-AIOS-Private\production-backups\stage20',
     [string]$Database = 'railway',
+    [string]$IdentityFile = '',
     [ValidateSet('ContainerSsh', 'LocalClient')]
     [string]$Method = 'ContainerSsh',
     [switch]$DryRun,
@@ -238,17 +239,32 @@ try {
         $targetDbFallback = if ($Database) { $Database } else { 'railway' }
         $remoteScript = 'test -n $MYSQLPASSWORD -o -n $MYSQL_ROOT_PASSWORD || { echo AUTH_FAILED: Missing container MySQL credentials >&2; exit 2; }; export MYSQL_PWD=${MYSQLPASSWORD:-$MYSQL_ROOT_PASSWORD}; u=${MYSQLUSER:-root}; db=${MYSQLDATABASE:-' + $targetDbFallback + '}; exec mysqldump -u $u --single-transaction --quick --routines --triggers --events --set-gtid-purged=OFF --no-tablespaces --default-character-set=utf8mb4 $db'
 
+        $resolvedIdentity = if ($IdentityFile) {
+            $IdentityFile
+        } elseif ($env:RAILWAY_SSH_IDENTITY -and (Test-Path $env:RAILWAY_SSH_IDENTITY)) {
+            $env:RAILWAY_SSH_IDENTITY
+        } elseif (Test-Path 'C:\Users\theme\.ssh\haza_railway_stage19_ed25519') {
+            'C:\Users\theme\.ssh\haza_railway_stage19_ed25519'
+        } else {
+            $null
+        }
+
+        $identityArg = if ($resolvedIdentity) { "-i `"$resolvedIdentity`" " } else { "" }
+        if ($resolvedIdentity) {
+            Write-Host "[AUTH] Using explicit SSH identity file: $resolvedIdentity" -ForegroundColor Green
+        }
+
         $comSpec = if ($env:ComSpec) { $env:ComSpec } else { 'cmd.exe' }
         $pinfo = New-Object System.Diagnostics.ProcessStartInfo
         
         if ($resolvedRailway.EndsWith('.cmd', [System.StringComparison]::OrdinalIgnoreCase) -or $resolvedRailway.EndsWith('.bat', [System.StringComparison]::OrdinalIgnoreCase)) {
             $pinfo.FileName = $comSpec
-            $pinfo.Arguments = "/d /c `"`"$resolvedRailway`" ssh -s MySQL -e production -- sh -c `"$remoteScript`"`""
-            $commandStructure = "cmd.exe /d /c `"$resolvedRailway`" ssh -s MySQL -e production -- sh -c `"<container-auth-mysqldump-script>`""
+            $pinfo.Arguments = "/d /c `"`"$resolvedRailway`" ssh -s MySQL -e production $identityArg-- sh -c `"$remoteScript`"`""
+            $commandStructure = "cmd.exe /d /c `"$resolvedRailway`" ssh -s MySQL -e production $identityArg-- sh -c `"<container-auth-mysqldump-script>`""
         } else {
             $pinfo.FileName = $resolvedRailway
-            $pinfo.Arguments = "ssh -s MySQL -e production -- sh -c `"$remoteScript`""
-            $commandStructure = "$resolvedRailway ssh -s MySQL -e production -- sh -c `"<container-auth-mysqldump-script>`""
+            $pinfo.Arguments = "ssh -s MySQL -e production $identityArg-- sh -c `"$remoteScript`""
+            $commandStructure = "$resolvedRailway ssh -s MySQL -e production $identityArg-- sh -c `"<container-auth-mysqldump-script>`""
         }
 
         $pinfo.UseShellExecute = $false

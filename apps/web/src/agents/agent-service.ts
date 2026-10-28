@@ -6,6 +6,12 @@ import type {
   AgentAuditEvent,
   AiProviderInfo,
   HumanApprovalPolicy,
+  MarketplaceCatalogItem,
+  MarketplaceAgentProfile,
+  AgentTemplateVersion,
+  InstalledAgentItem,
+  MarketplaceAnalytics,
+  MarketplaceReviewSubmission,
 } from "./agent.types";
 import { AgentRegistry } from "./agent-registry";
 import { apiClient } from "@/api/api-client";
@@ -539,6 +545,263 @@ export class AgentServiceClass {
     const workspaceId = response.workspaces[0]?.id;
     if (!workspaceId) throw new Error("Workspace not found.");
     return workspaceId;
+  }
+
+  // --- Marketplace Methods ---
+  async listMarketplaceCatalog(
+    organizationId: string,
+    filter?: {
+      search?: string;
+      category?: string;
+      industry?: string;
+      publisher?: string;
+      page?: number;
+      pageSize?: number;
+    },
+  ): Promise<{
+    items: MarketplaceCatalogItem[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    if (isTestRuntime()) {
+      return {
+        items: this.getTemplates().map((t) => ({
+          id: t.id,
+          slug: t.slug,
+          name: t.name,
+          summary: t.summary ?? null,
+          description: t.description,
+          latestVersion: t.latestVersion ?? t.version,
+          category: t.category,
+          industry: t.industry,
+          icon: t.icon,
+          publisherType: t.publisherType ?? "platform",
+          publisherOrganizationId: t.publisherOrganizationId ?? null,
+          publisherOrganizationName: null,
+          visibility: t.visibility ?? "platform",
+          publishingStatus: (t.publishingStatus ?? "published") as any,
+          capabilities: t.capabilities,
+          publishedAt: t.publishedAt ?? t.createdAt,
+        })),
+        total: this.getTemplates().length,
+        page: 1,
+        pageSize: 20,
+        totalPages: 1,
+      };
+    }
+    const auth = readStoredAuth();
+    const params = new URLSearchParams();
+    if (filter?.search) params.set("search", filter.search);
+    if (filter?.category) params.set("category", filter.category);
+    if (filter?.industry) params.set("industry", filter.industry);
+    if (filter?.publisher) params.set("publisher", filter.publisher);
+    if (filter?.page) params.set("page", String(filter.page));
+    if (filter?.pageSize) params.set("pageSize", String(filter.pageSize));
+    const query = params.toString() ? `?${params.toString()}` : "";
+
+    return apiClient.request(
+      `/api/v1/organizations/${organizationId}/marketplace/catalog${query}`,
+      {
+        authToken: auth?.session.accessToken,
+      },
+    );
+  }
+
+  async getMarketplaceAgentProfile(
+    organizationId: string,
+    templateId: string,
+    workspaceId?: string,
+  ): Promise<MarketplaceAgentProfile> {
+    const auth = readStoredAuth();
+    const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
+    const res = await apiClient.request<{ profile: MarketplaceAgentProfile }>(
+      `/api/v1/organizations/${organizationId}/marketplace/agents/${templateId}${query}`,
+      {
+        authToken: auth?.session.accessToken,
+      },
+    );
+    return res.profile;
+  }
+
+  async getAgentTemplateVersions(
+    organizationId: string,
+    templateId: string,
+  ): Promise<AgentTemplateVersion[]> {
+    const auth = readStoredAuth();
+    const res = await apiClient.request<{ versions: AgentTemplateVersion[] }>(
+      `/api/v1/organizations/${organizationId}/marketplace/agents/${templateId}/versions`,
+      {
+        authToken: auth?.session.accessToken,
+      },
+    );
+    return res.versions;
+  }
+
+  async installMarketplaceAgent(
+    organizationId: string,
+    input: {
+      workspaceId: string;
+      templateId: string;
+      version?: string;
+      name?: string;
+      description?: string;
+      instructions?: string;
+      configuration?: Record<string, any>;
+      humanApprovalPolicy?: HumanApprovalPolicy | null;
+      modelProvider?: string;
+      modelSelection?: string;
+    },
+  ): Promise<AgentInstance> {
+    const auth = readStoredAuth();
+    const res = await apiClient.request<{ agent: AgentInstance }>(
+      `/api/v1/organizations/${organizationId}/marketplace/install`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+        authToken: auth?.session.accessToken,
+      },
+    );
+    return res.agent;
+  }
+
+  async listInstalledMarketplaceAgents(
+    organizationId: string,
+    workspaceId?: string,
+  ): Promise<InstalledAgentItem[]> {
+    const auth = readStoredAuth();
+    const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
+    const res = await apiClient.request<{ installedAgents: InstalledAgentItem[] }>(
+      `/api/v1/organizations/${organizationId}/marketplace/installed${query}`,
+      {
+        authToken: auth?.session.accessToken,
+      },
+    );
+    return res.installedAgents;
+  }
+
+  async upgradeMarketplaceAgent(
+    organizationId: string,
+    agentId: string,
+    targetVersion: string,
+  ): Promise<AgentInstance> {
+    const auth = readStoredAuth();
+    const res = await apiClient.request<{ agent: AgentInstance }>(
+      `/api/v1/organizations/${organizationId}/marketplace/installed/${agentId}/upgrade`,
+      {
+        method: "POST",
+        body: JSON.stringify({ targetVersion }),
+        authToken: auth?.session.accessToken,
+      },
+    );
+    return res.agent;
+  }
+
+  async uninstallMarketplaceAgent(
+    organizationId: string,
+    agentId: string,
+    reason?: string,
+  ): Promise<void> {
+    const auth = readStoredAuth();
+    await apiClient.request(
+      `/api/v1/organizations/${organizationId}/marketplace/installed/${agentId}/uninstall`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+        authToken: auth?.session.accessToken,
+      },
+    );
+  }
+
+  async listPublisherTemplates(organizationId: string): Promise<AgentTemplate[]> {
+    const auth = readStoredAuth();
+    const res = await apiClient.request<{ templates: AgentTemplate[] }>(
+      `/api/v1/organizations/${organizationId}/marketplace/publisher/templates`,
+      {
+        authToken: auth?.session.accessToken,
+      },
+    );
+    return res.templates;
+  }
+
+  async createPublisherTemplate(organizationId: string, template: any): Promise<AgentTemplate> {
+    const auth = readStoredAuth();
+    const res = await apiClient.request<{ template: AgentTemplate }>(
+      `/api/v1/organizations/${organizationId}/marketplace/publisher/templates`,
+      {
+        method: "POST",
+        body: JSON.stringify(template),
+        authToken: auth?.session.accessToken,
+      },
+    );
+    return res.template;
+  }
+
+  async createTemplateVersion(
+    organizationId: string,
+    templateId: string,
+    versionData: any,
+  ): Promise<AgentTemplateVersion> {
+    const auth = readStoredAuth();
+    const res = await apiClient.request<{ version: AgentTemplateVersion }>(
+      `/api/v1/organizations/${organizationId}/marketplace/publisher/templates/${templateId}/versions`,
+      {
+        method: "POST",
+        body: JSON.stringify(versionData),
+        authToken: auth?.session.accessToken,
+      },
+    );
+    return res.version;
+  }
+
+  async submitTemplateForReview(organizationId: string, templateId: string): Promise<void> {
+    const auth = readStoredAuth();
+    await apiClient.request(
+      `/api/v1/organizations/${organizationId}/marketplace/publisher/templates/${templateId}/submit`,
+      {
+        method: "POST",
+        authToken: auth?.session.accessToken,
+      },
+    );
+  }
+
+  async listPlatformMarketplaceReviews(): Promise<MarketplaceReviewSubmission[]> {
+    const auth = readStoredAuth();
+    const res = await apiClient.request<{ submissions: MarketplaceReviewSubmission[] }>(
+      `/api/v1/platform/marketplace/reviews`,
+      {
+        authToken: auth?.session.accessToken,
+      },
+    );
+    return res.submissions;
+  }
+
+  async reviewMarketplaceSubmission(
+    templateId: string,
+    decision: string,
+    reviewNotes?: string,
+  ): Promise<void> {
+    const auth = readStoredAuth();
+    await apiClient.request(
+      `/api/v1/platform/marketplace/reviews/${templateId}/decision`,
+      {
+        method: "POST",
+        body: JSON.stringify({ decision, reviewNotes }),
+        authToken: auth?.session.accessToken,
+      },
+    );
+  }
+
+  async getMarketplaceAnalytics(organizationId: string): Promise<MarketplaceAnalytics> {
+    const auth = readStoredAuth();
+    const res = await apiClient.request<{ analytics: MarketplaceAnalytics }>(
+      `/api/v1/organizations/${organizationId}/marketplace/analytics`,
+      {
+        authToken: auth?.session.accessToken,
+      },
+    );
+    return res.analytics;
   }
 }
 

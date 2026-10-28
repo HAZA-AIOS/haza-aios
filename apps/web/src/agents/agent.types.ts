@@ -40,7 +40,55 @@ export interface ContextPackage {
 }
 
 export type AgentLifecycleStatus =
-  "draft" | "available" | "configured" | "active" | "paused" | "disabled" | "archived";
+  | "draft"
+  | "available"
+  | "configured"
+  | "active"
+  | "paused"
+  | "disabled"
+  | "archived"
+  | "suspended";
+
+export interface HumanApprovalPolicy {
+  required: boolean;
+  approverRoles: string[];
+  escalationTimeoutHours?: number;
+  fallbackAction?: "deny" | "escalate";
+  sensitiveCapabilities?: string[];
+}
+
+export interface AgentAuditEvent {
+  id: string;
+  organizationId: string;
+  workspaceId: string | null;
+  agentId: string;
+  actorUserId: string | null;
+  action: string;
+  operation: string;
+  result: "success" | "failure" | "denied";
+  beforeSnapshot: Record<string, unknown> | null;
+  afterSnapshot: Record<string, unknown> | null;
+  changedFields: string[] | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface AiModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  contextWindow: number;
+  maxOutputTokens: number;
+  capabilities: string[];
+}
+
+export interface AiProviderInfo {
+  id: string;
+  name: string;
+  version: string;
+  isDefault: boolean;
+  models: AiModelInfo[];
+}
 
 export interface AgentPermission {
   key: string;
@@ -87,6 +135,7 @@ export interface AgentTemplate {
   configurationSchema: Record<string, any>;
   inputSchema: Record<string, any>;
   outputSchema: Record<string, any>;
+  defaultApprovalPolicy?: HumanApprovalPolicy | null;
   tools: Tool[];
   metadata: Record<string, any>;
   createdAt: string;
@@ -181,11 +230,19 @@ export interface AgentConfiguration {
 export interface AgentInstance {
   id: string;
   organizationId: string;
+  workspaceId?: string;
   agentTemplateId: string;
+  agentKey?: string;
   name: string;
+  description?: string;
   status: AgentLifecycleStatus;
   configuration: AgentConfiguration;
   enabled: boolean;
+  instructions?: string;
+  modelProvider?: string;
+  modelSelection?: string;
+  humanApprovalPolicy?: HumanApprovalPolicy | null;
+  tools?: Array<{ id: string; toolKey: string; status: string }>;
   createdAt: string;
   updatedAt: string;
 }

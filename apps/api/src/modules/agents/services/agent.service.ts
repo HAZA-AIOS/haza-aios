@@ -1,12 +1,12 @@
+import { and, inArray, or, eq } from "drizzle-orm";
 import { ApiError } from "../../../common/errors/api-error.js";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { DatabaseClient, type DatabaseTransaction } from "../../../database/client.js";
+import { createRepositoryContext } from "../../../database/repositories/repository-context.js";
 import { knowledgeSources } from "../../../database/schema.js";
 import { assertUuid } from "../../platform/tenant-context.js";
-import type { DatabaseClient } from "../../../database/client.js";
-import { createRepositoryContext } from "../../../database/repositories/repository-context.js";
-import { withTransaction } from "../../../database/transactions.js";
 import { WorkspaceService } from "../../platform/services/workspace.service.js";
 import type {
+  AgentAuditEvent,
   AgentDefinitionWithTools,
   AgentTemplateRecord,
   CreateAgentInput,
@@ -17,6 +17,11 @@ import type {
 } from "../agent.types.js";
 import { AgentRepository } from "../repositories/agent.repository.js";
 import { AgentTemplateRepository } from "../repositories/agent-template.repository.js";
+import {
+  redactSensitiveConfig,
+  validateActivationPrerequisites,
+} from "../validation/agent-validation.js";
+import { AiProviderRegistry } from "../providers/provider-registry.js";
 
 const systemTemplates: UpsertAgentTemplateInput[] = [
   {
@@ -35,22 +40,47 @@ const systemTemplates: UpsertAgentTemplateInput[] = [
         key: "generate",
         name: "Educational content generation",
         description: "Generates educational materials",
+        requiresApproval: false,
+        riskLevel: "low",
       },
       {
         key: "transform",
         name: "Worksheet structuring",
         description: "Structures content into a worksheet format",
+        requiresApproval: false,
+        riskLevel: "low",
       },
       {
         key: "analyze",
         name: "Difficulty control",
         description: "Adjusts content based on grade and difficulty",
+        requiresApproval: false,
+        riskLevel: "low",
+      },
+      {
+        key: "publish",
+        name: "Curriculum publishing",
+        description: "Publishes generated materials directly to active curriculum",
+        requiresApproval: true,
+        riskLevel: "medium",
       },
     ],
     requiredPermissions: ["module.education.view"],
-    configurationSchema: {},
+    configurationSchema: {
+      type: "object",
+      properties: {
+        gradeLevel: { type: "string" },
+        subject: { type: "string" },
+      },
+    },
     inputSchema: {},
     outputSchema: {},
+    defaultApprovalPolicy: {
+      required: false,
+      approverRoles: ["owner", "admin", "teacher"],
+      fallbackAction: "deny",
+      sensitiveCapabilities: ["publish"],
+    },
     metadata: { source: "db11-system-template" },
   },
   {
@@ -64,12 +94,80 @@ const systemTemplates: UpsertAgentTemplateInput[] = [
     status: "available",
     icon: "📈",
     capabilities: [
-      { key: "analyze", name: "Data Analysis", description: "Analyzes structured data" },
+      {
+        key: "analyze",
+        name: "Data Analysis",
+        description: "Analyzes structured data",
+        requiresApproval: false,
+        riskLevel: "low",
+      },
+      {
+        key: "export",
+        name: "Financial Export",
+        description: "Exports financial reports",
+        requiresApproval: true,
+        riskLevel: "high",
+      },
     ],
     requiredPermissions: ["module.sales.view"],
-    configurationSchema: {},
+    configurationSchema: {
+      type: "object",
+      properties: {
+        reportingCurrency: { type: "string" },
+      },
+    },
     inputSchema: {},
     outputSchema: {},
+    defaultApprovalPolicy: {
+      required: false,
+      approverRoles: ["owner", "admin"],
+      fallbackAction: "deny",
+      sensitiveCapabilities: ["export"],
+    },
+    metadata: { source: "db11-system-template" },
+  },
+  {
+    id: "00000000-0000-4100-8000-000000000103",
+    name: "Clinical Note Summarizer",
+    slug: "clinical-note-summarizer",
+    description: "Assists healthcare providers by creating structured summaries of patient encounters.",
+    version: "1.0.0",
+    category: "Healthcare",
+    industry: "Healthcare",
+    status: "available",
+    icon: "🩺",
+    capabilities: [
+      {
+        key: "summarize",
+        name: "Clinical Summarization",
+        description: "Extracts key clinical findings",
+        requiresApproval: false,
+        riskLevel: "medium",
+      },
+      {
+        key: "ehr_write",
+        name: "EHR Record Update",
+        description: "Writes clinical notes to patient record",
+        requiresApproval: true,
+        riskLevel: "high",
+      },
+    ],
+    requiredPermissions: ["module.healthcare.view"],
+    configurationSchema: {
+      type: "object",
+      properties: {
+        specialty: { type: "string" },
+      },
+    },
+    inputSchema: {},
+    outputSchema: {},
+    defaultApprovalPolicy: {
+      required: true,
+      approverRoles: ["owner", "admin", "physician"],
+      escalationTimeoutHours: 24,
+      fallbackAction: "deny",
+      sensitiveCapabilities: ["ehr_write"],
+    },
     metadata: { source: "db11-system-template" },
   },
 ];
@@ -80,6 +178,23 @@ export class AgentService {
   async listTemplates(): Promise<AgentTemplateRecord[]> {
     await this.ensureTemplates();
     return new AgentTemplateRepository(createRepositoryContext(this.database.db)).listAvailable();
+  }
+
+  async listTemplatesPaginated(filter?: {
+    category?: string;
+    industry?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{
+    items: AgentTemplateRecord[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    await this.ensureTemplates();
+    return new AgentTemplateRepository(createRepositoryContext(this.database.db)).listAvailablePaginated(filter);
   }
 
   async getTemplate(templateId: string): Promise<AgentTemplateRecord> {
@@ -98,6 +213,29 @@ export class AgentService {
     );
   }
 
+  async listAgentsPaginated(
+    organizationId: string,
+    filter?: {
+      status?: string;
+      workspaceId?: string;
+      search?: string;
+      page?: number;
+      pageSize?: number;
+    },
+  ): Promise<{
+    items: AgentDefinitionWithTools[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    await this.ensureTemplates();
+    return new AgentRepository(createRepositoryContext(this.database.db)).listByOrganizationPaginated(
+      organizationId,
+      filter,
+    );
+  }
+
   async getAgent(organizationId: string, agentId: string): Promise<AgentDefinitionWithTools> {
     const agent = await new AgentRepository(
       createRepositoryContext(this.database.db),
@@ -107,7 +245,7 @@ export class AgentService {
   }
 
   async createAgent(input: CreateAgentInput): Promise<AgentDefinitionWithTools> {
-    return withTransaction(this.database, async ({ tx }) => {
+    return this.database.transaction(async (tx: DatabaseTransaction) => {
       const context = createRepositoryContext(tx);
       const templateRepository = new AgentTemplateRepository(context);
       const agentRepository = new AgentRepository(context);
@@ -121,7 +259,7 @@ export class AgentService {
         throw new ApiError(404, "NOT_FOUND", "Agent template not found.");
       }
 
-      await new WorkspaceService({ ...this.database, db: tx }).getWorkspace(
+      await new WorkspaceService({ ...this.database, db: tx as unknown as DatabaseClient["db"] }).getWorkspace(
         input.organizationId,
         input.workspaceId,
       );
@@ -139,31 +277,77 @@ export class AgentService {
             true,
           );
           if (!restored) throw new Error("Agent restore failed.");
+
+          await agentRepository.recordAuditEvent({
+            organizationId: input.organizationId,
+            workspaceId: input.workspaceId,
+            agentId: existing.id,
+            actorUserId: input.createdBy,
+            action: "agent.restore",
+            operation: "update",
+            result: "success",
+            beforeSnapshot: { status: existing.status, enabled: existing.enabled },
+            afterSnapshot: { status: restored.status, enabled: restored.enabled },
+            changedFields: ["status", "enabled"],
+            metadata: { restoredExisting: true },
+          });
+
           return restored;
         }
         return existing;
       }
 
-      const configuration = createDefaultConfiguration(template, input.createdBy);
+      const configuration = input.configuration
+        ? { ...createDefaultConfiguration(template, input.createdBy), ...input.configuration }
+        : createDefaultConfiguration(template, input.createdBy);
+
+      const approvalPolicy = input.humanApprovalPolicy ?? template.defaultApprovalPolicy ?? null;
+
       const agent = await agentRepository.create({
         organizationId: input.organizationId,
         workspaceId: input.workspaceId,
         templateId: template.id,
         agentKey: template.slug,
         name: input.name ?? `${template.name} (Instance)`,
-        description: template.description,
+        description: input.description ?? template.description,
         status: "active",
         enabled: true,
-        instructions: "",
+        instructions: input.instructions ?? "",
         configuration,
-        modelProvider: "Platform Default",
-        modelSelection: "Auto",
+        modelProvider: input.modelProvider ?? "mock",
+        modelSelection: input.modelSelection ?? "mock-gpt-4o",
+        humanApprovalPolicy: approvalPolicy,
         createdBy: input.createdBy,
       });
 
       await agentRepository.replaceToolAssignments(agent.id, readToolKeys(configuration));
       const reloaded = await agentRepository.getByIdForOrganization(input.organizationId, agent.id);
       if (!reloaded) throw new Error("Agent reload failed.");
+
+      // Record audit event
+      await agentRepository.recordAuditEvent({
+        organizationId: input.organizationId,
+        workspaceId: input.workspaceId,
+        agentId: reloaded.id,
+        actorUserId: input.createdBy,
+        action: "agent.create",
+        operation: "create",
+        result: "success",
+        beforeSnapshot: null,
+        afterSnapshot: {
+          id: reloaded.id,
+          name: reloaded.name,
+          templateId: reloaded.templateId,
+          status: reloaded.status,
+          modelProvider: reloaded.modelProvider,
+          modelSelection: reloaded.modelSelection,
+          configuration: redactSensitiveConfig(reloaded.configuration) as Record<string, unknown>,
+          humanApprovalPolicy: reloaded.humanApprovalPolicy,
+        },
+        changedFields: ["id", "name", "templateId", "status", "configuration", "modelProvider"],
+        metadata: { templateSlug: template.slug },
+      });
+
       return reloaded;
     });
   }
@@ -175,14 +359,16 @@ export class AgentService {
       const repository = new AgentRepository(createRepositoryContext(tx));
       const existing = await repository.getByIdForOrganization(input.organizationId, input.agentId);
       if (!existing) throw new ApiError(404, "NOT_FOUND", "Agent not found.");
-      if (existing.status === "archived")
+      if (existing.status === "archived") {
         throw new ApiError(400, "VALIDATION_FAILED", "Archived agents cannot be configured.");
+      }
 
       const configuration: JsonRecord = {
         ...existing.configuration,
         ...input.configuration,
         updatedBy: input.updatedBy,
       };
+
       if (input.configuration.knowledge !== undefined) {
         const ids = input.configuration.knowledge;
         if (!Array.isArray(ids) || ids.length > 100 || ids.some((id) => typeof id !== "string")) {
@@ -213,38 +399,151 @@ export class AgentService {
         }
         configuration.knowledge = [...new Set(ids)];
       }
+
       const model = readRecord(configuration.model);
       const instructions = readRecord(configuration.instructions);
+      const updatedInstructions =
+        typeof input.instructions === "string"
+          ? input.instructions
+          : typeof instructions.systemInstructions === "string"
+            ? instructions.systemInstructions
+            : existing.instructions ?? "";
+
+      const updatedProvider =
+        input.modelProvider ?? (typeof model.provider === "string" ? model.provider : existing.modelProvider);
+      const updatedModelSelection =
+        input.modelSelection ?? (typeof model.modelSelection === "string" ? model.modelSelection : existing.modelSelection);
+
+      const updatedApprovalPolicy =
+        input.humanApprovalPolicy !== undefined ? input.humanApprovalPolicy : existing.humanApprovalPolicy;
+
       const updated = await repository.updateConfiguration(
         input.organizationId,
         input.agentId,
         configuration,
-        typeof instructions.systemInstructions === "string" ? instructions.systemInstructions : "",
-        typeof model.provider === "string" ? model.provider : existing.modelProvider,
-        typeof model.modelSelection === "string" ? model.modelSelection : existing.modelSelection,
+        updatedInstructions,
+        updatedProvider,
+        updatedModelSelection,
+        updatedApprovalPolicy,
       );
 
       await repository.replaceToolAssignments(input.agentId, readToolKeys(configuration));
       if (!updated) throw new Error("Agent configuration update failed.");
-      return repository
-        .getByIdForOrganization(input.organizationId, input.agentId)
-        .then((agent) => {
-          if (!agent) throw new Error("Agent reload failed.");
-          return agent;
-        });
+
+      const reloaded = await repository.getByIdForOrganization(input.organizationId, input.agentId);
+      if (!reloaded) throw new Error("Agent reload failed.");
+
+      // Calculate changed fields
+      const changedFields: string[] = ["configuration"];
+      if (updatedInstructions !== existing.instructions) changedFields.push("instructions");
+      if (updatedProvider !== existing.modelProvider) changedFields.push("modelProvider");
+      if (updatedModelSelection !== existing.modelSelection) changedFields.push("modelSelection");
+      if (input.humanApprovalPolicy !== undefined) changedFields.push("humanApprovalPolicy");
+
+      // Record audit event
+      await repository.recordAuditEvent({
+        organizationId: input.organizationId,
+        workspaceId: reloaded.workspaceId,
+        agentId: reloaded.id,
+        actorUserId: input.updatedBy,
+        action: "agent.update_configuration",
+        operation: "update",
+        result: "success",
+        beforeSnapshot: {
+          configuration: redactSensitiveConfig(existing.configuration) as Record<string, unknown>,
+          modelProvider: existing.modelProvider,
+          modelSelection: existing.modelSelection,
+          humanApprovalPolicy: existing.humanApprovalPolicy,
+        },
+        afterSnapshot: {
+          configuration: redactSensitiveConfig(reloaded.configuration) as Record<string, unknown>,
+          modelProvider: reloaded.modelProvider,
+          modelSelection: reloaded.modelSelection,
+          humanApprovalPolicy: reloaded.humanApprovalPolicy,
+        },
+        changedFields,
+        metadata: { updatedBy: input.updatedBy },
+      });
+
+      return reloaded;
     });
   }
 
   async updateStatus(input: UpdateAgentStatusInput): Promise<AgentDefinitionWithTools> {
+    const repository = new AgentRepository(createRepositoryContext(this.database.db));
+    const existing = await repository.getByIdForOrganization(input.organizationId, input.agentId);
+    if (!existing) throw new ApiError(404, "NOT_FOUND", "Agent not found.");
+
+    // Enforce activation prerequisites if transitioning to 'active'
+    if (input.status === "active" && existing.templateId) {
+      const template = await new AgentTemplateRepository(
+        createRepositoryContext(this.database.db),
+      ).getById(existing.templateId);
+      if (template) {
+        validateActivationPrerequisites(template, existing.configuration);
+      }
+    }
+
     const enabled = input.status === "active" || input.status === "configured";
-    const agent = await new AgentRepository(createRepositoryContext(this.database.db)).updateStatus(
+    const agent = await repository.updateStatus(
       input.organizationId,
       input.agentId,
       input.status,
       enabled,
     );
     if (!agent) throw new ApiError(404, "NOT_FOUND", "Agent not found.");
+
+    // Record audit event
+    await repository.recordAuditEvent({
+      organizationId: input.organizationId,
+      workspaceId: agent.workspaceId,
+      agentId: agent.id,
+      actorUserId: input.updatedBy ?? null,
+      action: "agent.status_change",
+      operation: "update",
+      result: "success",
+      beforeSnapshot: { status: existing.status, enabled: existing.enabled },
+      afterSnapshot: { status: agent.status, enabled: agent.enabled },
+      changedFields: ["status", "enabled"],
+      metadata: { previousStatus: existing.status, targetStatus: input.status },
+    });
+
     return agent;
+  }
+
+  async getAgentAuditHistory(
+    organizationId: string,
+    agentId: string,
+    pagination: { page: number; pageSize: number },
+  ): Promise<{
+    items: AgentAuditEvent[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    // Verify agent exists and belongs to organization
+    await this.getAgent(organizationId, agentId);
+    const repository = new AgentRepository(createRepositoryContext(this.database.db));
+    return repository.getAuditHistory(organizationId, agentId, pagination);
+  }
+
+  async listProviders() {
+    const registry = AiProviderRegistry.getInstance();
+    const providers = registry.list();
+    const result = await Promise.all(
+      providers.map(async (provider) => {
+        const models = await provider.listModels();
+        return {
+          id: provider.id,
+          name: provider.name,
+          version: provider.version,
+          isDefault: provider.id === "mock",
+          models,
+        };
+      }),
+    );
+    return result;
   }
 
   private async ensureTemplates(): Promise<void> {
@@ -270,11 +569,11 @@ function createDefaultConfiguration(template: AgentTemplateRecord, userId: strin
     },
     inputs: [],
     outputs: [],
-    tools: [],
+    tools: template.capabilities.map((c) => c.key),
     knowledge: [],
     model: {
-      provider: "Platform Default",
-      modelSelection: "Auto",
+      provider: "mock",
+      modelSelection: "mock-gpt-4o",
       responseQuality: "Balanced",
       temperature: 0.7,
       tokenLimits: 2048,
@@ -290,7 +589,7 @@ function createDefaultConfiguration(template: AgentTemplateRecord, userId: strin
       email: false,
       onSuccess: false,
       onFailure: true,
-      requireApproval: false,
+      requireApproval: template.defaultApprovalPolicy?.required ?? false,
     },
     advanced: {
       executionLimits: 100,

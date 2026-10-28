@@ -52,4 +52,50 @@ describe("AgentService", () => {
     expect(org1Instances.length).toBe(1);
     expect(org2Instances.length).toBe(0);
   });
+
+  it("should support suspend, resume, and archive lifecycle transitions", async () => {
+    const orgId = "org-1";
+    const instance = await service.activateAgent(orgId, "test-agent-1");
+
+    // Suspend
+    const suspended = await service.suspendInstance(instance.id, orgId);
+    expect(suspended.status).toBe("suspended");
+    expect(suspended.enabled).toBe(false);
+
+    // Resume
+    const resumed = await service.resumeInstance(instance.id, orgId);
+    expect(resumed.status).toBe("active");
+    expect(resumed.enabled).toBe(true);
+
+    // Archive
+    const archived = await service.archiveInstance(instance.id, orgId);
+    expect(archived.status).toBe("archived");
+    expect(archived.enabled).toBe(false);
+  });
+
+  it("should filter instances by status and search term", async () => {
+    const orgId = "org-1";
+    const inst = await service.activateAgent(orgId, "test-agent-1");
+    await service.suspendInstance(inst.id, orgId);
+
+    const activeList = await service.getInstances(orgId, { status: "active" });
+    expect(activeList.length).toBe(0);
+
+    const suspendedList = await service.getInstances(orgId, { status: "suspended" });
+    expect(suspendedList.length).toBe(1);
+
+    const matchedSearch = await service.getInstances(orgId, { search: "Test" });
+    expect(matchedSearch.length).toBe(1);
+
+    const unmatchedSearch = await service.getInstances(orgId, { search: "NonExistent" });
+    expect(unmatchedSearch.length).toBe(0);
+  });
+
+  it("should return AI providers and model catalogs", async () => {
+    const providers = await service.getProviders("org-1");
+    expect(providers.length).toBeGreaterThan(0);
+    const mock = providers.find((p) => p.id === "mock");
+    expect(mock).toBeDefined();
+    expect(mock?.models.some((m) => m.id === "mock-gpt-4o")).toBe(true);
+  });
 });

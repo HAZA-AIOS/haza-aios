@@ -11,6 +11,14 @@
 
 ## [Unreleased]
 
+### Added
+- **Epic 11: AI Agent Platform Foundation**
+  - **Domain Model & Migration 0021 (`0021_agent_platform_foundation.sql`):** Added explicit `suspended` lifecycle state to `ai_agent_templates` and `ai_agent_definitions`, and added `default_approval_policy` and `human_approval_policy` JSON contracts for governance and oversight.
+  - **AI Provider Abstraction Layer:** Implemented provider-neutral contracts (`AiProvider`, `AiModel`, `ModelInvocationRequest`, `ModelInvocationResponse`, `AiUsageMetadata`), deterministic `MockAiProvider` with cancellation/timeout enforcement, and `AiProviderRegistry` singleton.
+  - **Security, Validation & Governance:** Server-side credential redaction (`redactSensitiveConfig`), prerequisite validation before agent activation (`validateActivationPrerequisites`), default-deny capability authorization (`assertCapabilityPermitted`), and human approval policy validation.
+  - **Agent Management API:** Tenant-isolated endpoints for listing templates and agents with pagination and filtering, reading details, updating configurations with credential redaction, updating lifecycle status (draft, active, suspended, paused, disabled, archived), fetching audit history, and querying available AI providers.
+  - **Frontend Workspace & Shared UI Primitives:** Updated `@haza-aios/ui` with enhanced `AgentStatus`, `HumanApprovalBadge`, `AgentAuditTimeline`, and `AgentEmptyState`. Added search, filter, and lifecycle management to `WorkspaceActiveAgentsPage` and comprehensive overview, model configuration, approval policy, and audit trail tabs to `AgentDetailsPage`.
+
 
 - **DB-18: Backup and Recovery Hardening**
   - Added guarded disposable MySQL backup/restore rehearsal and read-only foreign-key and tenant integrity checks.

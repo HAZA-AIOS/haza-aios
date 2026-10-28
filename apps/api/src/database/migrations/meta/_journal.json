@@ -155,6 +155,13 @@
       "when": 1792700000000,
       "tag": "0021_agent_platform_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1792800000000,
+      "tag": "0022_agent_registry_marketplace",
+      "breakpoints": true
     }
   ]
 }

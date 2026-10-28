@@ -171,6 +171,27 @@ export const aiAgentTemplates = mysqlTable(
     outputSchema: json("output_schema").$type<Record<string, unknown>>().notNull(),
     metadata: json("metadata").$type<Record<string, unknown>>().notNull(),
     defaultApprovalPolicy: json("default_approval_policy").$type<Record<string, unknown>>(),
+    publisherType: varchar("publisher_type", { length: 40 }).notNull().default("platform"),
+    publisherOrganizationId: char("publisher_organization_id", { length: 36 }).references(
+      () => organizations.id,
+      { onDelete: "set null", onUpdate: "cascade" },
+    ),
+    publisherUserId: char("publisher_user_id", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    visibility: varchar("visibility", { length: 40 }).notNull().default("platform"),
+    publishingStatus: varchar("publishing_status", { length: 40 }).notNull().default("published"),
+    summary: varchar("summary", { length: 300 }),
+    latestVersion: varchar("latest_version", { length: 80 }).notNull().default("1.0.0"),
+    minPlatformVersion: varchar("min_platform_version", { length: 40 }),
+    reviewNotes: text("review_notes"),
+    reviewedBy: char("reviewed_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    reviewedAt: timestamp("reviewed_at", { fsp: 3 }),
+    publishedAt: timestamp("published_at", { fsp: 3 }),
     createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
   },
@@ -179,6 +200,48 @@ export const aiAgentTemplates = mysqlTable(
     index("ai_agent_templates_status_idx").on(table.status),
     index("ai_agent_templates_industry_idx").on(table.industry),
     index("ai_agent_templates_category_idx").on(table.category),
+    index("ai_agent_templates_publishing_status_idx").on(table.publishingStatus),
+    index("ai_agent_templates_visibility_idx").on(table.visibility),
+    index("ai_agent_templates_publisher_org_idx").on(table.publisherOrganizationId),
+  ],
+);
+
+export const aiAgentTemplateVersions = mysqlTable(
+  "ai_agent_template_versions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    templateId: char("template_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentTemplates.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    version: varchar("version", { length: 80 }).notNull(),
+    name: varchar("name", { length: 180 }).notNull(),
+    description: varchar("description", { length: 1000 }).notNull(),
+    instructions: text("instructions"),
+    configurationSchema: json("configuration_schema").$type<Record<string, unknown>>().notNull(),
+    inputSchema: json("input_schema").$type<Record<string, unknown>>().notNull(),
+    outputSchema: json("output_schema").$type<Record<string, unknown>>().notNull(),
+    capabilities: json("capabilities").$type<Array<Record<string, unknown>>>().notNull(),
+    requiredPermissions: json("required_permissions").$type<string[]>().notNull(),
+    defaultApprovalPolicy: json("default_approval_policy").$type<Record<string, unknown>>(),
+    changelog: text("changelog"),
+    status: varchar("status", { length: 40 }).notNull().default("published"),
+    reviewNotes: text("review_notes"),
+    reviewedBy: char("reviewed_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    reviewedAt: timestamp("reviewed_at", { fsp: 3 }),
+    publishedAt: timestamp("published_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_agent_template_versions_template_version_unique").on(
+      table.templateId,
+      table.version,
+    ),
+    index("ai_agent_template_versions_template_idx").on(table.templateId),
+    index("ai_agent_template_versions_status_idx").on(table.status),
   ],
 );
 
@@ -196,6 +259,12 @@ export const aiAgentDefinitions = mysqlTable(
       onDelete: "restrict",
       onUpdate: "cascade",
     }),
+    templateVersionId: char("template_version_id", { length: 36 }).references(
+      () => aiAgentTemplateVersions.id,
+      { onDelete: "set null", onUpdate: "cascade" },
+    ),
+    installedVersion: varchar("installed_version", { length: 80 }).notNull().default("1.0.0"),
+    installedFromMarketplace: boolean("installed_from_marketplace").notNull().default(true),
     agentKey: varchar("agent_key", { length: 160 }).notNull(),
     name: varchar("name", { length: 180 }).notNull(),
     description: varchar("description", { length: 1000 }).notNull(),
@@ -222,6 +291,47 @@ export const aiAgentDefinitions = mysqlTable(
     index("ai_agent_definitions_org_status_idx").on(table.organizationId, table.status),
     index("ai_agent_definitions_workspace_status_idx").on(table.workspaceId, table.status),
     index("ai_agent_definitions_template_idx").on(table.templateId),
+  ],
+);
+
+export const aiAgentInstallations = mysqlTable(
+  "ai_agent_installations",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    templateId: char("template_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentTemplates.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    templateVersionId: char("template_version_id", { length: 36 }).references(
+      () => aiAgentTemplateVersions.id,
+      { onDelete: "set null", onUpdate: "cascade" },
+    ),
+    installedVersion: varchar("installed_version", { length: 80 }).notNull(),
+    agentDefinitionId: char("agent_definition_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    installedBy: char("installed_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    status: varchar("status", { length: 40 }).notNull().default("active"),
+    installedAt: timestamp("installed_at", { fsp: 3 }).notNull().defaultNow(),
+    uninstalledAt: timestamp("uninstalled_at", { fsp: 3 }),
+    uninstalledBy: char("uninstalled_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+  },
+  (table) => [
+    index("ai_agent_installations_org_status_idx").on(table.organizationId, table.status),
+    index("ai_agent_installations_workspace_idx").on(table.workspaceId),
+    index("ai_agent_installations_template_idx").on(table.templateId),
+    index("ai_agent_installations_agent_idx").on(table.agentDefinitionId),
   ],
 );
 

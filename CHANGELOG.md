@@ -1,3 +1,20 @@
+## [0.11.0-epic11] - 2026-10-28
+
+### Added
+- **Epic 11: AI Agent Platform Foundation & Full Production Release**
+  - **Domain Model & Migration 0021 (`0021_agent_platform_foundation.sql`):** Added explicit `suspended` lifecycle state to `ai_agent_templates` and `ai_agent_definitions`, and added `default_approval_policy` and `human_approval_policy` JSON contracts for governance and oversight. Applied cleanly via Railway pre-deploy hook.
+  - **AI Provider Abstraction Layer:** Implemented provider-neutral contracts (`AiProvider`, `AiModel`, `ModelInvocationRequest`, `ModelInvocationResponse`, `AiUsageMetadata`), deterministic `MockAiProvider` with cancellation/timeout enforcement, and `AiProviderRegistry` singleton.
+  - **Security, Validation & Governance:** Server-side credential redaction (`redactSensitiveConfig`), prerequisite validation before agent activation (`validateActivationPrerequisites`), default-deny capability authorization (`assertCapabilityPermitted`), and human approval policy validation.
+  - **Agent Management API:** Tenant-isolated endpoints for listing templates and agents with pagination and filtering, reading details, updating configurations with credential redaction, updating lifecycle status (draft, active, suspended, paused, disabled, archived), fetching audit history, and querying available AI providers.
+  - **Frontend Workspace & Shared UI Primitives:** Updated `@haza-aios/ui` with enhanced `AgentStatus`, `HumanApprovalBadge`, `AgentAuditTimeline`, and `AgentEmptyState`. Added search, filter, and lifecycle management to `WorkspaceActiveAgentsPage` and comprehensive overview, model configuration, approval policy, and audit trail tabs to `AgentDetailsPage`.
+  - **Production Deployment & Verification:**
+    - Railway API deployment `622020af-fc78-4265-bba1-aae1ae6a0329` (SUCCESS).
+    - Railway Web deployment `31475ae2-e2d9-40b7-bb10-5354e3e1e3ad` (SUCCESS).
+    - Fresh pre-release production logical backup `haza-aios-production-stage20-backup_20261028_092552.sql` (228,157 bytes, SHA-256: `F74ED0459165DAB26595EEDF3061B813E907732589D3DFAE06DFBE6112E8E534`).
+    - Isolated rehearsal on MySQL 8.4 (`haza_epic11_rehearsal`): Migration 0021 applied with idempotency verified, 207 FK checks and 7 tenant checks passed (0 failures).
+    - Full test suite: 91 test files, 621/621 tests passed (100%).
+    - Live production smoke tests: 17/17 end-to-end tests passed on `api.haza-aios.com` and `www.haza-aios.com`.
+
 ## [0.10.14-epic10n] - 2026-10-27
 
 ### Added
@@ -12,12 +29,6 @@
 ## [Unreleased]
 
 ### Added
-- **Epic 11: AI Agent Platform Foundation**
-  - **Domain Model & Migration 0021 (`0021_agent_platform_foundation.sql`):** Added explicit `suspended` lifecycle state to `ai_agent_templates` and `ai_agent_definitions`, and added `default_approval_policy` and `human_approval_policy` JSON contracts for governance and oversight.
-  - **AI Provider Abstraction Layer:** Implemented provider-neutral contracts (`AiProvider`, `AiModel`, `ModelInvocationRequest`, `ModelInvocationResponse`, `AiUsageMetadata`), deterministic `MockAiProvider` with cancellation/timeout enforcement, and `AiProviderRegistry` singleton.
-  - **Security, Validation & Governance:** Server-side credential redaction (`redactSensitiveConfig`), prerequisite validation before agent activation (`validateActivationPrerequisites`), default-deny capability authorization (`assertCapabilityPermitted`), and human approval policy validation.
-  - **Agent Management API:** Tenant-isolated endpoints for listing templates and agents with pagination and filtering, reading details, updating configurations with credential redaction, updating lifecycle status (draft, active, suspended, paused, disabled, archived), fetching audit history, and querying available AI providers.
-  - **Frontend Workspace & Shared UI Primitives:** Updated `@haza-aios/ui` with enhanced `AgentStatus`, `HumanApprovalBadge`, `AgentAuditTimeline`, and `AgentEmptyState`. Added search, filter, and lifecycle management to `WorkspaceActiveAgentsPage` and comprehensive overview, model configuration, approval policy, and audit trail tabs to `AgentDetailsPage`.
 
 
 - **DB-18: Backup and Recovery Hardening**

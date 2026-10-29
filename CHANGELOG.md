@@ -1,19 +1,20 @@
-## [Unreleased]
+## [0.12.0-epic12] - 2026-10-28
 
 ### Added
-- **Epic 12: AI Agent Registry & Marketplace**
+- **Epic 12: AI Agent Registry & Marketplace — Full Production Release**
   - **Database Migration 0022 (`0022_agent_registry_marketplace.sql`):**
     - Extended `ai_agent_templates` with publisher metadata (`publisher_type`, `publisher_organization_id`, `publisher_user_id`), distribution controls (`visibility`, `publishing_status`), summary, semver tracking (`latest_version`, `min_platform_version`), and review tracking (`review_notes`, `reviewed_by`, `reviewed_at`, `published_at`).
     - Created `ai_agent_template_versions` table for immutable semantic version history with unique constraint `(template_id, version)`, schemas, permissions, changelog, and review metadata.
     - Extended `ai_agent_definitions` with installation provenance tracking (`installed_version`, `template_version_id`, `installed_from_marketplace`).
     - Created `ai_agent_installations` table tracking multi-tenant runtime instance installations, upgrades, and safe uninstalls.
+    - Applied cleanly to production MySQL via Railway pre-deploy hook.
   - **Marketplace Backend API (`apps/api/src/modules/marketplace`):**
     - Catalog Discovery: Paginated search and filtering (`GET /organizations/:id/marketplace/catalog`) with tenant isolation and visibility scoping (`platform`, `private_organization`, `approved_shared`).
     - Profile & Versioning: Detailed agent profile lookup (`GET /organizations/:id/marketplace/agents/:id`), version resolution, and explicit semver validation.
     - Safe Installation & Upgrades: Idempotent installation (`POST /organizations/:id/marketplace/install`), installed agent discovery (`GET /organizations/:id/marketplace/installed`), explicit version upgrades (`POST /organizations/:id/marketplace/installed/:id/upgrade`), and decommission safeguards (`POST /organizations/:id/marketplace/installed/:id/uninstall`).
     - Publisher Workspace: Authoring dashboard (`GET/POST /organizations/:id/marketplace/publisher/templates`), version authoring (`POST .../versions`), and submission for platform review (`POST .../submit`).
     - Platform Governance: Dedicated administrative review desk (`GET /platform/marketplace/reviews`), review decision state machine (`POST .../decision` supporting `under_review`, `approved`, `published`, `rejected`, `deprecated`, `withdrawn`) guarded by `platform.admin` authorization.
-    - Aggregate Analytics: Real-time marketplace aggregates (`GET /organizations/:id/marketplace/analytics`) computing published agent counts, installations, active instances, industry breakdowns, and version adoption.
+    - Aggregate Analytics: Real-time marketplace aggregates (`GET /organizations/:id/marketplace/analytics`, `GET /platform/marketplace/analytics`) computing published agent counts, installations, active instances, industry breakdowns, and version adoption.
   - **Frontend Marketplace Experience (`apps/web` & `@haza-aios/ui`):**
     - Reusable UI primitives: `PublishingStatusBadge`, `VersionBadge`, `PublisherBadge`, `UpgradeNoticeBadge`, `MarketplaceMetricCard`, `CapabilityTagList`.
     - Discover Page (`WorkspaceDiscoverPage`): Enhanced catalog discovery with real-time API binding, badges, and install modal integration.
@@ -22,6 +23,13 @@
     - Installed Agents Desk (`InstalledAgentsPage`): Version status tracking, update available badges, upgrade modal, and safe decommission safeguards.
     - Publisher Workspace (`PublisherWorkspacePage`): Listing authoring, version management, submission workflow, and review feedback monitoring.
     - Platform Review Desk (`MarketplaceReviewPage`): Administrative governance desk with aggregate metrics, pending submissions list, and review decision modals.
+  - **Production Deployment & Verification:**
+    - GitHub PR: `#47` (Merged into `main` at `ba043a76b0e3212f2e2f778179b2e26df48b182d`).
+    - Fresh pre-release production logical backup: `haza-aios-production-stage20-backup_20261028_133901.sql` (230,408 bytes, SHA-256: `C854FAAF2DB6C42B0F4B102A95F0FCD97125090FAB44ED1147F980452A4020AD`).
+    - Isolated rehearsal on local MySQL (`haza_epic12_rehearsal`): Migration 0022 applied with idempotency verified, 220 FK checks and 7 tenant checks passed (0 failures), 8/8 integration test workflows passed.
+    - Railway API deployment ID: `556d7de2-f080-4e34-b557-f52709a3bca1` (SUCCESS).
+    - Railway Web deployment ID: `3bbd4282-9ef1-4c09-b028-11adfc7868da` (SUCCESS).
+    - Live production smoke tests: 31/31 end-to-end tests passed (100%) on `api.haza-aios.com` and `www.haza-aios.com`.
 
 ## [0.11.0-epic11] - 2026-10-28
 

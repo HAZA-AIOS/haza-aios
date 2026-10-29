@@ -7,8 +7,8 @@
 **Branch:** `feature/epic-12-agent-registry-marketplace`  
 **Target Branch:** `main`  
 **Baseline Release:** `v0.11.0-epic11` (`e613374`)  
-**Proposed Release Tag:** `v0.12.0-epic12`  
-**Status:** Completed & Fully Verified — Release Candidate Ready (Awaiting Production Authorization)  
+**Release Tag:** `v0.12.0-epic12`  
+**Status:** Completed, Deployed & Verified in Production — RELEASED  
 **Date:** October 28, 2026
 
 ---
@@ -234,3 +234,28 @@ Add to `packages/ui/src/components/agent-marketplace-primitives.tsx` and export 
 - **Phase 8:** Marketplace analytics service and metrics dashboard.
 - **Phase 9:** Automated unit and integration testing across API, DB, and UI; typecheck and build validation.
 - **Phase 10:** Documentation (`CHANGELOG.md`), logical git commits, push to `feature/epic-12-agent-registry-marketplace`, and GitHub PR.
+- **Phase 11 (Authorized Production Release):**
+  - Stage 1: Preflight checks, CI green, baseline confirmed.
+  - Stage 2: Fresh logical production backup (`haza-aios-production-stage20-backup_20261028_133901.sql`, SHA-256: `C854FAAF2DB6C42B0F4B102A95F0FCD97125090FAB44ED1147F980452A4020AD`).
+  - Stage 3: Isolated MySQL rehearsal (`haza_epic12_rehearsal`), migration 0022 idempotency, 220 FK checks, 7 tenant checks, 8 integration workflows.
+  - Stage 4: GitHub PR #47 merged into `main` at commit `ba043a76b0e3212f2e2f778179b2e26df48b182d`.
+  - Stage 5: Railway production deployment for `api` (`556d7de2-f080-4e34-b557-f52709a3bca1`) and `web` (`3bbd4282-9ef1-4c09-b028-11adfc7868da`), pre-deploy migration 0022 applied.
+  - Stage 6: Live production smoke tests: 31/31 passed (100%) on `api.haza-aios.com` and `www.haza-aios.com`.
+  - Stage 7: Release finalization, changelog documentation, release tag `v0.12.0-epic12`.
+
+---
+
+## 9. Production Release Execution Record
+
+| Milestone / Gate | Execution Detail | Result |
+| :--- | :--- | :--- |
+| **Pull Request** | GitHub PR #47 merged into `main` | **MERGED** (`ba043a76b0e3212f2e2f778179b2e26df48b182d`) |
+| **Fresh Backup** | `haza-aios-production-stage20-backup_20261028_133901.sql` (230,408 bytes) | **VERIFIED** (`C854FAAF2DB6C42B0F4B102A95F0FCD97125090FAB44ED1147F980452A4020AD`) |
+| **Migration Rehearsal** | Isolated local MySQL (`haza_epic12_rehearsal`), 0022 applied & idempotent | **PASS** (220 FK, 7 Tenant checks, 8/8 test workflows) |
+| **Railway Deployments** | API: `556d7de2-f080-4e34-b557-f52709a3bca1` \| Web: `3bbd4282-9ef1-4c09-b028-11adfc7868da` | **SUCCESS** |
+| **Database Migration** | `0022_agent_registry_marketplace.sql` applied in production | **APPLIED** (Journal index 22, DB ID 23) |
+| **Live Smoke Tests** | 31 comprehensive test scenarios against production API and Web | **31 / 31 PASS (100%)** |
+| **Synthetic Cleanup** | All test sessions, installations, and authored templates removed | **CLEANED** (0 leftover smoke records) |
+| **Release Tag** | Annotated git tag `v0.12.0-epic12` pushed to GitHub | **TAGGED** |
+| **Overall Status** | Full Epic 12 production release | **COMPLETE — PASS** |
+

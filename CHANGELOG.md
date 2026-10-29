@@ -1,3 +1,40 @@
+## [0.13.0-epic13] - 2026-10-29
+
+### Added
+- **Epic 13: AI Agent Configuration & Builder — Full Production Release**
+  - **Database Migration 0023 (`0023_agent_configuration_builder.sql`):**
+    - Extended `ai_agent_definitions` with `active_revision_number` (int, default 1) and `active_revision_id` (char(36), foreign key to active configuration snapshot).
+    - Created `ai_agent_configuration_revisions` table with immutable snapshot fields, audit attribution (`created_by`, `published_by`, `published_at`), validation status, changelog, and unique constraint on `(agent_id, revision_number)`.
+    - Added automated, idempotent SQL backfill migrating existing agent definitions to Revision 1 baseline.
+    - Verified with clean isolated rehearsal on Railway MySQL (`haza_epic13_rehearsal`).
+  - **Backend Builder Architecture & Services (`apps/api/src/modules/agents`):**
+    - `AgentBuilderRepository`: Complete persistence engine managing draft/published revisions, auto-incrementing revision numbers, audit events, and atomic transactions.
+    - `AgentBuilderValidation`: Comprehensive server-side rules engine validating identity format/length, provider and model context limits, temperature/token boundaries, high-risk capability approval requirements, secret scanning (blocking credential leakage), and tenant knowledge source isolation.
+    - `AgentBuilderService`: Full multi-tenant lifecycle service providing catalog options, new custom agent creation, draft saving, publishing with version promotion, agent duplication, semantic revision diffing, rollback/restore to draft, and safe mock preview simulation via `MockAiProvider` (guaranteeing zero external AI charges).
+    - 12 new authenticated REST API endpoints registered under `/api/v1/organizations/:organizationId/agents/builder/*`.
+  - **Frontend 10-Section Visual Builder (`apps/web` & `@haza-aios/ui`):**
+    - Dense dark enterprise UI primitives in `@haza-aios/ui/components/agent-builder-primitives.tsx`: `BuilderContainer`, `BuilderSidebar`, `BuilderNavItem`, `BuilderHeaderBar`, `ModelParameterSliders`, `InstructionTextarea`, `CapabilityCard`, `ToolDeclarationCard`, `ApprovalPolicySelector`, `ValidationSummaryAlert`, `MockPreviewConsole`, `RevisionHistoryList`.
+    - 10-Section Builder View (`AgentBuilderSections.tsx` & `AgentBuilderPage.tsx`):
+      1. Identity & Persona (name, key, description, category, tags, avatar).
+      2. Model & Settings (provider selection, model tier, temperature, token limits, timeouts).
+      3. Structured Instructions (role, objectives, boundary constraints, behavioral rules, prohibited actions, escalation protocols).
+      4. Capabilities (system-level capabilities, danger levels, approval requirements).
+      5. Tools & Permissions (utility declarations, permission mappings, risk tiers).
+      6. Knowledge Grounding (tenant knowledge base attachments, retrieval controls).
+      7. Human Approval & Governance (policy selector, threshold triggers, approver roles, escalation timeout).
+      8. Real-Time Validation Console (detailed section error and warning breakdown).
+      9. Safe Mock Preview Sandbox (interactive simulation testing without AI provider cost).
+      10. Version History & Diff Viewer (chronological audit log, side-by-side semantic diff comparison modal, one-click rollback/restore).
+    - Direct builder entry points added to `AgentDetailsPage` ("Visual Builder" button) and `WorkspaceDiscoverPage` ("Build Custom Agent" banner).
+  - **Production Deployment & Verification:**
+    - GitHub PR: `#48` (Merged into `main` at commit `60c3ac2`).
+    - Fresh pre-release production logical backup: `haza-aios-production-stage20-backup_20261029_112341.sql` (247,856 bytes, SHA-256: `7053471C28B5919DBA0F8BCBF56C384CB936E11D40BB25FB0C76B21930F10EE3`).
+    - Isolated migration rehearsal on Railway MySQL (`haza_epic13_rehearsal`): 100% verified all 13 migration statements, column additions, and foreign-key/unique constraints.
+    - Railway API deployment: `Online` at `https://api.haza-aios.com`.
+    - Railway Web deployment: `Online` at `https://www.haza-aios.com`.
+    - Quality gates: 43/43 API test suites (335 tests) passed (100%), 50/50 Web test suites (289 tests) passed (100%).
+    - Live production smoke tests: 17/17 end-to-end tests passed (100%) covering landing page, API readiness, auth resolution, catalog options, new agent creation, context loading, validation rules, secret blocking, mock preview, publishing v1.0.0, draft v1.1.0, publishing v1.1.0, history, visual diffing, rollback/restore, duplication, and cross-tenant security isolation.
+
 ## [0.12.0-epic12] - 2026-10-28
 
 ### Added

@@ -265,6 +265,8 @@ export const aiAgentDefinitions = mysqlTable(
     ),
     installedVersion: varchar("installed_version", { length: 80 }).notNull().default("1.0.0"),
     installedFromMarketplace: boolean("installed_from_marketplace").notNull().default(true),
+    activeRevisionNumber: int("active_revision_number").notNull().default(1),
+    activeRevisionId: char("active_revision_id", { length: 36 }),
     agentKey: varchar("agent_key", { length: 160 }).notNull(),
     name: varchar("name", { length: 180 }).notNull(),
     description: varchar("description", { length: 1000 }).notNull(),
@@ -332,6 +334,51 @@ export const aiAgentInstallations = mysqlTable(
     index("ai_agent_installations_workspace_idx").on(table.workspaceId),
     index("ai_agent_installations_template_idx").on(table.templateId),
     index("ai_agent_installations_agent_idx").on(table.agentDefinitionId),
+  ],
+);
+
+export const aiAgentConfigurationRevisions = mysqlTable(
+  "ai_agent_configuration_revisions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    revisionNumber: int("revision_number").notNull(),
+    version: varchar("version", { length: 80 }).notNull().default("1.0.0"),
+    status: varchar("status", { length: 40 }).notNull().default("draft"),
+    configuration: json("configuration").$type<Record<string, unknown>>().notNull(),
+    validationStatus: varchar("validation_status", { length: 40 }).notNull().default("valid"),
+    validationErrors: json("validation_errors").$type<Array<Record<string, unknown>>>(),
+    changelog: text("changelog"),
+    createdBy: char("created_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    publishedBy: char("published_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    publishedAt: timestamp("published_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_agent_config_revisions_agent_revision_unique").on(
+      table.agentId,
+      table.revisionNumber,
+    ),
+    index("ai_agent_config_revisions_org_agent_status_idx").on(
+      table.organizationId,
+      table.agentId,
+      table.status,
+    ),
+    index("ai_agent_config_revisions_agent_idx").on(table.agentId),
   ],
 );
 
@@ -2898,10 +2945,13 @@ export const schema = {
   academicTerms,
   aiAgentConversations,
   aiAgentDefinitions,
+  aiAgentConfigurationRevisions,
+  aiAgentTemplates,
+  aiAgentTemplateVersions,
+  aiAgentInstallations,
   aiAgentMemories,
   aiAgentMessages,
   aiAgentRuns,
-  aiAgentTemplates,
   aiAgentToolAssignments,
   attendanceRecords,
   attendanceSessions,

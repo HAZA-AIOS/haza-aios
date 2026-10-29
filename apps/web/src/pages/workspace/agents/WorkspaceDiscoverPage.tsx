@@ -126,6 +126,14 @@ export const WorkspaceDiscoverPage: React.FC = () => {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
+              onClick={() => navigate("/workspace/agents/builder/new")}
+              size="sm"
+              className="gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
+            >
+              <Plus className="h-4 w-4" />
+              Build Custom Agent
+            </Button>
+            <Button
               onClick={() => navigate("/workspace/marketplace/installed")}
               variant="outline"
               size="sm"

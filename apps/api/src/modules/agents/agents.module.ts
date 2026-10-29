@@ -4,12 +4,18 @@ import type { BackendModule } from "../module-registry.js";
 import { AuthService } from "../auth/services/auth.service.js";
 import { assertUuid, createTenantContext } from "../platform/tenant-context.js";
 import type {
+  AgentApprovalRequestRecord,
+  AgentApprovalStatus,
   AgentAuditEvent,
   AgentConversationRecord,
   AgentDefinitionWithTools,
   AgentMemoryRecord,
   AgentMessageRecord,
+  AgentRunAttemptRecord,
+  AgentRunEventRecord,
   AgentRunRecord,
+  AgentRunStatus,
+  AgentRuntimeUsageRecord,
   AgentTemplateRecord,
 } from "./agent.types.js";
 import { AgentService } from "./services/agent.service.js";
@@ -246,28 +252,6 @@ export const agentsModule: BackendModule = {
           readPagination(url),
         );
         sendJson(response, 200, { runs: runs.map(toRunDto) });
-      },
-    });
-
-    router.register({
-      method: "POST",
-      path: "/api/v1/organizations/:organizationId/agents/:agentId/runs",
-      async handler(request, response, { database, routeParams }) {
-        const tenant = createTenantContext(routeParams.organizationId);
-        assertUuid(routeParams.agentId, "agentId");
-        const auth = await new AuthService(database).requireOrganizationPermission(
-          request,
-          tenant.organizationId,
-          "agent.read",
-        );
-        const result = await new AgentRuntimeService(database).createRun(
-          validateCreateRun(tenant.organizationId, routeParams.agentId, request.body, auth.user.id),
-        );
-        sendJson(response, 201, {
-          run: toRunDto(result.run),
-          conversation: toConversationDto(result.conversation),
-          userMessage: toMessageDto(result.userMessage),
-        });
       },
     });
 
@@ -837,6 +821,418 @@ export const agentsModule: BackendModule = {
         sendJson(response, 200, { preview: previewResult });
       },
     });
+
+    // --- Epic 14: AI Agent Runtime & Execution Engine Endpoints ---
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/runs",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.agentId, "agentId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const validated = validateCreateRun(
+          tenant.organizationId,
+          routeParams.agentId,
+          request.body,
+          auth.user.id,
+        );
+        const service = new AgentRuntimeService(database);
+        const created = await service.createRun(validated);
+
+        const autoExecute = url.searchParams.get("autoExecute") === "true";
+        if (autoExecute) {
+          await service.claimAndExecute("inline-worker", tenant.organizationId);
+        }
+
+        const latest = await service.getRun(tenant.organizationId, created.run.id, auth.user.id);
+        sendJson(response, 201, {
+          run: toRunDto(latest),
+          conversation: toConversationDto(created.conversation),
+          userMessage: toMessageDto(created.userMessage),
+        });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/runs",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.agentId, "agentId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const pagination = readPagination(url);
+        const statusParam = url.searchParams.get("status") as AgentRunStatus | null;
+        const runs = await new AgentRuntimeService(database).listRuns(
+          tenant.organizationId,
+          routeParams.agentId,
+          undefined,
+          pagination,
+          statusParam ?? undefined,
+        );
+        sendJson(response, 200, { runs: runs.map(toRunDto) });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/runs/:runId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.runId, "runId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const run = await new AgentRuntimeService(database).getRun(
+          tenant.organizationId,
+          routeParams.runId,
+        );
+        sendJson(response, 200, { run: toRunDto(run) });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/runs/:runId/cancel",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.runId, "runId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const reason = typeof body.reason === "string" ? body.reason : undefined;
+        const run = await new AgentRuntimeService(database).cancelRun(
+          tenant.organizationId,
+          routeParams.runId,
+          auth.user.id,
+          reason,
+        );
+        sendJson(response, 200, { run: toRunDto(run) });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/runs/:runId/retry",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.runId, "runId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentRuntimeService(database);
+        await service.retryRun(tenant.organizationId, routeParams.runId, auth.user.id);
+        await service.claimAndExecute("inline-worker", tenant.organizationId);
+        const latest = await service.getRun(tenant.organizationId, routeParams.runId);
+        sendJson(response, 200, { run: toRunDto(latest) });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/runs/:runId/events",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.runId, "runId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const events = await new AgentRuntimeService(database).listRunEvents(
+          tenant.organizationId,
+          routeParams.runId,
+        );
+        sendJson(response, 200, { events: events.map(toEventDto) });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/runs/:runId/attempts",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.runId, "runId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const attempts = await new AgentRuntimeService(database).listRunAttempts(
+          tenant.organizationId,
+          routeParams.runId,
+        );
+        sendJson(response, 200, { attempts: attempts.map(toAttemptDto) });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/runs/:runId/usage",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.runId, "runId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const usage = await new AgentRuntimeService(database).getRunUsage(
+          tenant.organizationId,
+          routeParams.runId,
+        );
+        sendJson(response, 200, { usage: usage.map(toUsageDto) });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/approvals",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const statusParam = url.searchParams.get("status") as AgentApprovalStatus | null;
+        const pagination = readPagination(url);
+        const approvals = await new AgentRuntimeService(database).listApprovalRequests(
+          tenant.organizationId,
+          statusParam ?? undefined,
+          pagination,
+        );
+        sendJson(response, 200, { approvals: approvals.map(toApprovalDto) });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/approvals/:approvalId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.approvalId, "approvalId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const approval = await new AgentRuntimeService(database).getApprovalRequest(
+          tenant.organizationId,
+          routeParams.approvalId,
+        );
+        sendJson(response, 200, { approval: toApprovalDto(approval) });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/approvals/:approvalId/approve",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.approvalId, "approvalId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const reason = typeof body.reason === "string" ? body.reason : undefined;
+        const service = new AgentRuntimeService(database);
+        const result = await service.approveApprovalRequest(
+          tenant.organizationId,
+          routeParams.approvalId,
+          auth.user.id,
+          reason,
+        );
+        await service.claimAndExecute("inline-worker", tenant.organizationId);
+        sendJson(response, 200, {
+          request: toApprovalDto(result.request),
+          decision: {
+            id: result.decision.id,
+            decision: result.decision.decision,
+            reason: result.decision.reason,
+            decidedBy: result.decision.decidedBy,
+            decidedAt: result.decision.decidedAt.toISOString(),
+          },
+        });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/approvals/:approvalId/reject",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.approvalId, "approvalId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const reason = typeof body.reason === "string" ? body.reason : undefined;
+        const result = await new AgentRuntimeService(database).rejectApprovalRequest(
+          tenant.organizationId,
+          routeParams.approvalId,
+          auth.user.id,
+          reason,
+        );
+        sendJson(response, 200, {
+          request: toApprovalDto(result.request),
+          decision: {
+            id: result.decision.id,
+            decision: result.decision.decision,
+            reason: result.decision.reason,
+            decidedBy: result.decision.decidedBy,
+            decidedAt: result.decision.decidedAt.toISOString(),
+          },
+        });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/runtime/monitoring",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const metrics = await new AgentRuntimeService(database).getMonitoringMetrics(
+          tenant.organizationId,
+        );
+        sendJson(response, 200, { metrics });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/runtime/worker/tick",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const workerId = typeof body.workerId === "string" ? body.workerId : "manual-worker-tick";
+        const result = await new AgentRuntimeService(database).claimAndExecute(
+          workerId,
+          tenant.organizationId,
+        );
+        sendJson(response, 200, {
+          executed: result.executed,
+          run: result.run ? toRunDto(result.run) : null,
+          attempt: result.attempt ? toAttemptDto(result.attempt) : null,
+        });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/conversations",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.agentId, "agentId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const pagination = readPagination(url);
+        const conversations = await new AgentRuntimeService(database).listConversations(
+          tenant.organizationId,
+          auth.user.id,
+          pagination,
+          routeParams.agentId,
+        );
+        sendJson(response, 200, { conversations: conversations.map(toConversationDto) });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/conversations",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.agentId, "agentId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const validated = validateCreateConversation(
+          tenant.organizationId,
+          { ...(request.body ?? {}), agentId: routeParams.agentId },
+          auth.user.id,
+        );
+        const created = await new AgentRuntimeService(database).createConversation(validated);
+        sendJson(response, 201, { conversation: toConversationDto(created) });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/conversations/:conversationId/messages",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.conversationId, "conversationId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const pagination = readPagination(url);
+        const messages = await new AgentRuntimeService(database).listMessages(
+          tenant.organizationId,
+          routeParams.conversationId,
+          auth.user.id,
+          pagination,
+        );
+        sendJson(response, 200, { messages: messages.map(toMessageDto) });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/conversations/:conversationId/messages",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.conversationId, "conversationId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const validated = validateCreateMessage(
+          tenant.organizationId,
+          routeParams.conversationId,
+          request.body,
+          auth.user.id,
+        );
+        const created = await new AgentRuntimeService(database).createMessage(validated);
+        sendJson(response, 201, { message: toMessageDto(created) });
+      },
+    });
   },
 };
 
@@ -907,6 +1303,7 @@ function toRunDto(run: AgentRunRecord) {
     organizationId: run.organizationId,
     workspaceId: run.workspaceId,
     agentInstanceId: run.agentId,
+    agentId: run.agentId,
     conversationId: run.conversationId,
     status: run.status,
     executionMode: run.executionMode,
@@ -916,13 +1313,100 @@ function toRunDto(run: AgentRunRecord) {
     errorCode: run.errorCode ?? undefined,
     provider: run.provider,
     model: run.model,
+    configurationRevisionId: run.configurationRevisionId ?? null,
+    attemptCount: run.attemptCount,
+    maxAttempts: run.maxAttempts,
+    priority: run.priority,
+    totalInputTokens: run.totalInputTokens,
+    totalOutputTokens: run.totalOutputTokens,
+    totalCostMicros: run.totalCostMicros,
+    cancelledBy: run.cancelledBy ?? null,
+    cancelledAt: run.cancelledAt?.toISOString(),
+    cancellationReason: run.cancellationReason ?? null,
     startedAt: run.startedAt.toISOString(),
     completedAt: run.completedAt?.toISOString(),
     duration: run.durationMs ?? undefined,
+    durationMs: run.durationMs ?? undefined,
     requestedBy: run.requestedBy,
     metadata: run.metadata,
     createdAt: run.createdAt.toISOString(),
     updatedAt: run.updatedAt.toISOString(),
+  };
+}
+
+function toAttemptDto(attempt: AgentRunAttemptRecord) {
+  return {
+    id: attempt.id,
+    organizationId: attempt.organizationId,
+    workspaceId: attempt.workspaceId,
+    runId: attempt.runId,
+    attemptNumber: attempt.attemptNumber,
+    status: attempt.status,
+    workerId: attempt.workerId,
+    leaseToken: attempt.leaseToken,
+    startedAt: attempt.startedAt.toISOString(),
+    completedAt: attempt.completedAt?.toISOString(),
+    durationMs: attempt.durationMs,
+    errorCode: attempt.errorCode,
+    errorMessage: attempt.errorMessage,
+    errorDetails: attempt.errorDetails,
+    inputTokens: attempt.inputTokens,
+    outputTokens: attempt.outputTokens,
+    metadata: attempt.metadata,
+    createdAt: attempt.createdAt.toISOString(),
+    updatedAt: attempt.updatedAt.toISOString(),
+  };
+}
+
+function toEventDto(event: AgentRunEventRecord) {
+  return {
+    id: event.id,
+    organizationId: event.organizationId,
+    workspaceId: event.workspaceId,
+    runId: event.runId,
+    attemptId: event.attemptId,
+    eventType: event.eventType,
+    payload: event.payload,
+    createdAt: event.createdAt.toISOString(),
+  };
+}
+
+function toApprovalDto(approval: AgentApprovalRequestRecord) {
+  return {
+    id: approval.id,
+    organizationId: approval.organizationId,
+    workspaceId: approval.workspaceId,
+    runId: approval.runId,
+    attemptId: approval.attemptId,
+    actionName: approval.actionName,
+    actionType: approval.actionType,
+    actionPayload: approval.actionPayload,
+    riskLevel: approval.riskLevel,
+    policy: approval.policy,
+    requiredRoles: approval.requiredRoles,
+    status: approval.status,
+    requestedBy: approval.requestedBy,
+    expiresAt: approval.expiresAt?.toISOString(),
+    createdAt: approval.createdAt.toISOString(),
+    updatedAt: approval.updatedAt.toISOString(),
+  };
+}
+
+function toUsageDto(usage: AgentRuntimeUsageRecord) {
+  return {
+    id: usage.id,
+    organizationId: usage.organizationId,
+    workspaceId: usage.workspaceId,
+    runId: usage.runId,
+    agentId: usage.agentId,
+    provider: usage.provider,
+    model: usage.model,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    totalTokens: usage.totalTokens,
+    durationMs: usage.durationMs,
+    costMicros: usage.costMicros,
+    createdAt: usage.createdAt.toISOString(),
   };
 }
 

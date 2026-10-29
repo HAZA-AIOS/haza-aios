@@ -1,3 +1,38 @@
+## [0.14.0-epic14] - 2026-10-29
+
+### Added
+- **Epic 14: AI Agent Runtime & Execution Engine — Full Production Release**
+  - **Database Migration 0024 (`0024_agent_runtime_execution_engine.sql`):**
+    - Extended MySQL enum column `agent_run_status` on `ai_agent_runs` to support comprehensive lifecycle states: `queued`, `running`, `waiting`, `awaiting_approval`, `completed`, `failed`, `cancelled`, `rejected`.
+    - Added lease fencing, concurrency, worker allocation, token tracking, and cancellation attribution columns to `ai_agent_runs`: `priority`, `execution_mode`, `worker_id`, `lease_token`, `lease_expires_at`, `attempt_count`, `total_input_tokens`, `total_output_tokens`, `total_cost_micros`, `cancellation_reason`, `cancelled_by`, `cancelled_at`.
+    - Created `ai_agent_run_attempts` table tracking attempt lineage, worker leases, duration ms, and error classification.
+    - Created `ai_agent_run_events` table persisting detailed timeline events (`run_created`, `run_queued`, `worker_claimed`, `run_started`, `model_invoked`, `model_responded`, `approval_requested`, `approval_approved`, `approval_rejected`, `run_resumed`, `run_cancelled`, `run_completed`, `run_failed`).
+    - Created `ai_agent_approval_requests` and `ai_agent_approval_decisions` tables for human-in-the-loop authorization with policy parameters, expiration, and separation of duties enforcement.
+    - Created `ai_agent_runtime_usage` table for per-invocation token and micro-cost accounting across providers and models.
+    - Added high-performance indexes on tenant, agent, run, status, priority, and lease expiration timestamps.
+  - **Backend Runtime Execution Architecture & Services (`apps/api/src/modules/agents`):**
+    - `AgentRuntimeRepository`: Complete persistence engine managing durable run claims with UUID lease fencing, attempt tracking, event timeline emission, human approval resolution, usage logging, and real-time monitoring aggregation.
+    - `AgentRuntimeService`: Robust execution orchestration handling run creation with revision snapshot pinning, inline & background worker execution, state machine validation, cancel, manual retry, separation of duties policy enforcement, and operational metrics calculation.
+    - `ApiRouter`: Enhanced route registration ordering static segments before parameterized segments (`:param`), completely eliminating route shadowing.
+    - 14 authenticated REST API endpoints registered under `/api/v1/organizations/:organizationId/agents/*` (`/runs`, `/runs/:runId`, `/runs/:runId/cancel`, `/runs/:runId/retry`, `/runs/:runId/events`, `/runs/:runId/attempts`, `/runs/:runId/usage`, `/approvals`, `/approvals/:approvalId`, `/approvals/:approvalId/approve`, `/approvals/:approvalId/reject`, `/runtime/monitoring`, `/runtime/worker/tick`).
+  - **Frontend Shared Primitives (`packages/ui`):**
+    - Implemented enterprise UI primitives in `@haza-aios/ui/components/agent-runtime-primitives.tsx`: `AgentRunStatusBadge`, `AgentExecutionTimeline`, `AgentRunMetricCard`, `AgentApprovalCard`, `AgentAttemptHistory`, `AgentExecutionResultViewer`, `AgentRuntimeEmptyState`.
+  - **Frontend Runtime Suite & Views (`apps/web`):**
+    - `AgentRuntimeService`: Fully typed client library covering all runtime API endpoints.
+    - 5 dedicated runtime views:
+      1. `AgentExecutionConsolePage.tsx`: Agent header, dual text/JSON input modes, execution trigger, active run status, live output viewer, and timeline.
+      2. `AgentRunHistoryPage.tsx`: Status filters, execution mode, attempts, duration, tokens, timestamps, cancel/retry actions.
+      3. `AgentRunDetailsPage.tsx`: Granular telemetry view with metric tiles, input/output inspection, attempt history, timeline, and usage cost breakdown.
+      4. `AgentApprovalInboxPage.tsx`: Human-in-the-loop authorization desk with risk badges, payload inspector, reason capture, and separation of duties alert banner preventing self-approval.
+      5. `AgentRuntimeMonitoringPage.tsx`: Live telemetry dashboard tracking queue depth, active running concurrency, approval backlog, 24h success rate, average latency, token volume, cost, and manual worker dispatch.
+    - Registered routes in `apps/web/src/App.tsx`:
+      - `/workspace/agents/:id/execute` & `/workspace/agents/:id/run`
+      - `/workspace/agents/:id/runs` & `/workspace/agents/:id/history`
+      - `/workspace/agents/runs`
+      - `/workspace/agents/runs/:runId`
+      - `/workspace/agents/approvals`
+      - `/workspace/agents/runtime/monitoring` & `/workspace/agents/monitoring`
+
 ## [0.13.0-epic13] - 2026-10-29
 
 ### Added

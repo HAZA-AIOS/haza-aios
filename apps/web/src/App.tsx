@@ -20,7 +20,16 @@ import { WorkspaceMembersPage } from "./pages/workspace/WorkspaceMembersPage";
 import { WorkspaceModulesPage } from "./pages/workspace/WorkspaceModulesPage";
 import { WorkspaceSettingsPage } from "./pages/workspace/WorkspaceSettingsPage";
 import { WorkspaceDomainsPage } from "./pages/workspace/WorkspaceDomainsPage";
-import { WorkspaceDiscoverPage, WorkspaceActiveAgentsPage, AgentDetailsPage } from "./pages/workspace/agents";
+import {
+  WorkspaceDiscoverPage,
+  WorkspaceActiveAgentsPage,
+  AgentDetailsPage,
+  AgentExecutionConsolePage,
+  AgentRunHistoryPage,
+  AgentRunDetailsPage,
+  AgentApprovalInboxPage,
+  AgentRuntimeMonitoringPage,
+} from "./pages/workspace/agents";
 import { MarketplaceAgentProfilePage } from "./pages/workspace/marketplace/MarketplaceAgentProfilePage";
 import { InstalledAgentsPage } from "./pages/workspace/marketplace/InstalledAgentsPage";
 import { PublisherWorkspacePage } from "./pages/workspace/marketplace/PublisherWorkspacePage";
@@ -644,19 +653,54 @@ function App() {
           </WorkspaceGuard>
         </ProtectedRoute>
       );
+    case "/workspace/agents/approvals":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AgentApprovalInboxPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/agents/runtime/monitoring":
+    case "/workspace/agents/monitoring":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AgentRuntimeMonitoringPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/agents/runs":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AgentRunHistoryPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case (pathname.match(/^\/workspace\/agents\/runs\/[^/]+$/) || {}).input:
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AgentRunDetailsPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case (pathname.match(/^\/workspace\/agents\/[^/]+\/execute$/) || {}).input:
     case (pathname.match(/^\/workspace\/agents\/[^/]+\/run$/) || {}).input:
       return (
         <ProtectedRoute>
           <WorkspaceGuard>
-            <AgentRunPage />
+            <AgentExecutionConsolePage />
           </WorkspaceGuard>
         </ProtectedRoute>
       );
+    case (pathname.match(/^\/workspace\/agents\/[^/]+\/runs$/) || {}).input:
     case (pathname.match(/^\/workspace\/agents\/[^/]+\/history$/) || {}).input:
       return (
         <ProtectedRoute>
           <WorkspaceGuard>
-            <AgentRunHistory />
+            <AgentRunHistoryPage />
           </WorkspaceGuard>
         </ProtectedRoute>
       );

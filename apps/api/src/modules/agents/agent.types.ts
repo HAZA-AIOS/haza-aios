@@ -152,10 +152,24 @@ export type AgentAuditEvent = {
 export type AgentRunStatus =
   | "queued"
   | "running"
+  | "awaiting_approval"
   | "waiting"
+  | "rejected"
   | "completed"
   | "failed"
   | "cancelled";
+
+export const RUNTIME_STATE_TRANSITIONS: Record<AgentRunStatus, AgentRunStatus[]> = {
+  queued: ["running", "waiting", "completed", "failed", "cancelled"],
+  running: ["awaiting_approval", "waiting", "completed", "failed", "cancelled"],
+  awaiting_approval: ["queued", "rejected", "cancelled"],
+  waiting: ["queued", "running", "rejected", "completed", "failed", "cancelled"],
+  rejected: [],
+  completed: [],
+  failed: ["queued"],
+  cancelled: [],
+};
+
 export type AgentConversationStatus = "active" | "archived" | "deleted";
 export type AgentMessageRole = "user" | "assistant" | "system" | "tool";
 
@@ -189,6 +203,20 @@ export type AgentRunRecord = {
   errorCode: string | null;
   safeErrorMessage: string | null;
   metadata: JsonRecord;
+  configurationRevisionId?: string | null;
+  configurationSnapshot?: JsonRecord | null;
+  attemptCount: number;
+  maxAttempts: number;
+  leaseToken?: string | null;
+  leaseExpiresAt?: Date | null;
+  workerId?: string | null;
+  priority: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCostMicros: number;
+  cancelledBy?: string | null;
+  cancelledAt?: Date | null;
+  cancellationReason?: string | null;
   startedAt: Date;
   completedAt: Date | null;
   durationMs: number | null;
@@ -491,3 +519,192 @@ export type RevisionDiffItem = {
   after: unknown;
   action: "added" | "removed" | "modified";
 };
+
+// --- Epic 14 Runtime & Execution Engine Domain Models ---
+
+export type AgentRunAttemptStatus =
+  | "running"
+  | "awaiting_approval"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type AgentRunAttemptRecord = {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  runId: string;
+  attemptNumber: number;
+  status: AgentRunAttemptStatus;
+  workerId: string;
+  leaseToken: string;
+  startedAt: Date;
+  completedAt: Date | null;
+  durationMs: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  errorDetails: JsonRecord | null;
+  inputTokens: number;
+  outputTokens: number;
+  metadata: JsonRecord;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type AgentRunEventType =
+  | "run_created"
+  | "run_queued"
+  | "worker_claimed"
+  | "run_started"
+  | "model_invoked"
+  | "model_responded"
+  | "tool_executed"
+  | "approval_requested"
+  | "approval_approved"
+  | "approval_rejected"
+  | "run_resumed"
+  | "run_completed"
+  | "run_failed"
+  | "run_cancelled"
+  | "retry_scheduled"
+  | "lease_recovered";
+
+export type AgentRunEventRecord = {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  runId: string;
+  attemptId: string | null;
+  eventType: AgentRunEventType;
+  payload: JsonRecord;
+  createdAt: Date;
+};
+
+export type AgentApprovalStatus = "pending" | "approved" | "rejected" | "expired";
+
+export type AgentApprovalRequestRecord = {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  runId: string;
+  attemptId: string | null;
+  actionName: string;
+  actionType: string;
+  actionPayload: JsonRecord;
+  riskLevel: "low" | "medium" | "high";
+  policy: string;
+  requiredRoles: string[];
+  status: AgentApprovalStatus;
+  requestedBy: string;
+  expiresAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type AgentApprovalDecisionRecord = {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  approvalRequestId: string;
+  decision: "approved" | "rejected";
+  reason: string | null;
+  decidedBy: string;
+  decidedAt: Date;
+  createdAt: Date;
+};
+
+export type AgentRuntimeUsageRecord = {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  runId: string;
+  agentId: string;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  durationMs: number;
+  costMicros: number;
+  createdAt: Date;
+};
+
+export type AgentExecutionContext = {
+  organizationId: string;
+  workspaceId: string;
+  agentId: string;
+  runId: string;
+  attemptId: string;
+  actorUserId: string;
+  configurationRevisionId: string;
+  configuration: AgentBuilderFullConfig;
+  abortSignal: AbortSignal;
+};
+
+export type AgentRunInput = {
+  organizationId: string;
+  workspaceId: string;
+  agentId: string;
+  userId: string;
+  conversationId?: string;
+  input: JsonRecord;
+  executionMode?: "manual" | "scheduled" | "api" | "workflow";
+  idempotencyKey?: string;
+  metadata?: JsonRecord;
+  priority?: number;
+};
+
+export type AgentRunOutput = {
+  status: "completed" | "failed" | "awaiting_approval" | "cancelled";
+  output?: JsonRecord;
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+  approvalRequestId?: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    durationMs: number;
+    costMicros: number;
+  };
+};
+
+export type AgentRuntimePolicy = {
+  maxConcurrentRunsPerOrg: number;
+  defaultLeaseDurationSeconds: number;
+  heartbeatIntervalSeconds: number;
+  maxAttempts: number;
+  inputSizeLimitBytes: number;
+  outputSizeLimitBytes: number;
+  executionTimeoutSeconds: number;
+};
+
+export class AgentRuntimeError extends Error {
+  readonly code: string;
+  readonly retryable: boolean;
+  readonly details?: unknown;
+
+  constructor(code: string, message: string, retryable = false, details?: unknown) {
+    super(message);
+    this.name = "AgentRuntimeError";
+    this.code = code;
+    this.retryable = retryable;
+    this.details = details;
+  }
+}
+
+export type RuntimeMonitoringMetrics = {
+  queueDepth: number;
+  activeRunningRuns: number;
+  awaitingApprovalCount: number;
+  completedLast24h: number;
+  failedLast24h: number;
+  averageLatencyMs: number;
+  totalTokensLast24h: number;
+  totalCostMicrosLast24h: number;
+  successRatePercentage: number;
+};
+

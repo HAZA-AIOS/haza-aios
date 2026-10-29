@@ -78,6 +78,8 @@ export type AgentDefinitionRecord = {
   installedVersion?: string;
   templateVersionId?: string | null;
   installedFromMarketplace?: boolean;
+  activeRevisionNumber?: number;
+  activeRevisionId?: string | null;
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -317,4 +319,175 @@ export type AgentMemoryQuery = PaginationInput & {
   scope?: AgentMemoryScope;
   status?: AgentMemoryStatus;
   conversationId?: string;
+};
+
+export type AgentRevisionStatus = "draft" | "published" | "archived";
+export type AgentRevisionValidationStatus = "valid" | "invalid" | "warning";
+
+export type AgentValidationError = {
+  field: string;
+  message: string;
+  severity: "error" | "warning";
+  section?: string;
+};
+
+export type AgentConfigurationRevisionRecord = {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  agentId: string;
+  revisionNumber: number;
+  version: string;
+  status: AgentRevisionStatus;
+  configuration: JsonRecord;
+  validationStatus: AgentRevisionValidationStatus;
+  validationErrors?: AgentValidationError[] | null;
+  changelog: string | null;
+  createdBy: string;
+  publishedBy: string | null;
+  publishedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type AgentBuilderIdentity = {
+  name: string;
+  agentKey: string;
+  description: string;
+  category?: string;
+  industry?: string;
+  icon?: string;
+  tags?: string[];
+};
+
+export type AgentBuilderModel = {
+  provider: string;
+  modelSelection: string;
+  temperature: number;
+  maxTokens: number;
+  timeoutSeconds: number;
+  contextWindow?: number;
+  responseQuality?: "fast" | "balanced" | "high";
+};
+
+export type AgentBuilderInstructions = {
+  role: string;
+  objectives: string;
+  boundaryConstraints: string;
+  behavioralRules: string;
+  outputFormat: string;
+  prohibitedActions: string;
+  escalationRequirements: string;
+  systemInstructions: string;
+};
+
+export type AgentBuilderCapability = {
+  key: string;
+  name: string;
+  description: string;
+  riskLevel: "low" | "medium" | "high";
+  requiresApproval: boolean;
+};
+
+export type AgentBuilderTool = {
+  toolKey: string;
+  name: string;
+  description: string;
+  category: string;
+  riskLevel: "low" | "medium" | "high";
+  requiresApproval: boolean;
+  permissions: string[];
+  configuration?: Record<string, unknown>;
+};
+
+export type AgentBuilderKnowledgeSource = {
+  sourceId: string;
+  name?: string;
+  sourceType?: string;
+  accessPolicy?: "read_only" | "search_only";
+  enabled: boolean;
+};
+
+export type AgentBuilderHumanApproval = {
+  policy: "never" | "always" | "risk_threshold";
+  riskThreshold?: "low" | "medium" | "high";
+  approverRoles: string[];
+  escalationTimeoutHours: number;
+  fallbackAction: "deny" | "escalate";
+  sensitiveCapabilities: string[];
+};
+
+export type AgentBuilderFullConfig = {
+  identity: AgentBuilderIdentity;
+  model: AgentBuilderModel;
+  instructions: AgentBuilderInstructions;
+  capabilities: AgentBuilderCapability[];
+  tools: AgentBuilderTool[];
+  knowledge: AgentBuilderKnowledgeSource[];
+  humanApproval: AgentBuilderHumanApproval;
+};
+
+export type AgentBuilderDraftInput = {
+  organizationId: string;
+  agentId: string;
+  userId: string;
+  configuration: AgentBuilderFullConfig;
+  version?: string;
+  changelog?: string;
+};
+
+export type AgentBuilderPublishInput = {
+  organizationId: string;
+  agentId: string;
+  userId: string;
+  version?: string;
+  changelog?: string;
+  revisionId?: string;
+};
+
+export type AgentBuilderDuplicateInput = {
+  organizationId: string;
+  workspaceId: string;
+  sourceAgentId: string;
+  userId: string;
+  newName: string;
+  newAgentKey: string;
+};
+
+export type AgentBuilderPreviewInput = {
+  organizationId: string;
+  agentId?: string;
+  configuration: AgentBuilderFullConfig;
+  testPrompt: string;
+  userId: string;
+};
+
+export type AgentBuilderPreviewResult = {
+  simulated: boolean;
+  model: string;
+  provider: string;
+  content: string;
+  finishReason: string;
+  latencyMs: number;
+  simulatedUsage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  simulatedToolCalls?: Array<{
+    name: string;
+    description: string;
+    riskLevel: string;
+    requiresApproval: boolean;
+    arguments: Record<string, unknown>;
+  }>;
+  validationWarnings?: string[];
+};
+
+export type RevisionDiffItem = {
+  field: string;
+  path: string;
+  before: unknown;
+  after: unknown;
+  action: "added" | "removed" | "modified";
 };

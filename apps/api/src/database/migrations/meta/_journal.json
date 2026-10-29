@@ -162,6 +162,13 @@
       "when": 1792800000000,
       "tag": "0022_agent_registry_marketplace",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1792900000000,
+      "tag": "0023_agent_configuration_builder",
+      "breakpoints": true
     }
   ]
 }

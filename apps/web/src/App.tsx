@@ -633,6 +633,9 @@ function App() {
           </WorkspaceGuard>
         </ProtectedRoute>
       );
+    case "/workspace/agents/builder/new":
+    case "/workspace/agents/builder":
+    case (pathname.match(/^\/workspace\/agents\/[^/]+\/builder$/) || {}).input:
     case (pathname.match(/^\/workspace\/agents\/[^/]+\/configure$/) || {}).input:
       return (
         <ProtectedRoute>

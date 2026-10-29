@@ -1,4 +1,5 @@
 import { sendJson } from "../../common/http/json.js";
+import { ApiError } from "../../common/errors/api-error.js";
 import type { BackendModule } from "../module-registry.js";
 import { AuthService } from "../auth/services/auth.service.js";
 import { assertUuid, createTenantContext } from "../platform/tenant-context.js";
@@ -14,6 +15,9 @@ import type {
 import { AgentService } from "./services/agent.service.js";
 import { AgentRuntimeService } from "./services/agent-runtime.service.js";
 import { AgentMemoryService } from "./services/agent-memory.service.js";
+import { AgentBuilderService } from "./services/agent-builder.service.js";
+import { validateBuilderConfiguration } from "./validation/agent-builder-validation.js";
+import type { AgentBuilderFullConfig } from "./agent.types.js";
 import {
   readPagePagination,
   redactSensitiveConfig,
@@ -529,6 +533,308 @@ export const agentsModule: BackendModule = {
           validateUpdateAgentStatus(tenant.organizationId, routeParams.agentId, request.body),
         );
         sendJson(response, 200, { agent: toAgentDto(agent) });
+      },
+    });
+
+    /* ───── AI Agent Builder Endpoints (Epic 13) ───── */
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/builder/catalog-options",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const options = await new AgentBuilderService(database).getCatalogOptions(
+          tenant.organizationId,
+        );
+        sendJson(response, 200, { catalogOptions: options });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/builder/new",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const workspaceId = String(body.workspaceId || "").trim();
+        assertUuid(workspaceId, "workspaceId");
+
+        const result = await new AgentBuilderService(database).createNewAgent({
+          organizationId: tenant.organizationId,
+          workspaceId,
+          userId: auth.user.id,
+          configuration: (body.configuration ?? {}) as AgentBuilderFullConfig,
+        });
+
+        if (!result.agent) {
+          throw new ApiError(500, "INTERNAL_SERVER_ERROR", "Failed to retrieve created agent.");
+        }
+
+        sendJson(response, 201, {
+          agent: toAgentDto(result.agent),
+          revision: result.revision,
+          validation: result.validation,
+        });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/builder",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const context = await new AgentBuilderService(database).getBuilderContext(
+          tenant.organizationId,
+          routeParams.agentId,
+        );
+        sendJson(response, 200, {
+          agent: toAgentDto(context.agent),
+          activeRevision: context.activeRevision,
+          draftRevision: context.draftRevision,
+          latestRevision: context.latestRevision,
+          totalRevisions: context.totalRevisions,
+          catalogOptions: context.catalogOptions,
+        });
+      },
+    });
+
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/builder/draft",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const result = await new AgentBuilderService(database).saveDraft({
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          userId: auth.user.id,
+          configuration: (body.configuration ?? {}) as AgentBuilderFullConfig,
+          version: typeof body.version === "string" ? body.version : undefined,
+          changelog: typeof body.changelog === "string" ? body.changelog : undefined,
+        });
+        sendJson(response, 200, result);
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/builder/publish",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const result = await new AgentBuilderService(database).publishRevision({
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          userId: auth.user.id,
+          version: typeof body.version === "string" ? body.version : undefined,
+          changelog: typeof body.changelog === "string" ? body.changelog : undefined,
+          revisionId: typeof body.revisionId === "string" ? body.revisionId : undefined,
+        });
+        if (!result.agent) {
+          throw new ApiError(500, "INTERNAL_SERVER_ERROR", "Failed to retrieve published agent.");
+        }
+        sendJson(response, 200, {
+          revision: result.revision,
+          agent: toAgentDto(result.agent),
+        });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/builder/duplicate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const workspaceId = String(body.workspaceId || "").trim();
+        const newName = String(body.newName || "").trim();
+        const newAgentKey = String(body.newAgentKey || "").trim();
+        assertUuid(workspaceId, "workspaceId");
+
+        const result = await new AgentBuilderService(database).duplicateAgent({
+          organizationId: tenant.organizationId,
+          workspaceId,
+          sourceAgentId: routeParams.agentId,
+          userId: auth.user.id,
+          newName,
+          newAgentKey,
+        });
+
+        if (!result.agent) {
+          throw new ApiError(500, "INTERNAL_SERVER_ERROR", "Failed to retrieve duplicated agent.");
+        }
+
+        sendJson(response, 201, {
+          agent: toAgentDto(result.agent),
+          revision: result.revision,
+        });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/builder/validate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const config = body.configuration ?? body;
+        const catalog = await new AgentBuilderService(database).getCatalogOptions(
+          tenant.organizationId,
+        );
+        const allowedKnowledgeIds = catalog.knowledgeSources.map((k: { id: string }) => k.id);
+
+        const outcome = validateBuilderConfiguration(config, {
+          availableProviders: catalog.providers.map((p) => p.id),
+          registeredCapabilities: catalog.capabilities.map((c) => c.key),
+          registeredTools: catalog.tools.map((t) => t.toolKey),
+          allowedKnowledgeIds,
+        });
+        sendJson(response, 200, outcome);
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/builder/revisions",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const pagination = readPagePagination(url);
+        const paginated = await new AgentBuilderService(database).listRevisions(
+          tenant.organizationId,
+          routeParams.agentId,
+          pagination,
+        );
+        sendJson(response, 200, paginated);
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/builder/revisions/compare",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const baseRevId = url.searchParams.get("baseRevisionId") || "";
+        const targetRevId = url.searchParams.get("targetRevisionId") || "";
+        assertUuid(baseRevId, "baseRevisionId");
+        assertUuid(targetRevId, "targetRevisionId");
+
+        const comparison = await new AgentBuilderService(database).compareRevisions(
+          tenant.organizationId,
+          routeParams.agentId,
+          baseRevId,
+          targetRevId,
+        );
+        sendJson(response, 200, comparison);
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/builder/revisions/:revisionId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const revision = await new AgentBuilderService(database).getRevision(
+          tenant.organizationId,
+          routeParams.agentId,
+          routeParams.revisionId,
+        );
+        sendJson(response, 200, { revision });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/builder/revisions/:revisionId/restore",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const restored = await new AgentBuilderService(database).restoreRevision(
+          tenant.organizationId,
+          routeParams.agentId,
+          routeParams.revisionId,
+          auth.user.id,
+        );
+        sendJson(response, 200, { revision: restored });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/:agentId/builder/preview",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const testPrompt = String(body.testPrompt || "");
+        const configuration = (body.configuration ?? {}) as AgentBuilderFullConfig;
+
+        const previewResult = await new AgentBuilderService(database).executeMockPreview({
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          userId: auth.user.id,
+          testPrompt,
+          configuration,
+        });
+
+        sendJson(response, 200, { preview: previewResult });
       },
     });
   },

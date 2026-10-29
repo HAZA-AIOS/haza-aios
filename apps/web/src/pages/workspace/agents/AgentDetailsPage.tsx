@@ -272,6 +272,14 @@ export const AgentDetailsPage: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2">
               {instance ? (
                 <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(`/workspace/agents/${instance.id}/builder`)}
+                    className="text-xs"
+                  >
+                    ⚙️ Visual Builder
+                  </Button>
                   {(effectiveStatus === "active" || effectiveStatus === "configured") && (
                     <>
                       <Button

@@ -65,39 +65,44 @@ async function main() {
   const migRows = await runRailwayMysql("SELECT id, hash, FROM_UNIXTIME(created_at/1000) as applied_at FROM `__drizzle_migrations` ORDER BY id DESC LIMIT 5;");
   console.log("\n[PROD] Latest applied migrations in __drizzle_migrations:\n" + migRows.stdout.trim());
 
-  // 2. Check if 0026 is already applied
-  const checkTable = await runRailwayMysql("SHOW TABLES LIKE 'ai_agent_tools';");
-  console.log("\n[PROD] Checking ai_agent_tools table presence:\n" + checkTable.stdout.trim());
+  // 2. Read migration 0026 statements
+  const migFile = path.resolve("apps/api/src/database/migrations/0026_agent_tools_and_organizational_data.sql");
+  const migSql = fs.readFileSync(migFile, "utf-8");
+  const statements = migSql.split("--> statement-breakpoint").map(s => s.trim()).filter(s => s.length > 0);
 
-  if (!checkTable.stdout.includes("ai_agent_tools")) {
-    console.log("\n[PROD] Migration 0026 NOT yet applied in production. Applying statements now...");
-    const migFile = path.resolve("apps/api/src/database/migrations/0026_agent_tools_and_organizational_data.sql");
-    const migSql = fs.readFileSync(migFile, "utf-8");
-    const statements = migSql.split("--> statement-breakpoint").map(s => s.trim()).filter(s => s.length > 0);
+  console.log(`\n[PROD] Total statements in migration 0026: ${statements.length}`);
 
-    console.log(`[PROD] Found ${statements.length} statements in migration 0026.`);
-    for (let i = 0; i < statements.length; i++) {
-      const stmt = statements[i];
-      const preview = stmt.replace(/\s+/g, " ").substring(0, 70);
-      console.log(`  Applying [${i + 1}/${statements.length}]: ${preview}...`);
+  for (let i = 0; i < statements.length; i++) {
+    const stmt = statements[i];
+    const preview = stmt.replace(/\s+/g, " ").substring(0, 70);
+    try {
       await runRailwayMysql(stmt);
+      console.log(`  [${i + 1}/${statements.length}] Applied: ${preview}...`);
+    } catch (err: any) {
+      if (err.message.includes("already exists") || err.message.includes("Duplicate key") || err.message.includes("Duplicate foreign key")) {
+        console.log(`  [${i + 1}/${statements.length}] Already exists (idempotent skip): ${preview}...`);
+      } else {
+        console.error(`  [${i + 1}/${statements.length}] Failed: ${preview}... Error: ${err.message}`);
+        throw err;
+      }
     }
-
-    // 3. Record migration in __drizzle_migrations
-    const journalPath = path.resolve("apps/api/src/database/migrations/meta/_journal.json");
-    const journal = JSON.parse(fs.readFileSync(journalPath, "utf-8"));
-    const entry26 = journal.entries.find((e: any) => e.idx === 26);
-    if (entry26) {
-      console.log(`\n[PROD] Recording migration 26 (${entry26.tag}) in __drizzle_migrations...`);
-      await runRailwayMysql(`INSERT INTO \`__drizzle_migrations\` (hash, created_at) VALUES ('${entry26.tag}', UNIX_TIMESTAMP() * 1000);`);
-    }
-
-    console.log("\n[SUCCESS] Migration 0026 applied and recorded in production successfully!");
-  } else {
-    console.log("\n[PROD] Migration 0026 is ALREADY applied in production.");
   }
 
-  // 4. Verify tables & columns
+  // 3. Record migration in __drizzle_migrations if not already recorded
+  const journalPath = path.resolve("apps/api/src/database/migrations/meta/_journal.json");
+  const journal = JSON.parse(fs.readFileSync(journalPath, "utf-8"));
+  const entry26 = journal.entries.find((e: any) => e.idx === 26);
+  if (entry26) {
+    const existingMig = await runRailwayMysql(`SELECT id FROM \`__drizzle_migrations\` WHERE hash = '${entry26.tag}';`);
+    if (!existingMig.stdout.trim()) {
+      console.log(`\n[PROD] Recording migration 26 (${entry26.tag}) in __drizzle_migrations...`);
+      await runRailwayMysql(`INSERT INTO \`__drizzle_migrations\` (hash, created_at) VALUES ('${entry26.tag}', UNIX_TIMESTAMP() * 1000);`);
+    } else {
+      console.log(`\n[PROD] Migration 26 (${entry26.tag}) already recorded in __drizzle_migrations.`);
+    }
+  }
+
+  // 4. Verify tables
   const tablesCheck = await runRailwayMysql("SHOW TABLES LIKE 'ai_agent_tool%';");
   console.log("\n[PROD] Verified tool tables presence in production:\n" + tablesCheck.stdout.trim());
 

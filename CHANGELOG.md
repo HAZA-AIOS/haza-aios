@@ -1,3 +1,43 @@
+## [0.16.0-epic16] - 2026-10-30
+
+### Added
+- **Epic 16: Agent Tools & Organizational Data Integration — Full Production Release**
+  - **Database Migration 0026 (`0026_agent_tools_and_organizational_data.sql`):**
+    - Created `ai_agent_tools` table storing production tool definitions: `id`, `tool_key`, `name`, `description`, `category`, `industry`, `risk_level` (enum: `low`, `medium`, `high`), `execution_mode` (enum: `sync`, `async`), `required_permissions` (JSON), `approval_policy` (enum: `none`, `always`, `on_risk`, `tenant_configured`), `timeout_ms`, `max_attempts`, `status` (enum: `draft`, `active`, `deprecated`, `disabled`), `created_at`, `updated_at`.
+    - Created `ai_agent_tool_versions` table for semver versioning: `id`, `tool_id`, `version`, `input_schema` (JSON), `output_schema` (JSON), `deprecated`, `changelog`, `created_at`.
+    - Created `ai_agent_tool_tenant_policies` table for sovereign tenant governance: `id`, `organization_id`, `workspace_id`, `tool_id`, `enabled`, `approval_policy_override`, `custom_rate_limit_per_minute`, `allowed_agent_ids` (JSON), `created_at`, `updated_at`.
+    - Created `ai_agent_tool_executions` table for end-to-end execution telemetry & audit: `id`, `organization_id`, `workspace_id`, `run_id`, `attempt_id`, `agent_id`, `configuration_revision_id`, `tool_id`, `tool_version`, `tool_key`, `requested_by`, `input_digest` (SHA-256), `input_snapshot` (JSON), `output_snapshot` (JSON), `status` (enum: `pending_approval`, `running`, `completed`, `failed`, `cancelled`), `approval_request_id`, `started_at`, `completed_at`, `duration_ms`, `error_category`, `error_message`, `correlation_id`, `idempotency_key`, `metadata` (JSON), `created_at`.
+    - Added foreign key constraints with `ON DELETE CASCADE` and `ON DELETE RESTRICT` for referential integrity across organizations, workspaces, runs, and tool definitions.
+    - Added composite indexes on tenant scoping, run linkage, tool key lookups, and execution status.
+  - **Trusted Tool Registry & Domain Adapters (`apps/api/src/modules/agents/tools`):**
+    - Registered 7 production-grade Education tools connecting to `SisService` and `AcademicLessonPlanRepository`:
+      1. `education.academic_structure.read`: Retrieves active academic years, grade levels, and sections for organizational planning context.
+      2. `education.subjects.list`: Lists authorized subjects for a given grade level or workspace.
+      3. `education.curriculum.read`: Queries curriculum benchmarks with strict pedagogical honesty (`general_guidance` fallback when disconnected).
+      4. `education.lesson_plans.read`: Retrieves existing lesson plans to maintain instructional progression without duplication.
+      5. `education.lesson_plans.create_draft`: Creates an editable lesson plan draft adhering to the 17-point schema.
+      6. `education.lesson_plans.update_draft`: Modifies draft lesson plans prior to review and approval.
+      7. `education.lesson_plans.publish`: Publishes approved lesson plans directly to the active LMS course stream (high-risk, gated by mandatory human approval).
+  - **Tool Execution Gateway (`AgentToolGatewayService`):**
+    - Enforced the 16-step secure execution pipeline: run resolution, tenant ownership, pinned revision check, agent tool allowlisting, semver compatibility, tenant policy enablement, caller RBAC verification, workspace resource scoping, JSON schema validation, SHA-256 input digest calculation, risk & approval gating, trusted adapter dispatch, output sanitization (zero student PII), persistence in `ai_agent_tool_executions`, and structured canonical return.
+    - Exported canonical hashing, validation, and JSON normalization utilities.
+  - **Autonomous Tool Calling Runtime Integration (`AgentRuntimeService`, AI Providers):**
+    - Extended `AgentRuntimeService` with an autonomous multi-step tool execution loop (up to 5 iterations).
+    - Updated `OpenAiProvider` with native tool function declarations and model tool call parsing.
+    - Updated `MockAiProvider` to autonomously simulate tool call requests and handle subsequent model completion with tool result contexts.
+    - Integrated with Epic 14 Human Approval Engine: high-risk operations pause execution and require explicit teacher authorization.
+  - **Tool Management REST APIs (`apps/api/src/modules/agents`):**
+    - Added 6 authenticated management endpoints: `GET /tools`, `GET /tools/:toolId/versions`, `GET/PUT /tools/policies`, `GET /tools/monitoring`, `GET /tools/executions`, and `GET /tools/executions/:executionId`.
+  - **Frontend Primitives (`packages/ui`):**
+    - Implemented 10 reusable dark enterprise primitives in `@haza-aios/ui`: `AgentToolCard`, `AgentToolStatusBadge`, `AgentToolRiskBadge`, `ToolSchemaViewer`, `ToolPermissionMatrix`, `ToolExecutionTimeline`, `ToolApprovalSummary`, `ToolUsageMetricCard`, `ToolPolicyEditor`, `ToolExecutionResultViewer`.
+  - **Frontend Web Dashboard (`apps/web`):**
+    - Built comprehensive 4-tab Tool Management dashboard at `/workspace/agents/tools` ("Tool Catalog", "Execution History", "Tenant Policies", "Telemetry & Metrics").
+    - Added routes for `/workspace/agents/tools/executions` and `/workspace/agents/tools/policies`.
+  - **Verification & Testing Suites:**
+    - `agent-tool-gateway.test.ts`: 15 comprehensive unit tests covering schema validation, input digestion, default deny, RBAC authorization, and approval checkpoints.
+    - `epic16-agent-tools.integration.test.ts`: End-to-end integration test verifying tool discovery, multi-step execution loop, draft lesson plan creation, and execution audit logging.
+    - `tools.test.tsx`: Component tests verifying UI catalog rendering and policy tabs.
+
 ## [0.15.0-epic15] - 2026-10-30
 
 ### Added

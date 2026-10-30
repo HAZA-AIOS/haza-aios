@@ -24,6 +24,10 @@ import { validateAcademicPlanningInput } from "./validation/academic-planning-va
 import { ACADEMIC_PLANNING_AGENT_TEMPLATE } from "./academic-planning.types.js";
 import { AiProviderRegistry } from "./providers/provider-registry.js";
 import type { AcademicLessonPlanRecord, LessonPlanStatus } from "./academic-planning.types.js";
+import { AgentToolRepository } from "./repositories/agent-tool.repository.js";
+import { AgentToolGatewayService } from "./tools/agent-tool-gateway.service.js";
+import { listTrustedTools } from "./tools/trusted-tool-registry.js";
+import { createRepositoryContext } from "../../database/repositories/repository-context.js";
 import { AgentMemoryService } from "./services/agent-memory.service.js";
 import { AgentBuilderService } from "./services/agent-builder.service.js";
 import { validateBuilderConfiguration } from "./validation/agent-builder-validation.js";
@@ -524,7 +528,7 @@ export const agentsModule: BackendModule = {
       },
     });
 
-    /* ───── AI Agent Builder Endpoints (Epic 13) ───── */
+    /* â”€â”€â”€â”€â”€ AI Agent Builder Endpoints (Epic 13) â”€â”€â”€â”€â”€ */
 
     router.register({
       method: "GET",
@@ -1527,6 +1531,352 @@ export const agentsModule: BackendModule = {
         response.setHeader("Content-Disposition", `attachment; filename="${exported.filename}"`);
         response.writeHead(200);
         response.end(exported.content);
+      },
+    });
+
+    // ==========================================
+    // EPIC 16: AGENT TOOLS & ORGANIZATIONAL DATA
+    // ==========================================
+
+    // List Available Tools (with tenant policy enablement)
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-tools",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const repoCtx = createRepositoryContext(database.db);
+        const toolRepo = new AgentToolRepository(repoCtx);
+        await toolRepo.ensureTrustedToolsSeeded(listTrustedTools());
+
+        const workspaceId = url.searchParams.get("workspaceId") || undefined;
+        const category = url.searchParams.get("category") || undefined;
+        const industry = url.searchParams.get("industry") || undefined;
+
+        const tools = await toolRepo.listTools({ category, industry });
+        const policies = await toolRepo.listTenantPolicies(tenant.organizationId, workspaceId);
+
+        const enriched = tools.map((t) => {
+          const policy = policies.find((p) => p.toolId === t.toolId || p.toolKey === t.toolKey);
+          return {
+            ...t,
+            enabled: policy ? policy.enabled : true,
+            approvalPolicyOverride: policy?.approvalPolicyOverride ?? null,
+            customRateLimitPerMinute: policy?.customRateLimitPerMinute ?? null,
+            allowedAgentIds: policy?.allowedAgentIds ?? null,
+          };
+        });
+
+        sendJson(response, 200, { tools: enriched, count: enriched.length });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/workspaces/:workspaceId/agent-tools",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workspaceId, "workspaceId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const repoCtx = createRepositoryContext(database.db);
+        const toolRepo = new AgentToolRepository(repoCtx);
+        await toolRepo.ensureTrustedToolsSeeded(listTrustedTools());
+
+        const category = url.searchParams.get("category") || undefined;
+        const industry = url.searchParams.get("industry") || undefined;
+
+        const tools = await toolRepo.listTools({ category, industry });
+        const policies = await toolRepo.listTenantPolicies(tenant.organizationId, routeParams.workspaceId);
+
+        const enriched = tools.map((t) => {
+          const policy = policies.find((p) => p.toolId === t.toolId || p.toolKey === t.toolKey);
+          return {
+            ...t,
+            enabled: policy ? policy.enabled : true,
+            approvalPolicyOverride: policy?.approvalPolicyOverride ?? null,
+            customRateLimitPerMinute: policy?.customRateLimitPerMinute ?? null,
+            allowedAgentIds: policy?.allowedAgentIds ?? null,
+          };
+        });
+
+        sendJson(response, 200, { tools: enriched, count: enriched.length });
+      },
+    });
+
+    // Get Single Tool Details
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/workspaces/:workspaceId/agent-tools/:toolKey",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workspaceId, "workspaceId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const repoCtx = createRepositoryContext(database.db);
+        const toolRepo = new AgentToolRepository(repoCtx);
+        const tool = await toolRepo.getToolByKey(routeParams.toolKey);
+        if (!tool) {
+          throw new ApiError(404, "NOT_FOUND", `Tool '${routeParams.toolKey}' not found.`);
+        }
+
+        const policy = await toolRepo.getTenantPolicy(
+          tenant.organizationId,
+          tool.toolId,
+          routeParams.workspaceId,
+        );
+
+        sendJson(response, 200, {
+          tool: {
+            ...tool,
+            enabled: policy ? policy.enabled : true,
+            approvalPolicyOverride: policy?.approvalPolicyOverride ?? null,
+            customRateLimitPerMinute: policy?.customRateLimitPerMinute ?? null,
+            allowedAgentIds: policy?.allowedAgentIds ?? null,
+          },
+        });
+      },
+    });
+
+    // Tool Version History
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/workspaces/:workspaceId/agent-tools/:toolKey/versions",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workspaceId, "workspaceId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const repoCtx = createRepositoryContext(database.db);
+        const toolRepo = new AgentToolRepository(repoCtx);
+        const tool = await toolRepo.getToolByKey(routeParams.toolKey);
+        if (!tool) {
+          throw new ApiError(404, "NOT_FOUND", `Tool '${routeParams.toolKey}' not found.`);
+        }
+
+        const versions = await toolRepo.listToolVersions(tool.toolId);
+        sendJson(response, 200, { toolKey: tool.toolKey, versions });
+      },
+    });
+
+    // List Tenant Policies
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/workspaces/:workspaceId/agent-tools/policies",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workspaceId, "workspaceId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const repoCtx = createRepositoryContext(database.db);
+        const toolRepo = new AgentToolRepository(repoCtx);
+        const policies = await toolRepo.listTenantPolicies(tenant.organizationId, routeParams.workspaceId);
+        sendJson(response, 200, { policies });
+      },
+    });
+
+    // Update Tenant Policy for Tool
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/workspaces/:workspaceId/agent-tools/:toolKey/policy",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workspaceId, "workspaceId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "organization.manage",
+        );
+
+        const repoCtx = createRepositoryContext(database.db);
+        const toolRepo = new AgentToolRepository(repoCtx);
+        const tool = await toolRepo.getToolByKey(routeParams.toolKey);
+        if (!tool) {
+          throw new ApiError(404, "NOT_FOUND", `Tool '${routeParams.toolKey}' not found.`);
+        }
+
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const enabled = typeof body.enabled === "boolean" ? body.enabled : true;
+        const approvalPolicyOverride = typeof body.approvalPolicyOverride === "string" ? body.approvalPolicyOverride : null;
+        const customRateLimitPerMinute = typeof body.customRateLimitPerMinute === "number" ? body.customRateLimitPerMinute : null;
+        const allowedAgentIds = Array.isArray(body.allowedAgentIds) ? (body.allowedAgentIds as string[]) : null;
+
+        const policy = await toolRepo.setTenantPolicy({
+          organizationId: tenant.organizationId,
+          workspaceId: routeParams.workspaceId,
+          toolId: tool.toolId,
+          enabled,
+          approvalPolicyOverride,
+          customRateLimitPerMinute,
+          allowedAgentIds,
+        });
+
+        sendJson(response, 200, { policy });
+      },
+    });
+
+    // Execute Tool Directly
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/workspaces/:workspaceId/agent-tools/execute",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workspaceId, "workspaceId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        if (!body.runId || typeof body.runId !== "string") {
+          throw new ApiError(400, "VALIDATION_FAILED", "runId is required.");
+        }
+        if (!body.toolKey || typeof body.toolKey !== "string") {
+          throw new ApiError(400, "VALIDATION_FAILED", "toolKey is required.");
+        }
+
+        const gateway = new AgentToolGatewayService(database);
+        const result = await gateway.executeTool(
+          {
+            runId: body.runId,
+            toolKey: body.toolKey,
+            toolVersion: typeof body.toolVersion === "string" ? body.toolVersion : undefined,
+            input: (body.input as Record<string, unknown>) ?? {},
+            idempotencyKey: typeof body.idempotencyKey === "string" ? body.idempotencyKey : undefined,
+          },
+          {
+            userId: auth.user.id,
+          },
+        );
+
+        sendJson(response, result.success ? 200 : result.approvalRequired ? 202 : 400, { result });
+      },
+    });
+
+    // Tool Executions History
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/workspaces/:workspaceId/agent-tools/executions",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workspaceId, "workspaceId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const repoCtx = createRepositoryContext(database.db);
+        const toolRepo = new AgentToolRepository(repoCtx);
+
+        const runId = url.searchParams.get("runId") || undefined;
+        const agentId = url.searchParams.get("agentId") || undefined;
+        const toolKey = url.searchParams.get("toolKey") || undefined;
+        const status = url.searchParams.get("status") || undefined;
+        const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "50", 10)));
+        const offset = Math.max(0, parseInt(url.searchParams.get("offset") || "0", 10));
+
+        const { executions, total } = await toolRepo.listExecutions(tenant.organizationId, {
+          workspaceId: routeParams.workspaceId,
+          runId,
+          agentId,
+          toolKey,
+          status,
+          limit,
+          offset,
+        });
+
+        sendJson(response, 200, { executions, total, limit, offset });
+      },
+    });
+
+    // Single Execution Details
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/workspaces/:workspaceId/agent-tools/executions/:executionId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workspaceId, "workspaceId");
+        assertUuid(routeParams.executionId, "executionId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const repoCtx = createRepositoryContext(database.db);
+        const toolRepo = new AgentToolRepository(repoCtx);
+        const execution = await toolRepo.getExecutionById(tenant.organizationId, routeParams.executionId);
+        if (!execution) {
+          throw new ApiError(404, "NOT_FOUND", `Execution '${routeParams.executionId}' not found.`);
+        }
+
+        sendJson(response, 200, { execution });
+      },
+    });
+
+    // Tool Telemetry Metrics
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/workspaces/:workspaceId/agent-tools/metrics",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workspaceId, "workspaceId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const repoCtx = createRepositoryContext(database.db);
+        const toolRepo = new AgentToolRepository(repoCtx);
+        const { executions, total } = await toolRepo.listExecutions(tenant.organizationId, {
+          workspaceId: routeParams.workspaceId,
+          limit: 100,
+        });
+
+        const completed = executions.filter((e) => e.status === "completed");
+        const failed = executions.filter((e) => e.status === "failed");
+        const awaitingApproval = executions.filter((e) => e.status === "awaiting_approval");
+
+        const avgDurationMs = completed.length > 0
+          ? Math.round(completed.reduce((acc, e) => acc + (e.durationMs || 0), 0) / completed.length)
+          : 0;
+
+        const successRate = total > 0 ? Math.round((completed.length / total) * 100) : 100;
+
+        sendJson(response, 200, {
+          metrics: {
+            totalInvocations: total,
+            completedCount: completed.length,
+            failedCount: failed.length,
+            awaitingApprovalCount: awaitingApproval.length,
+            successRate,
+            avgDurationMs,
+          },
+        });
       },
     });
 

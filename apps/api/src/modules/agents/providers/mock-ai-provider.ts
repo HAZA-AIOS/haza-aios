@@ -177,9 +177,40 @@ export class MockAiProvider implements AiProvider {
     let toolCalls: ToolCall[] | undefined = undefined;
     let finishReason: ModelInvocationResponse["finishReason"] = "stop";
 
+    const hasPriorToolCall = request.messages.some((m) => m.role === "tool");
+
     if (this.cannedToolCalls && this.cannedToolCalls.length > 0) {
       toolCalls = this.cannedToolCalls;
       content = this.cannedResponse ?? "";
+      finishReason = "tool_calls";
+    } else if (
+      !hasPriorToolCall &&
+      request.tools &&
+      request.tools.length > 0 &&
+      (userPrompt.toLowerCase().includes("subject") ||
+        userPrompt.toLowerCase().includes("structure") ||
+        userPrompt.toLowerCase().includes("tool") ||
+        request.metadata?.preferToolCalling === true)
+    ) {
+      // Simulate autonomous tool discovery and invocation for organizational data
+      const selectedTool =
+        request.tools.find((t) => t.name === "education.subjects.list") ||
+        request.tools.find((t) => t.name === "education.academic_structure.read") ||
+        request.tools[0];
+
+      toolCalls = [
+        {
+          id: `mock-call-${randomUUID()}`,
+          name: selectedTool.name,
+          arguments:
+            selectedTool.name === "education.subjects.list"
+              ? { gradeName: "Grade 8" }
+              : selectedTool.name === "education.academic_structure.read"
+              ? { includeInactive: false }
+              : {},
+        },
+      ];
+      content = "";
       finishReason = "tool_calls";
     } else if (this.cannedResponse !== null) {
       content = this.cannedResponse;

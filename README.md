@@ -8,13 +8,13 @@ Education SIS remains the most developed industry module. The production release
 
 ## Current Production Release (2026-10-30)
 
-**Production release:** [`v0.15.0-epic15`](https://github.com/HAZA-AIOS/haza-aios/releases/tag/v0.15.0-epic15) · **Next planned epic:** **16 — Agent Tools & Organizational Data Integration** (not started).
+**Production release:** [`v0.16.0-epic16`](https://github.com/HAZA-AIOS/haza-aios/releases/tag/v0.16.0-epic16) · **Next planned epic:** **17 — Agent Knowledge & Context Engine** (planned).
 
-Epic 15 delivered the **HAZA Academic Planning Assistant**, the first production-deployed, human-supervised education agent. It uses the agent registry, marketplace, builder, and durable runtime from Epics 11–14. Teachers can generate and edit lesson-plan drafts, review and approve content, export Markdown/JSON, and explicitly publish approved plans through the LMS workflow. Automated verification reported **640/640 tests passing**; the release report documents an unattended worker execution and live production smoke checks. Production database migration **0025** added `academic_lesson_plans`.
+Epic 16 delivered **Agent Tools & Organizational Data Integration**, following Epic 15's **HAZA Academic Planning Assistant**, the first production-deployed, human-supervised education agent. It uses the agent registry, marketplace, builder, and durable runtime from Epics 11–14. Teachers can generate and edit lesson-plan drafts, review and approve content, export Markdown/JSON, and explicitly publish approved plans through the LMS workflow. Automated verification reported **640/640 tests passing**; the release report documents an unattended worker execution and live production smoke checks. Production database migration **0025** added `academic_lesson_plans`.
 
 **Production infrastructure:** [Web](https://www.haza-aios.com) · [API](https://api.haza-aios.com) · dedicated Railway background worker · Railway MySQL. All four services were independently observed online on 2026-10-30. The assistant currently uses a **clearly attributed deterministic mock/fallback** when `OPENAI_API_KEY` is not configured; **live OpenAI inference has not been verified as activated**. Do not confuse deployed mock-backed functionality with live paid inference.
 
-**Completed agent epics:** 11 Foundation; 12 Registry & Marketplace; 13 Configuration & Builder; 14 Runtime & Execution; 15 First Production AI Agent. **Next:** 16 Tools & Organizational Data Integration. **Afterward:** 17 Knowledge & Context Engine. No Epic 16 implementation is claimed.
+**Completed agent epics:** 11 Foundation; 12 Registry & Marketplace; 13 Configuration & Builder; 14 Runtime & Execution; 15 First Production AI Agent; 16 Tools & Organizational Data Integration. **Next:** 17 Knowledge & Context Engine.
 
 See [current release and roadmap status](docs/product/CURRENT_RELEASE_STATUS.md) and [CHANGELOG](CHANGELOG.md). The root `package.json` workspace version (`0.1.0`) is not the production release tag; it is unchanged by this documentation-only update.
 
@@ -324,7 +324,7 @@ Frontend storage may still be used for legitimate UI state, preferences, test fi
 | SIS Database Retrofit   | COMPLETE through DB-9     | SIS business data and analytics are API/database-backed                                                               |
 | AI Agent Platform       | PRODUCTION through Epic 15 | Marketplace, builder, runtime, worker, and Academic Planning Assistant; live OpenAI activation remains pending       |
 | Agent Database Retrofit | COMPLETE through DB-13    | Registry/configuration, runtime history, and long-term memory persistence complete; knowledge/workflow phases planned |
-| Production Deployment   | LIVE through Epic 15      | Railway Web, API, dedicated worker, MySQL; current tag `v0.15.0-epic15`                                               |
+| Production Deployment   | LIVE through Epic 15      | Railway Web, API, dedicated worker, MySQL; current tag `v0.16.0-epic16`                                               |
 
 ## Major Completed Development Areas
 

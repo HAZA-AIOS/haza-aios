@@ -6,6 +6,17 @@ export class ApiRouter {
 
   register(route: RouteDefinition) {
     this.routes.push({ ...route, segments: toSegments(route.path) });
+    this.routes.sort((a, b) => {
+      const minLen = Math.min(a.segments.length, b.segments.length);
+      for (let i = 0; i < minLen; i++) {
+        const aParam = a.segments[i].startsWith(":");
+        const bParam = b.segments[i].startsWith(":");
+        if (aParam !== bParam) {
+          return aParam ? 1 : -1;
+        }
+      }
+      return b.segments.length - a.segments.length;
+    });
   }
 
   match(method: string | undefined, path: string): { handler: RouteHandler; params: Record<string, string> } {

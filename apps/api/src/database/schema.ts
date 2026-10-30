@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   char,
   datetime,
@@ -35,7 +36,9 @@ export const agentLifecycleStatus = mysqlEnum("agent_lifecycle_status", [
 export const agentRunStatus = mysqlEnum("agent_run_status", [
   "queued",
   "running",
+  "awaiting_approval",
   "waiting",
+  "rejected",
   "completed",
   "failed",
   "cancelled",
@@ -447,6 +450,11 @@ export const aiAgentRuns = mysqlTable(
     agentId: char("agent_id", { length: 36 })
       .notNull()
       .references(() => aiAgentDefinitions.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    configurationRevisionId: char("configuration_revision_id", { length: 36 }).references(
+      () => aiAgentConfigurationRevisions.id,
+      { onDelete: "set null", onUpdate: "cascade" },
+    ),
+    configurationSnapshot: json("configuration_snapshot").$type<Record<string, unknown>>(),
     conversationId: char("conversation_id", { length: 36 }).references(
       () => aiAgentConversations.id,
       { onDelete: "restrict", onUpdate: "cascade" },
@@ -456,13 +464,28 @@ export const aiAgentRuns = mysqlTable(
       .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
     status: agentRunStatus.notNull().default("queued"),
     executionMode: varchar("execution_mode", { length: 40 }).notNull().default("manual"),
+    attemptCount: int("attempt_count").notNull().default(0),
+    maxAttempts: int("max_attempts").notNull().default(3),
+    leaseToken: varchar("lease_token", { length: 80 }),
+    leaseExpiresAt: timestamp("lease_expires_at", { fsp: 3 }),
+    workerId: varchar("worker_id", { length: 120 }),
+    priority: int("priority").notNull().default(0),
     idempotencyKey: varchar("idempotency_key", { length: 160 }),
     input: json("input").$type<Record<string, unknown>>().notNull(),
     output: json("output").$type<Record<string, unknown>>(),
     provider: varchar("provider", { length: 120 }),
     model: varchar("model", { length: 160 }),
+    totalInputTokens: int("total_input_tokens").notNull().default(0),
+    totalOutputTokens: int("total_output_tokens").notNull().default(0),
+    totalCostMicros: bigint("total_cost_micros", { mode: "number" }).notNull().default(0),
     errorCode: varchar("error_code", { length: 120 }),
     safeErrorMessage: varchar("safe_error_message", { length: 1000 }),
+    cancelledBy: char("cancelled_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    cancelledAt: timestamp("cancelled_at", { fsp: 3 }),
+    cancellationReason: varchar("cancellation_reason", { length: 500 }),
     metadata: json("metadata").$type<Record<string, unknown>>().notNull(),
     startedAt: timestamp("started_at", { fsp: 3 }).notNull(),
     completedAt: datetime("completed_at", { fsp: 3 }),
@@ -484,6 +507,162 @@ export const aiAgentRuns = mysqlTable(
     ),
     index("ai_agent_runs_conversation_idx").on(table.conversationId),
     index("ai_agent_runs_requested_by_idx").on(table.requestedBy),
+    index("ai_agent_runs_status_priority_idx").on(table.status, table.priority, table.createdAt),
+    index("ai_agent_runs_lease_idx").on(table.status, table.leaseExpiresAt),
+    index("ai_agent_runs_config_rev_idx").on(table.configurationRevisionId),
+  ],
+);
+
+export const aiAgentRunAttempts = mysqlTable(
+  "ai_agent_run_attempts",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    runId: char("run_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentRuns.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    attemptNumber: int("attempt_number").notNull(),
+    status: varchar("status", { length: 40 }).notNull().default("running"),
+    workerId: varchar("worker_id", { length: 120 }).notNull(),
+    leaseToken: varchar("lease_token", { length: 80 }).notNull(),
+    startedAt: timestamp("started_at", { fsp: 3 }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { fsp: 3 }),
+    durationMs: int("duration_ms"),
+    errorCode: varchar("error_code", { length: 120 }),
+    errorMessage: varchar("error_message", { length: 1000 }),
+    errorDetails: json("error_details").$type<Record<string, unknown>>(),
+    inputTokens: int("input_tokens").notNull().default(0),
+    outputTokens: int("output_tokens").notNull().default(0),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_agent_run_attempts_run_attempt_unique").on(table.runId, table.attemptNumber),
+    index("ai_agent_run_attempts_org_run_idx").on(table.organizationId, table.runId),
+  ],
+);
+
+export const aiAgentRunEvents = mysqlTable(
+  "ai_agent_run_events",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    runId: char("run_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentRuns.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    attemptId: char("attempt_id", { length: 36 }),
+    eventType: varchar("event_type", { length: 60 }).notNull(),
+    payload: json("payload").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("ai_agent_run_events_run_created_idx").on(table.runId, table.createdAt),
+  ],
+);
+
+export const aiAgentApprovalRequests = mysqlTable(
+  "ai_agent_approval_requests",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    runId: char("run_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentRuns.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    attemptId: char("attempt_id", { length: 36 }),
+    actionName: varchar("action_name", { length: 120 }).notNull(),
+    actionType: varchar("action_type", { length: 60 }).notNull(),
+    actionPayload: json("action_payload").$type<Record<string, unknown>>().notNull(),
+    riskLevel: varchar("risk_level", { length: 20 }).notNull().default("medium"),
+    policy: varchar("policy", { length: 40 }).notNull().default("risk_threshold"),
+    requiredRoles: json("required_roles").$type<string[]>().notNull(),
+    status: varchar("status", { length: 40 }).notNull().default("pending"),
+    requestedBy: char("requested_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    expiresAt: timestamp("expires_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    index("ai_agent_approval_requests_org_status_idx").on(table.organizationId, table.status),
+    index("ai_agent_approval_requests_run_idx").on(table.runId),
+  ],
+);
+
+export const aiAgentApprovalDecisions = mysqlTable(
+  "ai_agent_approval_decisions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    approvalRequestId: char("approval_request_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentApprovalRequests.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    decision: varchar("decision", { length: 40 }).notNull(),
+    reason: varchar("reason", { length: 1000 }),
+    decidedBy: char("decided_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    decidedAt: timestamp("decided_at", { fsp: 3 }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("ai_agent_approval_decisions_request_idx").on(table.approvalRequestId),
+  ],
+);
+
+export const aiAgentRuntimeUsage = mysqlTable(
+  "ai_agent_runtime_usage",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    runId: char("run_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentRuns.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    provider: varchar("provider", { length: 120 }).notNull(),
+    model: varchar("model", { length: 160 }).notNull(),
+    inputTokens: int("input_tokens").notNull().default(0),
+    outputTokens: int("output_tokens").notNull().default(0),
+    totalTokens: int("total_tokens").notNull().default(0),
+    durationMs: int("duration_ms").notNull().default(0),
+    costMicros: bigint("cost_micros", { mode: "number" }).notNull().default(0),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("ai_agent_runtime_usage_org_agent_created_idx").on(
+      table.organizationId,
+      table.agentId,
+      table.createdAt,
+    ),
+    index("ai_agent_runtime_usage_run_idx").on(table.runId),
   ],
 );
 
@@ -2952,6 +3131,11 @@ export const schema = {
   aiAgentMemories,
   aiAgentMessages,
   aiAgentRuns,
+  aiAgentRunAttempts,
+  aiAgentRunEvents,
+  aiAgentApprovalRequests,
+  aiAgentApprovalDecisions,
+  aiAgentRuntimeUsage,
   aiAgentToolAssignments,
   attendanceRecords,
   attendanceSessions,

@@ -14,7 +14,9 @@ import type {
 const runStatuses = new Set<AgentRunStatus>([
   "queued",
   "running",
+  "awaiting_approval",
   "waiting",
+  "rejected",
   "completed",
   "failed",
   "cancelled",

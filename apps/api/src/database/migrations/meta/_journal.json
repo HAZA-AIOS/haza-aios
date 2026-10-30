@@ -169,6 +169,13 @@
       "when": 1792900000000,
       "tag": "0023_agent_configuration_builder",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1793000000000,
+      "tag": "0024_agent_runtime_execution_engine",
+      "breakpoints": true
     }
   ]
 }

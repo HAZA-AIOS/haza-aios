@@ -4,6 +4,7 @@ import { academicLessonPlans } from "../../../database/schema.js";
 import type { RepositoryContext } from "../../../database/repositories/repository-context.js";
 import type {
   AcademicLessonPlanRecord,
+  AcademicObjective,
   CreateLessonPlanDraftInput,
   LessonPlanOutput,
   LessonPlanStatus,

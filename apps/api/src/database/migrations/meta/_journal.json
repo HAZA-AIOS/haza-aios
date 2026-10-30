@@ -176,6 +176,13 @@
       "when": 1793000000000,
       "tag": "0024_agent_runtime_execution_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1793100000000,
+      "tag": "0025_academic_lesson_plans",
+      "breakpoints": true
     }
   ]
 }

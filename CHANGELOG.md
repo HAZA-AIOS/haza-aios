@@ -1,3 +1,35 @@
+## [0.15.0-epic15] - 2026-10-30
+
+### Added
+- **Epic 15: First Production AI Agent — HAZA Academic Planning Assistant — Full Production Release**
+  - **Database Migration 0025 (`0025_academic_lesson_plans.sql`):**
+    - Created `academic_lesson_plans` table storing human-supervised educational lesson plans with columns: `id`, `organization_id`, `workspace_id`, `agent_run_id`, `title`, `grade`, `subject`, `topic`, `duration_minutes`, `learning_objectives` (JSON), `content` (JSON 17-point structured plan), `status` (enum: `draft`, `reviewed`, `approved`, `published`, `archived`), `curriculum_reference`, `curriculum_verified`, `created_by`, `approved_by`, `approved_at`, `created_at`, `updated_at`.
+    - Added foreign key constraints to `organizations`, `workspaces`, `ai_agent_runs`, and `users` (both creator and approver) with appropriate `CASCADE`, `SET NULL`, and `RESTRICT` delete policies.
+    - Added composite and single-column indexes on `(organization_id, workspace_id)`, `(organization_id, status)`, `created_by`, and `agent_run_id`.
+  - **Academic Planning Assistant Agent Definition & Validation (`apps/api/src/modules/agents`):**
+    - Registered official system template `00000000-0000-4100-8000-000000000104` with slug `academic-planning-assistant` under Education industry and Academic Planning category.
+    - Implemented strict input validation with duration bounds (15-240m), length constraints, curriculum reference checking, and safe prompt injection sanitization.
+    - Implemented 17-point structured JSON schema parsing and repair validation: `lessonTitle`, `grade`, `subject`, `topic`, `durationMinutes`, `learningObjectives`, `requiredMaterials`, `priorKnowledge`, `lessonIntroduction`, `teachingSequence`, `guidedPractice`, `independentActivities`, `differentiation`, `formativeAssessment`, `exitTicket`, `teacherNotes`, `optionalHomework`.
+    - Implemented version-controlled system prompt with strict educational boundaries, zero student profiling, zero unverified curriculum claims, and mandatory draft status.
+  - **AI Provider & Dedicated Worker Architecture (`apps/api`):**
+    - Enhanced `OpenAiProvider` with secure server-side credentials check, dynamic model routing, timeout/cancellation handling, exponential retry classification, and structured schema generation.
+    - Maintained deterministic `MockAiProvider` for automated testing and transparent mock/live attribution.
+    - Implemented standalone unattended worker daemon (`apps/api/src/worker.ts`) with durable MySQL lease fencing, atomic claims, heartbeat maintenance, graceful SIGINT/SIGTERM shutdown, and integrated HTTP health check endpoint on `$PORT`.
+    - Added `start:worker` and `dev:worker` npm scripts to enable 24/7 background queue processing.
+  - **Academic Lesson Plan Repository & API Endpoints (`apps/api`):**
+    - `AcademicLessonPlanRepository`: Full persistence lifecycle including draft creation, content merging updates, teacher approval with audit recording, LMS publication, and status-based pagination.
+    - 7 new secure endpoints under `/api/v1/organizations/:organizationId/agents/academic-planning`: `/status`, `/generate`, `/lesson-plans`, `/lesson-plans/:id`, `/lesson-plans/:id/draft`, `/lesson-plans/:id/approve`, `/lesson-plans/:id/publish`, and `/lesson-plans/:id/export` (streaming Markdown and JSON downloads).
+  - **Frontend Shared Primitives (`packages/ui`):**
+    - Implemented dark enterprise UI primitives in `@haza-aios/ui/components/academic-planning-primitives.tsx`: `CurriculumVerificationBadge`, `LessonPlanStatusBadge`, `AcademicPlanningRequestCard`, `LessonPlanViewer` (17-point collapsible accordion sections), `LessonPlanEditor`.
+  - **Frontend Academic Assistant Workspace (`apps/web`):**
+    - `AcademicPlanningService`: Complete API client with generation polling, draft editing, approval, and browser download triggers.
+    - `AcademicPlanningAssistantPage.tsx`: Dense dual-tab teacher workspace ("Generate & Plan" and "Lesson Plan Archive & Drafts") featuring live worker execution telemetry, inline drafting, teacher review & approval flow, LMS publishing, and direct Markdown/JSON export.
+    - `AcademicOverviewPage.tsx`: Direct entrypoint card connecting Education → Academics → AI Academic Planning Assistant.
+    - Routes registered in `apps/web/src/App.tsx`: `/workspace/education/academic/assistant` and `/workspace/education/academic/lesson-plans`.
+  - **Automated Quality Evaluation & Integration Test Suites:**
+    - `academic-planning-evaluation.test.ts`: 14 evaluation benchmarks assessing structure completeness, prompt injection defense, edge-case durations, curriculum attribution labeling, and JSON repair.
+    - `epic15-first-production-ai-agent.integration.test.ts`: Full end-to-end integration lifecycle test executing agent generation, worker run processing, draft update, approval, LMS publication, and Markdown export against live database.
+
 ## [0.14.0-epic14] - 2026-10-29
 
 ### Added

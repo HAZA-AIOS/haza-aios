@@ -114,6 +114,7 @@ function handleError(
     requestId,
     internalErrorCode: readInternalErrorCode(error),
     internalErrorType: error instanceof Error ? error.name : typeof error,
+    internalErrorMessage: error instanceof Error ? error.message : String(error),
   });
 
   const retryAfter = (apiError.details as { retryAfter?: number })?.retryAfter;

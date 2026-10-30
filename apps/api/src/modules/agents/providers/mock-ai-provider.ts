@@ -146,7 +146,6 @@ export class MockAiProvider implements AiProvider {
     const timeout = request.timeoutMs;
 
     if (timeout !== undefined && timeout > 0 && latency > timeout) {
-      // Simulate timeout
       await this.sleep(timeout, request.signal);
       throw new AiProviderError(`Model invocation timed out after ${timeout}ms.`, {
         code: "TIMEOUT",
@@ -160,7 +159,6 @@ export class MockAiProvider implements AiProvider {
       await this.sleep(latency, request.signal);
     }
 
-    // Check cancellation after delay
     if (request.signal?.aborted) {
       throw new AiProviderError("Model invocation was aborted by client.", {
         code: "CANCELLED",
@@ -171,7 +169,9 @@ export class MockAiProvider implements AiProvider {
 
     // 5. Build response content
     const lastUserMessage = [...request.messages].reverse().find((m) => m.role === "user");
+    const systemMessage = request.messages.find((m) => m.role === "system");
     const userPrompt = lastUserMessage?.content ?? "No prompt provided";
+    const systemPrompt = systemMessage?.content ?? "";
 
     let content: string;
     let toolCalls: ToolCall[] | undefined = undefined;
@@ -183,6 +183,13 @@ export class MockAiProvider implements AiProvider {
       finishReason = "tool_calls";
     } else if (this.cannedResponse !== null) {
       content = this.cannedResponse;
+    } else if (
+      systemPrompt.includes("Academic Planning Assistant") ||
+      systemPrompt.includes("LessonPlanOutput") ||
+      userPrompt.includes("gradeLevel") ||
+      userPrompt.includes("learningGoals")
+    ) {
+      content = buildMockLessonPlanJson(userPrompt);
     } else {
       content = `[Mock Response from ${model.name}] Processed request: "${userPrompt.slice(0, 100)}"`;
     }
@@ -212,48 +219,172 @@ export class MockAiProvider implements AiProvider {
         promptTokens,
         completionTokens,
         totalTokens,
-        estimatedCostUsd: estimatedCostUsd !== undefined ? Number(estimatedCostUsd.toFixed(6)) : undefined,
+        estimatedCostUsd,
       },
       latencyMs: duration,
       metadata: {
-        ...request.metadata,
         simulated: true,
+        latencyMs: duration,
       },
     };
   }
 
   private sleep(ms: number, signal?: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        cleanup();
-        resolve();
-      }, ms);
-
-      const onAbort = () => {
-        cleanup();
-        reject(
-          new AiProviderError("Model invocation was aborted by client.", {
-            code: "CANCELLED",
-            provider: this.id,
-            retryable: false,
-          }),
-        );
-      };
-
-      const cleanup = () => {
-        clearTimeout(timer);
-        if (signal) {
-          signal.removeEventListener("abort", onAbort);
-        }
-      };
-
+      const timer = setTimeout(resolve, ms);
       if (signal) {
-        if (signal.aborted) {
-          onAbort();
-          return;
-        }
-        signal.addEventListener("abort", onAbort);
+        signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(
+            new AiProviderError("Model invocation was aborted during wait.", {
+              code: "CANCELLED",
+              provider: this.id,
+              retryable: false,
+            }),
+          );
+        });
       }
     });
   }
+}
+
+function buildMockLessonPlanJson(userPrompt: string): string {
+  let grade = "Grade 8";
+  let subject = "General Science";
+  let topic = "Ecosystems and Energy Flow";
+  let durationMinutes = 45;
+
+  try {
+    const parsed = JSON.parse(userPrompt);
+    if (parsed.gradeLevel) grade = parsed.gradeLevel;
+    if (parsed.subject) subject = parsed.subject;
+    if (parsed.topic) topic = parsed.topic;
+    if (parsed.durationMinutes) durationMinutes = Number(parsed.durationMinutes) || 45;
+  } catch {
+    // If not raw JSON, extract simple terms if present
+    const topicMatch = userPrompt.match(/topic['":\s]+([^,\n}"]+)/i);
+    if (topicMatch) topic = topicMatch[1].trim();
+    const gradeMatch = userPrompt.match(/grade['":\s]+([^,\n}"]+)/i);
+    if (gradeMatch) grade = gradeMatch[1].trim();
+    const subjectMatch = userPrompt.match(/subject['":\s]+([^,\n}"]+)/i);
+    if (subjectMatch) subject = subjectMatch[1].trim();
+  }
+
+  const lessonPlan = {
+    lessonTitle: `${topic}: Concepts, Analysis, and Mastery`,
+    grade,
+    subject,
+    topic,
+    durationMinutes,
+    curriculumAlignment: {
+      reference: null,
+      verified: false,
+      statement: "General Pedagogical Guidance (Unverified Curriculum Alignment)",
+    },
+    learningObjectives: [
+      {
+        type: "cognitive",
+        description: `Students will analyze the fundamental mechanisms of ${topic}.`,
+        bloomTaxonomyLevel: "analyze",
+      },
+      {
+        type: "skill",
+        description: `Students will apply ${topic} principles through structured inquiry problem-solving.`,
+        bloomTaxonomyLevel: "apply",
+      },
+      {
+        type: "affective",
+        description: "Students will collaborate constructively and reflect on real-world scientific applications.",
+        bloomTaxonomyLevel: "understand",
+      },
+    ],
+    requiredMaterials: [
+      "Digital student workbooks or physical science notebooks",
+      "Interactive diagram handouts and whiteboard markers",
+      "Teacher demonstration projector / visual aids",
+    ],
+    priorKnowledge: `Foundational terminology and introductory concepts relevant to ${subject} and introductory units.`,
+    lessonIntroduction: {
+      hook: `Engage students with a real-world dilemma demonstrating ${topic} in everyday contexts.`,
+      durationMinutes: Math.max(5, Math.round(durationMinutes * 0.15)),
+      instructions: "Facilitate a 3-minute Think-Pair-Share discussion to surface and address misconceptions.",
+    },
+    teachingSequence: [
+      {
+        stepNumber: 1,
+        title: "Explicit Modeling & Conceptual Framing",
+        durationMinutes: Math.max(10, Math.round(durationMinutes * 0.25)),
+        teacherActions: `Present structured visual anchors and demonstrate key ${topic} formulas and principles.`,
+        studentActions: "Annotate provided graphic organizers, answer targeted check questions.",
+        keyPoints: [
+          `Definition and relevance of ${topic}`,
+          "Key components and interaction patterns",
+          "Common analytical pitfalls",
+        ],
+      },
+      {
+        stepNumber: 2,
+        title: "Guided Investigation",
+        durationMinutes: Math.max(10, Math.round(durationMinutes * 0.25)),
+        teacherActions: "Circulate among peer groups, posing scaffolded guiding questions and recording formative notes.",
+        studentActions: "Work in pairs to solve progressive challenge problems and justify conclusions.",
+        keyPoints: [
+          "Peer debate and evidence verification",
+          "Step-by-step reasoning documentation",
+        ],
+      },
+    ],
+    guidedPractice: {
+      activity: "Small group collaborative case study with guided prompt cards and structured roles.",
+      durationMinutes: Math.max(8, Math.round(durationMinutes * 0.2)),
+      checkpoints: [
+        "Can students accurately state the core principle?",
+        "Are groups providing evidence-based justifications?",
+      ],
+    },
+    independentActivities: {
+      activity: "Individual synthesis worksheet requiring students to apply learning to a novel scenario.",
+      durationMinutes: Math.max(7, Math.round(durationMinutes * 0.15)),
+      extensionTask: `Formulate a hypothesis extending ${topic} to advanced real-world applications.`,
+    },
+    differentiationSuggestions: {
+      forStrugglingStudents: [
+        "Provide worked examples with color-coded steps",
+        "Offer structured sentence stems and word banks for explanations",
+        "Allow peer partner consultations for intermediate checkpoints",
+      ],
+      forAdvancedStudents: [
+        "Challenge with multi-variable constraints and edge-case evaluations",
+        "Ask students to critique an alternative or flawed scientific model",
+      ],
+      forEalOrSpecialNeeds: [
+        "Bilingual visual glossaries with diagrammatic illustrations",
+        "Extended thinking time and multimodal demonstration options",
+      ],
+    },
+    formativeAssessment: {
+      strategies: [
+        "Cold-call conceptual check questions",
+        "Thumbs up / sideways / down comprehension calibration",
+        "Teacher circulation observational rubrics",
+      ],
+      guidingQuestions: [
+        `How does ${topic} relate to our previous unit?`,
+        "Why is this step essential in reaching a valid outcome?",
+      ],
+    },
+    exitTicket: {
+      prompt: `Write two sentences explaining the core rule of ${topic} and one question you want clarified next class.`,
+      successCriteria: "Accurately references at least one key instructional term with logical supporting rationale.",
+    },
+    teacherNotes: [
+      `Watch for common confusion between fundamental definitions in ${topic}.`,
+      "Ensure transition between group work and independent tasks is crisp and time-bounded.",
+    ],
+    homeworkSuggestions: [
+      `Review key terms and complete 3 practice analysis questions on ${topic}.`,
+    ],
+  };
+
+  return JSON.stringify(lessonPlan, null, 2);
 }

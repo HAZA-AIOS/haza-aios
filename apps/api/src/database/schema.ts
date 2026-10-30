@@ -92,6 +92,13 @@ export const workflowTaskStatus = mysqlEnum("workflow_task_status", [
   "cancelled",
   "failed",
 ]);
+export const lessonPlanStatus = mysqlEnum("status", [
+  "draft",
+  "reviewed",
+  "approved",
+  "published",
+  "archived",
+]);
 export const membershipRole = mysqlEnum("organization_membership_role", [
   "Owner",
   "Admin",
@@ -1717,6 +1724,53 @@ export const classSubjects = mysqlTable(
   ],
 );
 
+export const academicLessonPlans = mysqlTable(
+  "academic_lesson_plans",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentRunId: char("agent_run_id", { length: 36 }).references(() => aiAgentRuns.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    title: varchar("title", { length: 255 }).notNull(),
+    grade: varchar("grade", { length: 50 }).notNull(),
+    subject: varchar("subject", { length: 100 }).notNull(),
+    topic: varchar("topic", { length: 255 }).notNull(),
+    durationMinutes: int("duration_minutes").notNull(),
+    learningObjectives: json("learning_objectives").$type<Array<{
+      type: "cognitive" | "skill" | "affective";
+      description: string;
+      bloomTaxonomyLevel?: string;
+    }>>().notNull(),
+    content: json("content").$type<Record<string, unknown>>().notNull(),
+    status: lessonPlanStatus.notNull().default("draft"),
+    curriculumReference: varchar("curriculum_reference", { length: 255 }),
+    curriculumVerified: boolean("curriculum_verified").notNull().default(false),
+    createdBy: char("created_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    approvedBy: char("approved_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    approvedAt: timestamp("approved_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    index("academic_lesson_plans_org_ws_idx").on(table.organizationId, table.workspaceId),
+    index("academic_lesson_plans_org_status_idx").on(table.organizationId, table.status),
+    index("academic_lesson_plans_creator_idx").on(table.createdBy),
+    index("academic_lesson_plans_run_idx").on(table.agentRunId),
+  ],
+);
+
 export const staffDepartments = mysqlTable(
   "staff_departments",
   {
@@ -3193,6 +3247,8 @@ export const schema = {
   timetableEntries,
   users,
   workspaceMemberships,
+  academicLessonPlans,
+  lessonPlanStatus,
   workspaces,
 };
 

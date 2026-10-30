@@ -30,6 +30,14 @@ import { OperationalService } from "../../operations/services/operational.servic
 import { MeteringService } from "../../metering/metering.service.js";
 import { AiProviderRegistry } from "../providers/provider-registry.js";
 import type { ModelInvocationRequest } from "../providers/ai-provider.types.js";
+import { AcademicLessonPlanRepository } from "../repositories/academic-lesson-plan.repository.js";
+import { parseAndValidateLessonPlanOutput } from "../validation/academic-planning-validation.js";
+import type {
+  AcademicLessonPlanRecord,
+  LessonPlanOutput,
+  LessonPlanStatus,
+  UpdateLessonPlanDraftInput,
+} from "../academic-planning.types.js";
 
 export class AgentRuntimeService {
   constructor(private readonly database: DatabaseClient) {}
@@ -402,11 +410,71 @@ export class AgentRuntimeService {
         },
       });
 
+      let parsedLessonPlan: LessonPlanOutput | null = null;
+      let savedLessonPlan: AcademicLessonPlanRecord | null = null;
+
+      const isAcademicPlanner =
+        agent.agentKey === "academic-planning-assistant" ||
+        agent.templateId === "00000000-0000-4100-8000-000000000104" ||
+        agent.name.toLowerCase().includes("academic planning");
+
+      if (isAcademicPlanner) {
+        try {
+          parsedLessonPlan = parseAndValidateLessonPlanOutput(response.content);
+          const lessonPlanRepo = new AcademicLessonPlanRepository(createRepositoryContext(this.database.db));
+
+          const inputData = (run.input ?? {}) as Record<string, unknown>;
+          savedLessonPlan = await lessonPlanRepo.createDraft({
+            organizationId: run.organizationId,
+            workspaceId: run.workspaceId,
+            agentRunId: run.id,
+            title: parsedLessonPlan.lessonTitle,
+            grade: parsedLessonPlan.grade || String(inputData.gradeLevel ?? "Grade 8"),
+            subject: parsedLessonPlan.subject || String(inputData.subject ?? "General"),
+            topic: parsedLessonPlan.topic || String(inputData.topic ?? "General Topic"),
+            durationMinutes: parsedLessonPlan.durationMinutes || Number(inputData.durationMinutes) || 45,
+            learningObjectives: parsedLessonPlan.learningObjectives,
+            content: parsedLessonPlan,
+            status: "draft",
+            curriculumReference: parsedLessonPlan.curriculumAlignment.reference,
+            curriculumVerified: parsedLessonPlan.curriculumAlignment.verified,
+            createdBy: run.requestedBy,
+          });
+
+          await runtimeRepo.recordEvent({
+            organizationId: run.organizationId,
+            workspaceId: run.workspaceId,
+            runId: run.id,
+            attemptId: attempt.id,
+            eventType: "lesson_plan_draft_created",
+            payload: {
+              lessonPlanId: savedLessonPlan.id,
+              title: savedLessonPlan.title,
+              status: savedLessonPlan.status,
+            },
+          });
+        } catch (planErr: any) {
+          await runtimeRepo.recordEvent({
+            organizationId: run.organizationId,
+            workspaceId: run.workspaceId,
+            runId: run.id,
+            attemptId: attempt.id,
+            eventType: "lesson_plan_parse_error",
+            payload: {
+              error: planErr.message,
+            },
+          });
+        }
+      }
+
       const outputData = {
         result: response.content,
         provider: response.provider,
         model: response.model,
         liveInferenceConfigured: !isMockFallback,
+        simulatedExecution: isMockFallback || response.provider === "mock",
+        lessonPlan: parsedLessonPlan,
+        lessonPlanId: savedLessonPlan?.id ?? null,
       };
 
       // Complete run
@@ -981,6 +1049,279 @@ export class AgentRuntimeService {
       throw new ApiError(404, "NOT_FOUND", "Conversation not found.");
     }
     return conversation;
+  }
+
+
+  async getLessonPlan(organizationId: string, lessonPlanId: string): Promise<AcademicLessonPlanRecord> {
+    const plan = await new AcademicLessonPlanRepository(createRepositoryContext(this.database.db)).getById(
+      organizationId,
+      lessonPlanId,
+    );
+    if (!plan) throw new ApiError(404, "NOT_FOUND", "Academic lesson plan not found.");
+    return plan;
+  }
+
+  async listLessonPlans(
+    organizationId: string,
+    workspaceId: string,
+    filter?: {
+      status?: LessonPlanStatus;
+      createdBy?: string;
+      search?: string;
+      page?: number;
+      pageSize?: number;
+    },
+  ): Promise<{
+    items: AcademicLessonPlanRecord[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    return new AcademicLessonPlanRepository(createRepositoryContext(this.database.db)).listByWorkspace(
+      organizationId,
+      workspaceId,
+      filter,
+    );
+  }
+
+  async updateLessonPlanDraft(
+    organizationId: string,
+    lessonPlanId: string,
+    input: UpdateLessonPlanDraftInput,
+    userId: string,
+  ): Promise<AcademicLessonPlanRecord> {
+    const existing = await this.getLessonPlan(organizationId, lessonPlanId);
+    if (existing.status === "published") {
+      throw new ApiError(409, "VALIDATION_FAILED", "Published lesson plans cannot be edited directly.");
+    }
+
+    const updated = await new AcademicLessonPlanRepository(createRepositoryContext(this.database.db)).updateDraft(
+      organizationId,
+      lessonPlanId,
+      input,
+    );
+    if (!updated) throw new ApiError(404, "NOT_FOUND", "Lesson plan update failed.");
+
+    await new OperationalService(this.database).recordAudit({
+      organizationId,
+      workspaceId: existing.workspaceId,
+      actorUserId: userId,
+      action: "academic.lesson_plan.update",
+      operation: "update",
+      result: "success",
+      resourceType: "academic_lesson_plans",
+      resourceId: lessonPlanId,
+      beforeSnapshot: { title: existing.title, status: existing.status },
+      afterSnapshot: { title: updated.title, status: updated.status },
+      changedFields: Object.keys(input),
+    });
+
+    return updated;
+  }
+
+  async approveLessonPlan(
+    organizationId: string,
+    lessonPlanId: string,
+    userId: string,
+    notes?: string,
+  ): Promise<AcademicLessonPlanRecord> {
+    const existing = await this.getLessonPlan(organizationId, lessonPlanId);
+    if (existing.status === "approved" || existing.status === "published") {
+      return existing;
+    }
+
+    const approved = await new AcademicLessonPlanRepository(createRepositoryContext(this.database.db)).approvePlan(
+      organizationId,
+      lessonPlanId,
+      userId,
+      notes,
+    );
+    if (!approved) throw new ApiError(500, "INTERNAL_SERVER_ERROR", "Failed to approve lesson plan.");
+
+    await new OperationalService(this.database).recordAudit({
+      organizationId,
+      workspaceId: existing.workspaceId,
+      actorUserId: userId,
+      action: "academic.lesson_plan.approve",
+      operation: "update",
+      result: "success",
+      resourceType: "academic_lesson_plans",
+      resourceId: lessonPlanId,
+      beforeSnapshot: { status: existing.status },
+      afterSnapshot: { status: approved.status, approvedBy: userId },
+      changedFields: ["status", "approvedBy", "approvedAt"],
+      metadata: { notes: notes ?? null },
+    });
+
+    return approved;
+  }
+
+  async publishLessonPlan(
+    organizationId: string,
+    lessonPlanId: string,
+    userId: string,
+    target?: { courseId?: string; termId?: string; publishTarget?: string },
+  ): Promise<AcademicLessonPlanRecord> {
+    const existing = await this.getLessonPlan(organizationId, lessonPlanId);
+    if (existing.status !== "approved" && existing.status !== "draft") {
+      throw new ApiError(409, "VALIDATION_FAILED", "Only approved or reviewed plans can be published.");
+    }
+
+    const published = await new AcademicLessonPlanRepository(createRepositoryContext(this.database.db)).publishPlan(
+      organizationId,
+      lessonPlanId,
+      userId,
+      target,
+    );
+    if (!published) throw new ApiError(500, "INTERNAL_SERVER_ERROR", "Failed to publish lesson plan.");
+
+    await new OperationalService(this.database).recordAudit({
+      organizationId,
+      workspaceId: existing.workspaceId,
+      actorUserId: userId,
+      action: "academic.lesson_plan.publish",
+      operation: "update",
+      result: "success",
+      resourceType: "academic_lesson_plans",
+      resourceId: lessonPlanId,
+      beforeSnapshot: { status: existing.status },
+      afterSnapshot: { status: published.status },
+      changedFields: ["status"],
+    });
+
+    return published;
+  }
+
+  async deleteLessonPlan(organizationId: string, lessonPlanId: string, userId: string): Promise<boolean> {
+    const existing = await this.getLessonPlan(organizationId, lessonPlanId);
+    await new AcademicLessonPlanRepository(createRepositoryContext(this.database.db)).deletePlan(
+      organizationId,
+      lessonPlanId,
+    );
+
+    await new OperationalService(this.database).recordAudit({
+      organizationId,
+      workspaceId: existing.workspaceId,
+      actorUserId: userId,
+      action: "academic.lesson_plan.delete",
+      operation: "delete",
+      result: "success",
+      resourceType: "academic_lesson_plans",
+      resourceId: lessonPlanId,
+      beforeSnapshot: { title: existing.title, status: existing.status },
+      afterSnapshot: null,
+      changedFields: [],
+    });
+
+    return true;
+  }
+
+  async exportLessonPlan(
+    organizationId: string,
+    lessonPlanId: string,
+    format: "json" | "markdown" | "text" = "markdown",
+  ): Promise<{ content: string; mimeType: string; filename: string }> {
+    const plan = await this.getLessonPlan(organizationId, lessonPlanId);
+    const sanitizedTitle = plan.title.toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+
+    if (format === "json") {
+      return {
+        content: JSON.stringify(plan.content, null, 2),
+        mimeType: "application/json",
+        filename: sanitizedTitle + ".json",
+      };
+    }
+
+    const c = plan.content;
+    const lines = [
+      "# " + plan.title,
+      "",
+      "**Grade:** " + plan.grade + " | **Subject:** " + plan.subject + " | **Duration:** " + plan.durationMinutes + " minutes",
+      "**Status:** " + plan.status.toUpperCase() + " | **Curriculum Reference:** " + (plan.curriculumReference || "General Guidance"),
+      "**Curriculum Verification:** " + (plan.curriculumVerified ? "Verified Institutional Framework" : "General Pedagogical Guidance (Unverified)"),
+      "",
+      "---",
+      "",
+      "## 1. Learning Objectives",
+      "",
+      ...(c.learningObjectives ?? []).map(
+        (obj, i) => (i + 1) + ". **[" + obj.type.toUpperCase() + "]** " + obj.description + " *(Bloom: " + (obj.bloomTaxonomyLevel || "understand") + ")*",
+      ),
+      "",
+      "## 2. Required Materials & Technology",
+      "",
+      ...(c.requiredMaterials ?? []).map((m) => "- " + m),
+      "",
+      "## 3. Prior Knowledge",
+      "",
+      c.priorKnowledge || "None specified.",
+      "",
+      "## 4. Lesson Introduction (" + (c.lessonIntroduction?.durationMinutes || 10) + " mins)",
+      "",
+      "**Hook:** " + (c.lessonIntroduction?.hook || "Engaging introductory scenario."),
+      "",
+      "**Teacher Instructions:** " + (c.lessonIntroduction?.instructions || "Review previous context."),
+      "",
+      "## 5. Step-by-Step Teaching Sequence",
+      "",
+      ...(c.teachingSequence ?? []).map(
+        (step) =>
+          "### Step " + step.stepNumber + ": " + step.title + " (" + step.durationMinutes + " mins)\n\n**Teacher Actions:** " + step.teacherActions + "\n\n**Student Actions:** " + step.studentActions + "\n\n**Key Points:**\n" + (step.keyPoints ?? []).map((k) => "- " + k).join("\n") + "\n",
+      ),
+      "## 6. Guided Practice (" + (c.guidedPractice?.durationMinutes || 15) + " mins)",
+      "",
+      c.guidedPractice?.activity || "Collaborative activity.",
+      "",
+      "**Checkpoints for Understanding:**",
+      ...(c.guidedPractice?.checkpoints ?? []).map((checkpoint) => "- " + checkpoint),
+      "",
+      "## 7. Independent Activities (" + (c.independentActivities?.durationMinutes || 15) + " mins)",
+      "",
+      c.independentActivities?.activity || "Individual assignment.",
+      "",
+      c.independentActivities?.extensionTask
+        ? "**Extension Challenge:** " + c.independentActivities.extensionTask + "\n"
+        : "",
+      "## 8. Differentiation Suggestions",
+      "",
+      "### Support for Struggling Students",
+      ...(c.differentiationSuggestions?.forStrugglingStudents ?? []).map((s) => "- " + s),
+      "",
+      "### Extension for Advanced Learners",
+      ...(c.differentiationSuggestions?.forAdvancedStudents ?? []).map((s) => "- " + s),
+      "",
+      "### Accommodations for EAL / Diverse Learners",
+      ...(c.differentiationSuggestions?.forEalOrSpecialNeeds ?? []).map((s) => "- " + s),
+      "",
+      "## 9. Formative Assessment",
+      "",
+      "**Observational Strategies:**",
+      ...(c.formativeAssessment?.strategies ?? []).map((s) => "- " + s),
+      "",
+      "**Guiding Assessment Questions:**",
+      ...(c.formativeAssessment?.guidingQuestions ?? []).map((q) => "- " + q),
+      "",
+      "## 10. Exit Ticket",
+      "",
+      "**Prompt:** " + (c.exitTicket?.prompt || "Summarize main learning takeaway."),
+      "",
+      "**Success Criteria:** " + (c.exitTicket?.successCriteria || "Clear and evidence-based explanation."),
+      "",
+      "## 11. Teacher Notes & Misconceptions",
+      "",
+      ...(c.teacherNotes ?? []).map((n) => "- " + n),
+      "",
+      c.homeworkSuggestions && c.homeworkSuggestions.length > 0
+        ? "## 12. Optional Homework Suggestions\n\n" + c.homeworkSuggestions.map((h) => "- " + h).join("\n") + "\n"
+        : "",
+    ];
+
+    return {
+      content: lines.join("\n"),
+      mimeType: "text/markdown",
+      filename: sanitizedTitle + ".md",
+    };
   }
 
   private assertTransition(current: AgentRunStatus, next: AgentRunStatus): void {

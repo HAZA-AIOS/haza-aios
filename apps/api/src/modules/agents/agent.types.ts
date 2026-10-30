@@ -567,7 +567,9 @@ export type AgentRunEventType =
   | "run_failed"
   | "run_cancelled"
   | "retry_scheduled"
-  | "lease_recovered";
+  | "lease_recovered"
+  | "lesson_plan_draft_created"
+  | "lesson_plan_parse_error";
 
 export type AgentRunEventRecord = {
   id: string;

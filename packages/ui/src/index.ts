@@ -29,6 +29,7 @@ export * from "./components/agent-primitives";
 export * from "./components/agent-marketplace-primitives";
 export * from "./components/agent-builder-primitives";
 export * from "./components/agent-runtime-primitives";
+export * from "./components/academic-planning-primitives";
 export * from "./components/sis-primitives";
 export * from "./components/pagination";
 export * from "./lib/design-tokens";

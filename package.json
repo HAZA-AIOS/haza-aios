@@ -13,6 +13,8 @@
     "typecheck:web": "npm run typecheck -w apps/web",
     "dev:api": "npm run dev -w apps/api",
     "build:api": "npm run build -w apps/api",
+    "dev:worker": "npm run dev:worker -w apps/api",
+    "start:worker": "npm run start:worker -w apps/api",
     "db:check": "npm run db:check -w apps/api",
     "db:create": "npm run db:create -w apps/api",
     "db:generate": "npm run db:generate -w apps/api",

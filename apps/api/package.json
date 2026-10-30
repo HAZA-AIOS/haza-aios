@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
+    "dev:worker": "tsx watch src/worker.ts",
+    "start:worker": "node dist/worker.js",
     "build": "npx tsc -p tsconfig.json",
     "db:check": "drizzle-kit check --config drizzle.config.ts",
     "db:create": "tsx src/database/scripts/create-database.ts",

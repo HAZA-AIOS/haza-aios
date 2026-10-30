@@ -5,6 +5,7 @@ import {
   ModelInvocationRequest,
   ModelInvocationResponse,
   ModelMetadata,
+  ToolCall,
 } from "./ai-provider.types.js";
 
 const DEFAULT_OPENAI_MODELS: ModelMetadata[] = [
@@ -151,17 +152,40 @@ export class OpenAiProvider implements AiProvider {
       request.signal.addEventListener("abort", () => controller.abort());
     }
 
+    const hasTools = Boolean(request.tools && request.tools.length > 0);
+
     const payload: Record<string, unknown> = {
       model: targetModel.id,
-      messages: request.messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-        name: m.name,
-      })),
+      messages: request.messages.map((m) => {
+        if (m.role === "tool") {
+          return {
+            role: "tool",
+            tool_call_id: m.toolCallId || "call_default",
+            content: m.content,
+          };
+        }
+        return {
+          role: m.role,
+          content: m.content,
+          name: m.name,
+        };
+      }),
       temperature: request.temperature ?? 0.7,
       max_tokens: request.maxTokens ?? 3000,
-      response_format: { type: "json_object" },
     };
+
+    if (hasTools) {
+      payload.tools = request.tools!.map((t) => ({
+        type: "function",
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        },
+      }));
+    } else {
+      payload.response_format = { type: "json_object" };
+    }
 
     try {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -224,7 +248,27 @@ export class OpenAiProvider implements AiProvider {
       const data = (await response.json()) as any;
       const choice = data.choices?.[0];
       const content = choice?.message?.content ?? "";
-      const finishReason = choice?.finish_reason === "length" ? "length" : "stop";
+      let finishReason: ModelInvocationResponse["finishReason"] = "stop";
+      let toolCalls: ToolCall[] | undefined = undefined;
+
+      if (choice?.finish_reason === "tool_calls" || (choice?.message?.tool_calls && choice.message.tool_calls.length > 0)) {
+        finishReason = "tool_calls";
+        toolCalls = (choice.message.tool_calls as any[]).map((tc) => {
+          let args: Record<string, unknown>;
+          try {
+            args = JSON.parse(tc.function?.arguments || "{}");
+          } catch {
+            args = {};
+          }
+          return {
+            id: tc.id || `call_${randomUUID()}`,
+            name: tc.function?.name || "",
+            arguments: args,
+          };
+        });
+      } else if (choice?.finish_reason === "length") {
+        finishReason = "length";
+      }
 
       const promptTokens = data.usage?.prompt_tokens ?? Math.ceil(JSON.stringify(payload).length / 4);
       const completionTokens = data.usage?.completion_tokens ?? Math.ceil(content.length / 4);
@@ -242,6 +286,7 @@ export class OpenAiProvider implements AiProvider {
         provider: this.id,
         content,
         finishReason,
+        toolCalls,
         usage: {
           promptTokens,
           completionTokens,

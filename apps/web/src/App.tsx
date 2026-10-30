@@ -35,8 +35,7 @@ import { InstalledAgentsPage } from "./pages/workspace/marketplace/InstalledAgen
 import { PublisherWorkspacePage } from "./pages/workspace/marketplace/PublisherWorkspacePage";
 import { MarketplaceReviewPage } from "./pages/admin/MarketplaceReviewPage";
 import { AgentBuilderPage } from "./pages/workspace/agents/builder/AgentBuilderPage";
-import { AgentRunPage } from "./pages/workspace/agents/run/AgentRunPage";
-import { AgentRunHistory } from "./pages/workspace/agents/run/AgentRunHistory";
+import { AgentToolsPage } from "./pages/workspace/agents/tools/AgentToolsPage";
 import { StudentDirectoryPage } from "./pages/workspace/education/students/StudentDirectoryPage";
 import { StudentAdmissionPage } from "./pages/workspace/education/students/StudentAdmissionPage";
 import { StudentProfilePage } from "./pages/workspace/education/students/StudentProfilePage";
@@ -46,7 +45,6 @@ import { AddStaffPage } from "./pages/workspace/education/staff/AddStaffPage";
 import { StaffProfilePage } from "./pages/workspace/education/staff/StaffProfilePage";
 import { DepartmentDirectoryPage } from "./pages/workspace/education/staff/DepartmentDirectoryPage";
 import { AcademicOverviewPage } from "./pages/workspace/education/academic/AcademicOverviewPage";
-import { AcademicPlanningAssistantPage } from "./pages/workspace/education/academic/AcademicPlanningAssistantPage";
 import { AcademicYearsPage } from "./pages/workspace/education/academic/AcademicYearsPage";
 import { TermsPage } from "./pages/workspace/education/academic/TermsPage";
 import { ClassesPage } from "./pages/workspace/education/academic/ClassesPage";
@@ -679,6 +677,16 @@ function App() {
           </WorkspaceGuard>
         </ProtectedRoute>
       );
+    case "/workspace/agents/tools":
+    case "/workspace/agents/tools/executions":
+    case "/workspace/agents/tools/policies":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AgentToolsPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
     case (pathname.match(/^\/workspace\/agents\/runs\/[^/]+$/) || {}).input:
       return (
         <ProtectedRoute>
@@ -712,7 +720,7 @@ function App() {
             <AgentDetailsPage />
           </WorkspaceGuard>
         </ProtectedRoute>
-      );    /* ───── Platform Administration Routes ───── */
+      );    /* â”€â”€â”€â”€â”€ Platform Administration Routes â”€â”€â”€â”€â”€ */
     case "/admin":
       return (
         <ProtectedRoute>

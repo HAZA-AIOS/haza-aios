@@ -1,188 +1,195 @@
 {
-  "version": "7",
-  "dialect": "mysql",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "5",
-      "when": 1787037977818,
-      "tag": "0000_calm_agent_zero",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1787042238699,
-      "tag": "0001_friendly_lord_hawal",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "5",
-      "when": 1787046176071,
-      "tag": "0002_long_bruce_banner",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "5",
-      "when": 1787556716023,
-      "tag": "0003_zippy_venom",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "5",
-      "when": 1787679324819,
-      "tag": "0004_smart_dazzler",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "5",
-      "when": 1787800000000,
-      "tag": "0005_quiet_examiner",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "5",
-      "when": 1787801000000,
-      "tag": "0006_firm_bursar",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "5",
-      "when": 1787888655462,
-      "tag": "0007_absent_firebrand",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "5",
-      "when": 1787934170278,
-      "tag": "0008_naive_killraven",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "5",
-      "when": 1788198180185,
-      "tag": "0009_tearful_morlun",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "5",
-      "when": 1788799001273,
-      "tag": "0010_many_sandman",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "5",
-      "when": 1789665486335,
-      "tag": "0011_dazzling_zaran",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "5",
-      "when": 1789924385214,
-      "tag": "0012_certain_argent",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "5",
-      "when": 1789962104676,
-      "tag": "0013_abnormal_johnny_storm",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "5",
-      "when": 1789978889085,
-      "tag": "0014_third_rawhide_kid",
-      "breakpoints": true
-    },
-    {
-      "idx": 15,
-      "version": "5",
-      "when": 1791360568301,
-      "tag": "0015_loose_longshot",
-      "breakpoints": true
-    },
-    {
-      "idx": 16,
-      "version": "5",
-      "when": 1791528762714,
-      "tag": "0016_left_deathstrike",
-      "breakpoints": true
-    },
-    {
-      "idx": 17,
-      "version": "5",
-      "when": 1791531699174,
-      "tag": "0017_youthful_silverclaw",
-      "breakpoints": true
-    },
-    {
-      "idx": 18,
-      "version": "5",
-      "when": 1792370000000,
-      "tag": "0018_peaceful_bursar",
-      "breakpoints": true
-    },
-    {
-      "idx": 19,
-      "version": "5",
-      "when": 1792480000000,
-      "tag": "0019_portal_requests_unique_identifiers",
-      "breakpoints": true
-    },
-    {
-      "idx": 20,
-      "version": "5",
-      "when": 1792600000000,
-      "tag": "0020_backfill_portal_request_identifiers",
-      "breakpoints": true
-    },
-    {
-      "idx": 21,
-      "version": "5",
-      "when": 1792700000000,
-      "tag": "0021_agent_platform_foundation",
-      "breakpoints": true
-    },
-    {
-      "idx": 22,
-      "version": "5",
-      "when": 1792800000000,
-      "tag": "0022_agent_registry_marketplace",
-      "breakpoints": true
-    },
-    {
-      "idx": 23,
-      "version": "5",
-      "when": 1792900000000,
-      "tag": "0023_agent_configuration_builder",
-      "breakpoints": true
-    },
-    {
-      "idx": 24,
-      "version": "5",
-      "when": 1793000000000,
-      "tag": "0024_agent_runtime_execution_engine",
-      "breakpoints": true
-    },
-    {
-      "idx": 25,
-      "version": "5",
-      "when": 1793100000000,
-      "tag": "0025_academic_lesson_plans",
-      "breakpoints": true
-    }
-  ]
+    "version":  "7",
+    "dialect":  "mysql",
+    "entries":  [
+                    {
+                        "idx":  0,
+                        "version":  "5",
+                        "when":  1787037977818,
+                        "tag":  "0000_calm_agent_zero",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  1,
+                        "version":  "5",
+                        "when":  1787042238699,
+                        "tag":  "0001_friendly_lord_hawal",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  2,
+                        "version":  "5",
+                        "when":  1787046176071,
+                        "tag":  "0002_long_bruce_banner",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  3,
+                        "version":  "5",
+                        "when":  1787556716023,
+                        "tag":  "0003_zippy_venom",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  4,
+                        "version":  "5",
+                        "when":  1787679324819,
+                        "tag":  "0004_smart_dazzler",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  5,
+                        "version":  "5",
+                        "when":  1787800000000,
+                        "tag":  "0005_quiet_examiner",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  6,
+                        "version":  "5",
+                        "when":  1787801000000,
+                        "tag":  "0006_firm_bursar",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  7,
+                        "version":  "5",
+                        "when":  1787888655462,
+                        "tag":  "0007_absent_firebrand",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  8,
+                        "version":  "5",
+                        "when":  1787934170278,
+                        "tag":  "0008_naive_killraven",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  9,
+                        "version":  "5",
+                        "when":  1788198180185,
+                        "tag":  "0009_tearful_morlun",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  10,
+                        "version":  "5",
+                        "when":  1788799001273,
+                        "tag":  "0010_many_sandman",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  11,
+                        "version":  "5",
+                        "when":  1789665486335,
+                        "tag":  "0011_dazzling_zaran",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  12,
+                        "version":  "5",
+                        "when":  1789924385214,
+                        "tag":  "0012_certain_argent",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  13,
+                        "version":  "5",
+                        "when":  1789962104676,
+                        "tag":  "0013_abnormal_johnny_storm",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  14,
+                        "version":  "5",
+                        "when":  1789978889085,
+                        "tag":  "0014_third_rawhide_kid",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  15,
+                        "version":  "5",
+                        "when":  1791360568301,
+                        "tag":  "0015_loose_longshot",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  16,
+                        "version":  "5",
+                        "when":  1791528762714,
+                        "tag":  "0016_left_deathstrike",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  17,
+                        "version":  "5",
+                        "when":  1791531699174,
+                        "tag":  "0017_youthful_silverclaw",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  18,
+                        "version":  "5",
+                        "when":  1792370000000,
+                        "tag":  "0018_peaceful_bursar",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  19,
+                        "version":  "5",
+                        "when":  1792480000000,
+                        "tag":  "0019_portal_requests_unique_identifiers",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  20,
+                        "version":  "5",
+                        "when":  1792600000000,
+                        "tag":  "0020_backfill_portal_request_identifiers",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  21,
+                        "version":  "5",
+                        "when":  1792700000000,
+                        "tag":  "0021_agent_platform_foundation",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  22,
+                        "version":  "5",
+                        "when":  1792800000000,
+                        "tag":  "0022_agent_registry_marketplace",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  23,
+                        "version":  "5",
+                        "when":  1792900000000,
+                        "tag":  "0023_agent_configuration_builder",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  24,
+                        "version":  "5",
+                        "when":  1793000000000,
+                        "tag":  "0024_agent_runtime_execution_engine",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  25,
+                        "version":  "5",
+                        "when":  1793100000000,
+                        "tag":  "0025_academic_lesson_plans",
+                        "breakpoints":  true
+                    },
+                    {
+                        "idx":  26,
+                        "version":  "5",
+                        "when":  1793200000000,
+                        "tag":  "0026_agent_tools_and_organizational_data",
+                        "breakpoints":  true
+                    }
+                ]
 }

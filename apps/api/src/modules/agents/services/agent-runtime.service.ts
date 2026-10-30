@@ -29,7 +29,14 @@ import { AgentRuntimeRepository } from "../repositories/agent-runtime.repository
 import { OperationalService } from "../../operations/services/operational.service.js";
 import { MeteringService } from "../../metering/metering.service.js";
 import { AiProviderRegistry } from "../providers/provider-registry.js";
-import type { ModelInvocationRequest } from "../providers/ai-provider.types.js";
+import type {
+  ModelInvocationRequest,
+  ModelInvocationResponse,
+  InvocationMessage,
+  ToolDeclaration,
+} from "../providers/ai-provider.types.js";
+import { AgentToolGatewayService } from "../tools/agent-tool-gateway.service.js";
+import { listTrustedTools, convertToToolDeclaration } from "../tools/trusted-tool-registry.js";
 import { AcademicLessonPlanRepository } from "../repositories/academic-lesson-plan.repository.js";
 import { parseAndValidateLessonPlanOutput } from "../validation/academic-planning-validation.js";
 import type {
@@ -348,36 +355,129 @@ export class AgentRuntimeService {
         },
       });
 
-      const invocationRequest: ModelInvocationRequest = {
-        model: modelSelection,
-        messages: [
-          { role: "system", content: agent.instructions || "You are a helpful AI assistant." },
-          { role: "user", content: contentFromPayload(run.input) },
-        ],
-        temperature: 0.7,
-        maxTokens: 2000,
-        timeoutMs: 30000,
-      };
+      const isAcademicPlanner =
+        agent.agentKey === "academic-planning-assistant" ||
+        agent.templateId === "00000000-0000-4100-8000-000000000104" ||
+        agent.name.toLowerCase().includes("academic planning");
 
-      const response = await provider.invoke(invocationRequest);
+      // Prepare declared tools for the agent
+      const toolGateway = new AgentToolGatewayService(this.database);
+      const trustedTools = listTrustedTools();
+      const agentToolKeys = Array.isArray(agent.tools) ? agent.tools.map((t) => t.toolKey) : [];
 
-      await runtimeRepo.recordEvent({
-        organizationId: run.organizationId,
-        workspaceId: run.workspaceId,
-        runId: run.id,
-        attemptId: attempt.id,
-        eventType: "model_responded",
-        payload: {
-          provider: response.provider,
-          finishReason: response.finishReason,
-          tokens: response.usage.totalTokens,
-        },
-      });
+      const eligibleTools = trustedTools.filter(
+        (t) =>
+          agentToolKeys.includes(t.toolKey) ||
+          (isAcademicPlanner && t.toolKey.startsWith("education.")),
+      );
+
+      const declaredTools: ToolDeclaration[] = eligibleTools.map(convertToToolDeclaration);
+
+      const messages: InvocationMessage[] = [
+        { role: "system", content: agent.instructions || "You are a helpful AI assistant." },
+        { role: "user", content: contentFromPayload(run.input) },
+      ];
+
+      let stepCount = 0;
+      let finalResponse: ModelInvocationResponse | null = null;
+      let cumulativeInputTokens = 0;
+      let cumulativeOutputTokens = 0;
+
+      while (stepCount < 5) {
+        stepCount++;
+        const invocationRequest: ModelInvocationRequest = {
+          model: modelSelection,
+          messages,
+          temperature: 0.7,
+          maxTokens: 2000,
+          timeoutMs: 30000,
+          tools: declaredTools.length > 0 ? declaredTools : undefined,
+          metadata: {
+            preferToolCalling: isAcademicPlanner && stepCount === 1,
+          },
+        };
+
+        const currentResponse = await provider.invoke(invocationRequest);
+        cumulativeInputTokens += currentResponse.usage.promptTokens;
+        cumulativeOutputTokens += currentResponse.usage.completionTokens;
+
+        await runtimeRepo.recordEvent({
+          organizationId: run.organizationId,
+          workspaceId: run.workspaceId,
+          runId: run.id,
+          attemptId: attempt.id,
+          eventType: "model_responded",
+          payload: {
+            step: stepCount,
+            provider: currentResponse.provider,
+            finishReason: currentResponse.finishReason,
+            tokens: currentResponse.usage.totalTokens,
+            hasToolCalls: Boolean(currentResponse.toolCalls && currentResponse.toolCalls.length > 0),
+          },
+        });
+
+        if (currentResponse.finishReason === "tool_calls" && currentResponse.toolCalls && currentResponse.toolCalls.length > 0) {
+          for (const call of currentResponse.toolCalls) {
+            const toolExecResult = await toolGateway.executeTool(
+              {
+                runId: run.id,
+                toolKey: call.name,
+                input: call.arguments,
+              },
+              {
+                userId: run.requestedBy,
+              },
+            );
+
+            if (toolExecResult.approvalRequired) {
+              await runtimeRepo.updateRun(run.organizationId, run.id, {
+                status: "awaiting_approval",
+                leaseToken: null,
+                leaseExpiresAt: null,
+              });
+              await runtimeRepo.updateAttempt(attempt.id, {
+                status: "awaiting_approval",
+                metadata: {
+                  ...attempt.metadata,
+                  approvalRequestId: toolExecResult.approvalRequestId,
+                  toolKey: call.name,
+                },
+              });
+              return;
+            }
+
+            messages.push({
+              role: "tool",
+              name: call.name,
+              toolCallId: call.id,
+              content: JSON.stringify(toolExecResult.data || toolExecResult.error || {}),
+            });
+          }
+          continue;
+        }
+
+        finalResponse = currentResponse;
+        break;
+      }
+
+      if (!finalResponse) {
+        finalResponse = await provider.invoke({
+          model: modelSelection,
+          messages,
+          temperature: 0.7,
+          maxTokens: 2000,
+          timeoutMs: 30000,
+        });
+        cumulativeInputTokens += finalResponse.usage.promptTokens;
+        cumulativeOutputTokens += finalResponse.usage.completionTokens;
+      }
+
+      const response = finalResponse;
 
       const durationMs = Math.max(1, Date.now() - startTime);
-      const inputTokens = response.usage.promptTokens;
-      const outputTokens = response.usage.completionTokens;
-      const totalTokens = response.usage.totalTokens;
+      const inputTokens = cumulativeInputTokens || response.usage.promptTokens;
+      const outputTokens = cumulativeOutputTokens || response.usage.completionTokens;
+      const totalTokens = inputTokens + outputTokens;
       // Calculate micro-USD (e.g. prompt $0.0015/1k = 1.5 micro/token, completion $0.002/1k = 2 micro/token)
       const costMicros = Math.round(inputTokens * 1.5 + outputTokens * 2.0);
 
@@ -407,16 +507,12 @@ export class AgentRuntimeService {
           ...attempt.metadata,
           responseFinishReason: response.finishReason,
           isMockFallback,
+          stepsExecuted: stepCount,
         },
       });
 
       let parsedLessonPlan: LessonPlanOutput | null = null;
       let savedLessonPlan: AcademicLessonPlanRecord | null = null;
-
-      const isAcademicPlanner =
-        agent.agentKey === "academic-planning-assistant" ||
-        agent.templateId === "00000000-0000-4100-8000-000000000104" ||
-        agent.name.toLowerCase().includes("academic planning");
 
       if (isAcademicPlanner) {
         try {
@@ -524,7 +620,7 @@ export class AgentRuntimeService {
         outcome: "completed",
         occurredAt: new Date(),
       });
-    } catch (err: any) {
+    } catch (err: any) { 
       const durationMs = Math.max(1, Date.now() - startTime);
       const safeMessage = sanitizeError(err.message || "Execution failed.");
       const errorCode = err.code || "RUNTIME_ERROR";

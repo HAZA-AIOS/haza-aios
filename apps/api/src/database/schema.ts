@@ -411,6 +411,146 @@ export const aiAgentToolAssignments = mysqlTable(
   ],
 );
 
+export const aiAgentTools = mysqlTable(
+  "ai_agent_tools",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    toolKey: varchar("tool_key", { length: 160 }).notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    description: varchar("description", { length: 1000 }).notNull(),
+    category: varchar("category", { length: 80 }).notNull(),
+    industry: varchar("industry", { length: 80 }).notNull(),
+    riskLevel: varchar("risk_level", { length: 20 }).notNull().default("low"),
+    executionMode: varchar("execution_mode", { length: 20 }).notNull().default("sync"),
+    requiredPermissions: json("required_permissions").$type<string[]>().notNull(),
+    approvalPolicy: varchar("approval_policy", { length: 40 }).notNull().default("none"),
+    timeoutMs: int("timeout_ms").notNull().default(15000),
+    maxAttempts: int("max_attempts").notNull().default(3),
+    status: varchar("status", { length: 40 }).notNull().default("active"),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_agent_tools_key_unique").on(table.toolKey),
+    index("ai_agent_tools_category_idx").on(table.category),
+    index("ai_agent_tools_industry_idx").on(table.industry),
+  ],
+);
+
+export const aiAgentToolVersions = mysqlTable(
+  "ai_agent_tool_versions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    toolId: char("tool_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentTools.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    version: varchar("version", { length: 40 }).notNull(),
+    inputSchema: json("input_schema").$type<Record<string, unknown>>().notNull(),
+    outputSchema: json("output_schema").$type<Record<string, unknown>>().notNull(),
+    deprecated: boolean("deprecated").notNull().default(false),
+    changelog: varchar("changelog", { length: 1000 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_agent_tool_versions_tool_version_unique").on(table.toolId, table.version),
+    index("ai_agent_tool_versions_tool_idx").on(table.toolId),
+  ],
+);
+
+export const aiAgentToolTenantPolicies = mysqlTable(
+  "ai_agent_tool_tenant_policies",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
+    toolId: char("tool_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentTools.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    enabled: boolean("enabled").notNull().default(true),
+    approvalPolicyOverride: varchar("approval_policy_override", { length: 40 }),
+    customRateLimitPerMinute: int("custom_rate_limit_per_minute"),
+    allowedAgentIds: json("allowed_agent_ids").$type<string[]>(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_agent_tool_tenant_policies_org_ws_tool_unique").on(
+      table.organizationId,
+      table.workspaceId,
+      table.toolId,
+    ),
+    index("ai_agent_tool_policies_org_idx").on(table.organizationId, table.enabled),
+  ],
+);
+
+export const aiAgentToolExecutions = mysqlTable(
+  "ai_agent_tool_executions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    runId: char("run_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentRuns.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    attemptId: char("attempt_id", { length: 36 }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    configurationRevisionId: char("configuration_revision_id", { length: 36 }).references(
+      () => aiAgentConfigurationRevisions.id,
+      { onDelete: "set null", onUpdate: "cascade" },
+    ),
+    toolId: char("tool_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentTools.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    toolVersion: varchar("tool_version", { length: 40 }).notNull(),
+    toolKey: varchar("tool_key", { length: 160 }).notNull(),
+    requestedBy: char("requested_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    inputDigest: varchar("input_digest", { length: 128 }).notNull(),
+    inputSnapshot: json("input_snapshot").$type<Record<string, unknown>>(),
+    outputSnapshot: json("output_snapshot").$type<Record<string, unknown>>(),
+    status: varchar("status", { length: 40 }).notNull().default("pending"),
+    approvalRequestId: char("approval_request_id", { length: 36 }).references(
+      () => aiAgentApprovalRequests.id,
+      { onDelete: "set null", onUpdate: "cascade" },
+    ),
+    startedAt: timestamp("started_at", { fsp: 3 }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { fsp: 3 }),
+    durationMs: int("duration_ms"),
+    errorCategory: varchar("error_category", { length: 60 }),
+    errorMessage: varchar("error_message", { length: 1000 }),
+    correlationId: varchar("correlation_id", { length: 128 }),
+    idempotencyKey: varchar("idempotency_key", { length: 160 }),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("ai_agent_tool_exec_org_ws_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.createdAt,
+    ),
+    index("ai_agent_tool_exec_run_idx").on(table.runId),
+    index("ai_agent_tool_exec_tool_idx").on(table.toolId, table.status),
+    index("ai_agent_tool_exec_org_key_idx").on(
+      table.organizationId,
+      table.toolKey,
+      table.createdAt,
+    ),
+  ],
+);
+
 export const aiAgentConversations = mysqlTable(
   "ai_agent_conversations",
   {
@@ -3249,6 +3389,10 @@ export const schema = {
   workspaceMemberships,
   academicLessonPlans,
   lessonPlanStatus,
+  aiAgentTools,
+  aiAgentToolVersions,
+  aiAgentToolTenantPolicies,
+  aiAgentToolExecutions,
   workspaces,
 };
 

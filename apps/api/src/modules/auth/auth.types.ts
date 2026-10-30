@@ -51,7 +51,16 @@ export type PermissionKey =
   | "usage.read"
   | "billing.read"
   | "member.read"
-  | "member.manage";
+  | "member.manage"
+  | "tool.read"
+  | "tool.manage"
+  | "tool.execute"
+  | "education.academic.read"
+  | "education.academic.manage"
+  | "education.lesson_plan.read"
+  | "education.lesson_plan.create"
+  | "education.lesson_plan.manage"
+  | "education.lesson_plan.publish";
 
 export type AuthMembership = {
   id: string;

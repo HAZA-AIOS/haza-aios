@@ -168,7 +168,7 @@ async function main() {
   const rows = orgUserRes.stdout.trim().split("\n");
   if (rows.length >= 2) {
     const [userId, orgId, wsId] = rows[1].split("\t");
-    const testId = "rehearsal-lp-00000000-0000-4000-8000-000000000001";
+    const testId = "00000000-0000-4000-8000-000000000001";
     await runRailwayMysql(
       `INSERT INTO \`academic_lesson_plans\` (\`id\`, \`organization_id\`, \`workspace_id\`, \`title\`, \`grade\`, \`subject\`, \`topic\`, \`duration_minutes\`, \`learning_objectives\`, \`content\`, \`status\`, \`created_by\`) VALUES ('${testId}', '${orgId}', '${wsId}', 'Rehearsal Photosynthesis Lesson', 'Grade 7', 'Science', 'Photosynthesis', 45, '["Understand sunlight absorption"]', '{"lessonTitle":"Rehearsal Photosynthesis Lesson","grade":"Grade 7","subject":"Science","topic":"Photosynthesis","durationMinutes":45}', 'draft', '${userId}');`,
       REHEARSAL_DB

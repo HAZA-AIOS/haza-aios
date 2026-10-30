@@ -2,9 +2,21 @@
 
 Multi-Industry AI Operating System for Organizations
 
-HAZA AIOS is a modular platform for organization operations, tenant workspaces, industry-specific modules, AI agent workflows, automation, analytics, and reporting. The repository currently contains a React web application, a TypeScript API, shared UI/package foundations, persistent platform/auth/SIS backend services, and the active database retrofit documentation.
+HAZA AIOS is a modular platform for organization operations, tenant workspaces, industry-specific modules, AI agent workflows, automation, analytics, and reporting. The repository contains a React web application, a TypeScript API, a dedicated background worker, shared UI packages, persistent platform/auth/SIS services, and production-deployed AI agent capabilities.
 
-The Education Student Information System (SIS) is the most developed industry module. Platform core, SIS persistence, module registry persistence, AI Agent registry/configuration persistence, and agent runtime history persistence are implemented through DB-13. Later phases are planned for agent knowledge, workflow, audit, metering, and production hardening persistence.
+Education SIS remains the most developed industry module. The production release now also includes an AI Agent Marketplace, configuration builder, durable execution runtime, and a teacher-supervised Academic Planning Assistant. The DB-0–DB-18 retrofit history is distinct from production Epic 11–15 delivery; see the current release status document.
+
+## Current Production Release (2026-10-30)
+
+**Production release:** [`v0.15.0-epic15`](https://github.com/HAZA-AIOS/haza-aios/releases/tag/v0.15.0-epic15) · **Next planned epic:** **16 — Agent Tools & Organizational Data Integration** (not started).
+
+Epic 15 delivered the **HAZA Academic Planning Assistant**, the first production-deployed, human-supervised education agent. It uses the agent registry, marketplace, builder, and durable runtime from Epics 11–14. Teachers can generate and edit lesson-plan drafts, review and approve content, export Markdown/JSON, and explicitly publish approved plans through the LMS workflow. Automated verification reported **640/640 tests passing**; the release report documents an unattended worker execution and live production smoke checks. Production database migration **0025** added `academic_lesson_plans`.
+
+**Production infrastructure:** [Web](https://www.haza-aios.com) · [API](https://api.haza-aios.com) · dedicated Railway background worker · Railway MySQL. All four services were independently observed online on 2026-10-30. The assistant currently uses a **clearly attributed deterministic mock/fallback** when `OPENAI_API_KEY` is not configured; **live OpenAI inference has not been verified as activated**. Do not confuse deployed mock-backed functionality with live paid inference.
+
+**Completed agent epics:** 11 Foundation; 12 Registry & Marketplace; 13 Configuration & Builder; 14 Runtime & Execution; 15 First Production AI Agent. **Next:** 16 Tools & Organizational Data Integration. **Afterward:** 17 Knowledge & Context Engine. No Epic 16 implementation is claimed.
+
+See [current release and roadmap status](docs/product/CURRENT_RELEASE_STATUS.md) and [CHANGELOG](CHANGELOG.md). The root `package.json` workspace version (`0.1.0`) is not the production release tag; it is unchanged by this documentation-only update.
 
 ## Portfolio & Evaluation Notice
 
@@ -54,7 +66,7 @@ These screenshots are captured from the current local application before the DB-
 
 ## Implementation Evidence
 
-The repository is managed through scoped branches, validation, pull requests, and normal merges into `develop`. The current repository state includes database retrofit work through DB-13.
+The production release workflow uses scoped feature/docs branches, validation, pull requests into `main`, Railway deployment checks, and annotated release tags. Earlier DB-retrofit documentation may refer to the historical `develop` workflow.
 
 ### DB-13 Code Evidence
 
@@ -66,12 +78,12 @@ The repository is managed through scoped branches, validation, pull requests, an
 
 ### Current Delivery Workflow
 
-1. Update local `develop` from GitHub.
+1. Update local `main` from GitHub.
 2. Create a focused `feature/*` or `docs/*` branch.
 3. Implement the scoped app, database, or documentation change.
 4. Run typecheck, lint, tests, builds, migration checks, and targeted integration tests.
-5. Review the diff locally, commit, push, and open a pull request into `develop`.
-6. Review and merge through a normal GitHub PR merge, then fast-forward local `develop`.
+5. Review the diff locally, commit, push, and open a pull request into `main`.
+6. Review and merge through a normal GitHub PR merge, then fast-forward local `main`.
 
 ## Vision
 
@@ -118,7 +130,7 @@ The backend is a custom TypeScript Node HTTP application using a small internal 
 | Database        | MySQL, Drizzle ORM `^0.45.2`, Drizzle Kit `^0.31.10`, `mysql2`                     |
 | Testing         | Vitest `^4.1.10`, Testing Library, jsdom                                           |
 | Tooling         | npm workspaces, ESLint, Prettier                                                   |
-| GitHub workflow | Feature/docs branches merged into `develop` through pull requests                  |
+| GitHub workflow | Feature/docs branches merged into `main` through pull requests                  |
 
 ## Repository Structure
 
@@ -310,9 +322,9 @@ Frontend storage may still be used for legitimate UI state, preferences, test fi
 | Platform Foundation     | COMPLETE                  | Core shell, workspaces, organizations, admin foundations, module concepts                                             |
 | Education SIS           | COMPLETE through Epic 10J | Most developed industry module                                                                                        |
 | SIS Database Retrofit   | COMPLETE through DB-9     | SIS business data and analytics are API/database-backed                                                               |
-| AI Agent Platform       | PROTOTYPE / IN PROGRESS   | Frontend platform, runtime, builder, and workflow foundations exist                                                   |
+| AI Agent Platform       | PRODUCTION through Epic 15 | Marketplace, builder, runtime, worker, and Academic Planning Assistant; live OpenAI activation remains pending       |
 | Agent Database Retrofit | COMPLETE through DB-13    | Registry/configuration, runtime history, and long-term memory persistence complete; knowledge/workflow phases planned |
-| Production Deployment   | PLANNED                   | Hardening and deployment work remains                                                                                 |
+| Production Deployment   | LIVE through Epic 15      | Railway Web, API, dedicated worker, MySQL; current tag `v0.15.0-epic15`                                               |
 
 ## Major Completed Development Areas
 
@@ -454,10 +466,10 @@ Current workflow:
 5. Review the diff.
 6. Commit.
 7. Push the branch.
-8. Open a PR into `develop`.
+8. Open a PR into `main`.
 9. Review the PR.
 10. Merge with a normal merge commit unless repository policy says otherwise.
-11. Update local `develop`.
+11. Update local `main`.
 12. Clean merged branches safely when appropriate.
 
 `develop` is the integration branch. `main` is reserved for production/release usage where applicable.

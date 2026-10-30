@@ -1,5 +1,6 @@
 import { AiProvider, ModelMetadata } from "./ai-provider.types.js";
 import { MockAiProvider } from "./mock-ai-provider.js";
+import { OpenAiProvider } from "./openai-provider.js";
 
 export class AiProviderRegistry {
   private static instance: AiProviderRegistry | null = null;
@@ -7,9 +8,13 @@ export class AiProviderRegistry {
   private defaultProviderId = "mock";
 
   constructor() {
-    // Automatically register MockAiProvider
+    // 1. Always register deterministic MockAiProvider
     const mock = new MockAiProvider();
     this.register(mock);
+
+    // 2. Register production OpenAiProvider
+    const openai = new OpenAiProvider();
+    this.register(openai);
   }
 
   static getInstance(): AiProviderRegistry {
@@ -54,6 +59,15 @@ export class AiProviderRegistry {
       results.push(...models);
     }
     return results;
+  }
+
+  isLiveConfigured(providerId: string): boolean {
+    const provider = this.get(providerId);
+    if (!provider) return false;
+    if (provider instanceof OpenAiProvider) {
+      return provider.isConfigured();
+    }
+    return provider.id !== "mock";
   }
 
   getDefault(): AiProvider {

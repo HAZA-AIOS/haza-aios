@@ -46,6 +46,7 @@ import { AddStaffPage } from "./pages/workspace/education/staff/AddStaffPage";
 import { StaffProfilePage } from "./pages/workspace/education/staff/StaffProfilePage";
 import { DepartmentDirectoryPage } from "./pages/workspace/education/staff/DepartmentDirectoryPage";
 import { AcademicOverviewPage } from "./pages/workspace/education/academic/AcademicOverviewPage";
+import { AcademicPlanningAssistantPage } from "./pages/workspace/education/academic/AcademicPlanningAssistantPage";
 import { AcademicYearsPage } from "./pages/workspace/education/academic/AcademicYearsPage";
 import { TermsPage } from "./pages/workspace/education/academic/TermsPage";
 import { ClassesPage } from "./pages/workspace/education/academic/ClassesPage";

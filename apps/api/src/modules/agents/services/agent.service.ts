@@ -22,6 +22,7 @@ import {
   validateActivationPrerequisites,
 } from "../validation/agent-validation.js";
 import { AiProviderRegistry } from "../providers/provider-registry.js";
+import { ACADEMIC_PLANNING_AGENT_TEMPLATE } from "../academic-planning.types.js";
 
 export const systemTemplates: UpsertAgentTemplateInput[] = [
   {
@@ -170,6 +171,7 @@ export const systemTemplates: UpsertAgentTemplateInput[] = [
     },
     metadata: { source: "db11-system-template" },
   },
+  ACADEMIC_PLANNING_AGENT_TEMPLATE,
 ];
 
 export class AgentService {

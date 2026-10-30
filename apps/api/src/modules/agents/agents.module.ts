@@ -20,6 +20,10 @@ import type {
 } from "./agent.types.js";
 import { AgentService } from "./services/agent.service.js";
 import { AgentRuntimeService } from "./services/agent-runtime.service.js";
+import { validateAcademicPlanningInput } from "./validation/academic-planning-validation.js";
+import { ACADEMIC_PLANNING_AGENT_TEMPLATE } from "./academic-planning.types.js";
+import { AiProviderRegistry } from "./providers/provider-registry.js";
+import type { AcademicLessonPlanRecord, LessonPlanStatus } from "./academic-planning.types.js";
 import { AgentMemoryService } from "./services/agent-memory.service.js";
 import { AgentBuilderService } from "./services/agent-builder.service.js";
 import { validateBuilderConfiguration } from "./validation/agent-builder-validation.js";
@@ -1233,8 +1237,333 @@ export const agentsModule: BackendModule = {
         sendJson(response, 201, { message: toMessageDto(created) });
       },
     });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/academic-planning/status",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const workspaceId = url.searchParams.get("workspaceId");
+        const agentService = new AgentService(database);
+        const agents = await agentService.listAgents(tenant.organizationId);
+        const planner = agents.find(
+          (a) =>
+            (!workspaceId || a.workspaceId === workspaceId) &&
+            (a.templateId === "00000000-0000-4100-8000-000000000104" ||
+              a.agentKey === "academic-planning-assistant"),
+        );
+
+        const providerRegistry = AiProviderRegistry.getInstance();
+        const liveConfigured = providerRegistry.isLiveConfigured(planner?.modelProvider || "openai");
+
+        sendJson(response, 200, {
+          available: true,
+          template: ACADEMIC_PLANNING_AGENT_TEMPLATE,
+          installed: Boolean(planner && planner.status === "active"),
+          agent: planner ? toAgentDto(planner) : null,
+          inferenceMode: liveConfigured ? "live" : "mock_fallback",
+          liveProviderConfigured: liveConfigured,
+        });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/academic-planning/generate",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const workspaceId = typeof body.workspaceId === "string" ? body.workspaceId : undefined;
+        if (!workspaceId) {
+          throw new ApiError(400, "VALIDATION_FAILED", "workspaceId is required.");
+        }
+
+        const validatedInput = validateAcademicPlanningInput(body);
+
+        // Ensure Academic Planning Assistant is installed
+        const agentService = new AgentService(database);
+        const agents = await agentService.listAgents(tenant.organizationId);
+        let planner = agents.find(
+          (a) =>
+            a.workspaceId === workspaceId &&
+            (a.templateId === "00000000-0000-4100-8000-000000000104" ||
+              a.agentKey === "academic-planning-assistant"),
+        );
+
+        if (!planner) {
+          planner = await agentService.createAgent({
+            organizationId: tenant.organizationId,
+            workspaceId,
+            templateId: "00000000-0000-4100-8000-000000000104",
+            name: "HAZA Academic Planning Assistant",
+            description: "Institutional Academic Planning Assistant for lesson planning and curriculum differentiation.",
+            instructions: ACADEMIC_PLANNING_AGENT_TEMPLATE.metadata?.systemPrompt as string,
+            createdBy: auth.user.id,
+            configuration: {
+              defaultTeachingLanguage: validatedInput.teachingLanguage || "English",
+              standardLessonDurationMinutes: validatedInput.durationMinutes,
+            },
+          });
+        }
+
+        const runtimeService = new AgentRuntimeService(database);
+        const { run } = await runtimeService.createRun({
+          organizationId: tenant.organizationId,
+          agentId: planner.id,
+          userId: auth.user.id,
+          input: validatedInput as unknown as Record<string, unknown>,
+          executionMode: "manual",
+          metadata: {
+            source: "academic-planning-assistant-ui",
+            workspaceId,
+            gradeLevel: validatedInput.gradeLevel,
+            subject: validatedInput.subject,
+            topic: validatedInput.topic,
+          },
+        });
+
+        // If client requested synchronous execution or testing fallback
+        const executeSync = url.searchParams.get("sync") === "true";
+        if (executeSync) {
+          const outcome = await runtimeService.claimAndExecute("academic-sync-worker", tenant.organizationId);
+          sendJson(response, 201, {
+            run: outcome.run ? toRunDto(outcome.run) : toRunDto(run),
+            executed: outcome.executed,
+          });
+          return;
+        }
+
+        sendJson(response, 202, {
+          run: toRunDto(run),
+          status: run.status,
+          message: "Lesson plan generation task queued for worker execution.",
+        });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/workspaces/:workspaceId/academic-lesson-plans",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workspaceId, "workspaceId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const pagination = readPagePagination(url);
+        const status = url.searchParams.get("status") as LessonPlanStatus | undefined;
+        const search = url.searchParams.get("search") ?? undefined;
+        const createdBy = url.searchParams.get("createdBy") ?? undefined;
+
+        const paginated = await new AgentRuntimeService(database).listLessonPlans(
+          tenant.organizationId,
+          routeParams.workspaceId,
+          {
+            status: status || undefined,
+            search,
+            createdBy,
+            page: pagination.page,
+            pageSize: pagination.pageSize,
+          },
+        );
+
+        sendJson(response, 200, {
+          plans: paginated.items.map(toLessonPlanDto),
+          total: paginated.total,
+          page: paginated.page,
+          pageSize: paginated.pageSize,
+          totalPages: paginated.totalPages,
+        });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/academic-lesson-plans/:planId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.planId, "planId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const plan = await new AgentRuntimeService(database).getLessonPlan(
+          tenant.organizationId,
+          routeParams.planId,
+        );
+        sendJson(response, 200, { plan: toLessonPlanDto(plan) });
+      },
+    });
+
+    router.register({
+      method: "PATCH",
+      path: "/api/v1/organizations/:organizationId/academic-lesson-plans/:planId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.planId, "planId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const updated = await new AgentRuntimeService(database).updateLessonPlanDraft(
+          tenant.organizationId,
+          routeParams.planId,
+          body as any,
+          auth.user.id,
+        );
+        sendJson(response, 200, { plan: toLessonPlanDto(updated) });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/academic-lesson-plans/:planId/approve",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.planId, "planId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const notes = typeof body.notes === "string" ? body.notes : undefined;
+
+        const approved = await new AgentRuntimeService(database).approveLessonPlan(
+          tenant.organizationId,
+          routeParams.planId,
+          auth.user.id,
+          notes,
+        );
+        sendJson(response, 200, { plan: toLessonPlanDto(approved) });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/academic-lesson-plans/:planId/publish",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.planId, "planId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "workspace.read",
+        );
+
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const published = await new AgentRuntimeService(database).publishLessonPlan(
+          tenant.organizationId,
+          routeParams.planId,
+          auth.user.id,
+          body as any,
+        );
+        sendJson(response, 200, { plan: toLessonPlanDto(published) });
+      },
+    });
+
+    router.register({
+      method: "DELETE",
+      path: "/api/v1/organizations/:organizationId/academic-lesson-plans/:planId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.planId, "planId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        await new AgentRuntimeService(database).deleteLessonPlan(
+          tenant.organizationId,
+          routeParams.planId,
+          auth.user.id,
+        );
+        sendJson(response, 200, { success: true });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/academic-lesson-plans/:planId/export",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.planId, "planId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+
+        const format = (url.searchParams.get("format") || "markdown") as "json" | "markdown" | "text";
+        const exported = await new AgentRuntimeService(database).exportLessonPlan(
+          tenant.organizationId,
+          routeParams.planId,
+          format,
+        );
+
+        response.setHeader("Content-Type", exported.mimeType);
+        response.setHeader("Content-Disposition", `attachment; filename="${exported.filename}"`);
+        response.writeHead(200);
+        response.end(exported.content);
+      },
+    });
+
   },
 };
+
+
+function toLessonPlanDto(plan: AcademicLessonPlanRecord) {
+  const content = plan.content as any;
+  return {
+    id: plan.id,
+    organizationId: plan.organizationId,
+    workspaceId: plan.workspaceId,
+    agentRunId: plan.agentRunId,
+    title: plan.title,
+    grade: plan.grade,
+    subject: plan.subject,
+    topic: plan.topic,
+    durationMinutes: plan.durationMinutes,
+    learningObjectives: plan.learningObjectives,
+    content: plan.content,
+    status: plan.status,
+    curriculumReference: plan.curriculumReference,
+    curriculumVerified: plan.curriculumVerified,
+    verificationStatus: plan.curriculumVerified ? "institutional_verified" : "general_guidance",
+    createdBy: plan.createdBy,
+    approvedBy: plan.approvedBy,
+    reviewedBy: plan.approvedBy,
+    approvedAt: plan.approvedAt ? plan.approvedAt.toISOString() : null,
+    reviewedAt: plan.approvedAt ? plan.approvedAt.toISOString() : null,
+    approvalNotes: content?.approvalNotes ?? null,
+    publishedToLmsAt: content?.publishedToLmsAt ?? null,
+    lmsCourseId: content?.lmsCourseId ?? null,
+    createdAt: plan.createdAt.toISOString(),
+    updatedAt: plan.updatedAt.toISOString(),
+  };
+}
 
 function toTemplateDto(template: AgentTemplateRecord) {
   return {

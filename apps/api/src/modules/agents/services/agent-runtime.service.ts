@@ -1246,7 +1246,13 @@ export class AgentRuntimeService {
       "## 1. Learning Objectives",
       "",
       ...(c.learningObjectives ?? []).map(
-        (obj, i) => (i + 1) + ". **[" + obj.type.toUpperCase() + "]** " + obj.description + " *(Bloom: " + (obj.bloomTaxonomyLevel || "understand") + ")*",
+        (obj: any, i: number) => {
+        if (typeof obj === "string") return `${i + 1}. ${obj}`;
+        const typeStr = obj && obj.type ? String(obj.type).toUpperCase() : "COGNITIVE";
+        const descStr = obj && obj.description ? obj.description : String(obj);
+        const bloomStr = obj && obj.bloomTaxonomyLevel ? obj.bloomTaxonomyLevel : "understand";
+        return `${i + 1}. **[${typeStr}]** ${descStr} *(Bloom: ${bloomStr})*`;
+      },
       ),
       "",
       "## 2. Required Materials & Technology",
@@ -1310,7 +1316,7 @@ export class AgentRuntimeService {
       "",
       "## 11. Teacher Notes & Misconceptions",
       "",
-      ...(c.teacherNotes ?? []).map((n) => "- " + n),
+      ...(Array.isArray((c as any).teacherNotes) ? (c as any).teacherNotes.map((n: string) => "- " + n) : (c as any).teacherNotes ? [String((c as any).teacherNotes)] : ["None specified."]),
       "",
       c.homeworkSuggestions && c.homeworkSuggestions.length > 0
         ? "## 12. Optional Homework Suggestions\n\n" + c.homeworkSuggestions.map((h) => "- " + h).join("\n") + "\n"

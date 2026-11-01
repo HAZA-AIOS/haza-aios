@@ -69,7 +69,7 @@ async function main() {
 
   // 1. API Health Check
   try {
-    const res = await fetch(`${API_BASE}/health`);
+    const res = await fetch(`${API_BASE}/api/v1/health`);
     if (res.ok) {
       const data = await res.json();
       results.push({ test: "1. API /health check", status: "PASS", details: `HTTP 200 OK (${JSON.stringify(data)})` });
@@ -101,7 +101,7 @@ async function main() {
       ORDER BY table_name;
     `;
     const res = await runRailwayMysql(sql);
-    const tables = res.stdout.trim().split("\n").filter((l) => l && !l.includes("table_name"));
+    const tables = res.stdout.trim().split("\n").map((l) => l.trim()).filter((l) => l && !l.toLowerCase().includes("table_name"));
     if (tables.length === 6) {
       results.push({ test: "3. Production MySQL Migration 0027 6 Tables", status: "PASS", details: `All 6 tables active: ${tables.join(", ")}` });
     } else {
@@ -170,8 +170,8 @@ async function main() {
       VALUES ('${testColId}', '${prodOrgId}', '${prodWsId}', 'Live Smoke Test Curriculum', 'live-smoke-test', 'education', 'workspace', 'active', '${prodUserId}')
       ON DUPLICATE KEY UPDATE name = 'Live Smoke Test Curriculum';
 
-      INSERT INTO knowledge_sources (id, organization_id, workspace_id, collection_id, name, description, type, visibility, status, content, content_hash, ingestion_status, created_by)
-      VALUES ('${testSrcId}', '${prodOrgId}', '${prodWsId}', '${testColId}', 'Chemistry Neutralization Standard', 'Neutralization reactions', 'document', 'internal', 'active', 'Acids react with bases to form salts and water.', 'hash-smoke-1', 'ready', '${prodUserId}')
+      INSERT INTO knowledge_sources (id, organization_id, workspace_id, collection_id, name, description, type, visibility, status, content, content_hash, ingestion_status, created_by, created_at, updated_at)
+      VALUES ('${testSrcId}', '${prodOrgId}', '${prodWsId}', '${testColId}', 'Chemistry Neutralization Standard', 'Neutralization reactions', 'document', 'internal', 'active', 'Acids react with bases to form salts and water.', 'hash-smoke-1', 'ready', '${prodUserId}', NOW(), NOW())
       ON DUPLICATE KEY UPDATE name = 'Chemistry Neutralization Standard';
 
       INSERT INTO knowledge_chunks (id, source_id, organization_id, workspace_id, ordinal, section_heading, page_number, token_count, content, content_hash)

@@ -301,17 +301,33 @@ function buildMockLessonPlanJson(userPrompt: string): string {
     if (subjectMatch) subject = subjectMatch[1].trim();
   }
 
-  const lessonPlan = {
+  const citationsList: string[] = [];
+  const citationRegex = /\[Doc:\s*([^,\]]+)(?:,\s*(?:Chunk|Section):\s*([^\]]+))?\]/g;
+  let cMatch: RegExpExecArray | null;
+  while ((cMatch = citationRegex.exec(userPrompt)) !== null) {
+    if (!cMatch[1].includes("<") && cMatch[1].toLowerCase() !== "title") {
+      citationsList.push(cMatch[0]);
+    }
+  }
+
+  const hasVerifiedContext = citationsList.length > 0 || userPrompt.includes("AUTHORIZED ORGANIZATIONAL REFERENCE CONTEXT");
+  const firstCitation = citationsList[0] || "[Doc: Institutional Curriculum, Section: Core Framework]";
+
+  const lessonPlan: any = {
     lessonTitle: `${topic}: Concepts, Analysis, and Mastery`,
     grade,
     subject,
     topic,
     durationMinutes,
     curriculumAlignment: {
-      reference: null,
-      verified: false,
-      statement: "General Pedagogical Guidance (Unverified Curriculum Alignment)",
+      reference: hasVerifiedContext ? firstCitation : null,
+      verified: hasVerifiedContext,
+      statement: hasVerifiedContext
+        ? `Verified institutional alignment grounded in ${firstCitation}.`
+        : "General Pedagogical Guidance (Unverified Curriculum Alignment)",
     },
+    citations: hasVerifiedContext ? citationsList : [],
+    curriculumVerificationStatus: hasVerifiedContext ? "institutional_verified" : "general_guidance",
     learningObjectives: [
       {
         type: "cognitive",

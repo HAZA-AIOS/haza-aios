@@ -8,6 +8,7 @@ import {
 } from "../../../database/schema.js";
 import { createRepositoryContext } from "../../../database/repositories/repository-context.js";
 import { AcademicLessonPlanRepository } from "../repositories/academic-lesson-plan.repository.js";
+import { KnowledgeService } from "../services/knowledge.service.js";
 import type { TrustedToolRegistration } from "./agent-tool.types.js";
 import type { ToolDeclaration } from "../providers/ai-provider.types.js";
 
@@ -668,10 +669,86 @@ export const TRUSTED_TOOLS: TrustedToolRegistration[] = [
       };
     },
   },
+  // 8. knowledge.search
+  {
+    toolId: "00000000-0000-4200-8000-000000000008",
+    toolKey: "knowledge.search",
+    name: "Search Knowledge Base",
+    description: "Perform hybrid semantic and keyword retrieval against authorized organizational knowledge collections and documents.",
+    category: "knowledge",
+    industry: "cross_industry",
+    version: "1.0.0",
+    executionMode: "sync",
+    riskLevel: "low",
+    requiredPermissions: ["knowledge.search", "knowledge.retrieve"],
+    supportedScopes: ["organization", "workspace"],
+    approvalPolicy: "none",
+    timeoutMs: 15000,
+    maxAttempts: 2,
+    enabled: true,
+    deprecated: false,
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query or question" },
+        limit: { type: "number", description: "Maximum number of chunks to return (default 5, max 20)" },
+        searchMode: { type: "string", description: "Retrieval mode: hybrid, semantic, or keyword" },
+        collectionIds: { type: "array", description: "Optional array of collection UUIDs to restrict search" },
+      },
+      required: ["query"],
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        results: { type: "array" },
+        totalCount: { type: "number" },
+        executionTimeMs: { type: "number" },
+      },
+      required: ["query", "results", "totalCount"],
+    },
+    handler: async (input, context, { database }) => {
+      const query = String(input.query || "").trim();
+      if (!query) {
+        return {
+          query: "",
+          results: [],
+          totalCount: 0,
+          executionTimeMs: 0,
+        };
+      }
+      const limit = typeof input.limit === "number" ? Math.min(Math.max(1, input.limit), 20) : 5;
+      const searchMode = (input.searchMode as any) || "hybrid";
+      const collectionIds = Array.isArray(input.collectionIds) ? input.collectionIds.map(String) : undefined;
+
+      const knowledgeService = new KnowledgeService(database);
+      const searchResponse = await knowledgeService.search(
+        context.organizationId,
+        {
+          query,
+          collectionIds,
+          limit,
+          mode: searchMode,
+        },
+        {
+          workspaceId: context.workspaceId,
+          userId: context.userId,
+        },
+      );
+
+      return {
+        query,
+        results: searchResponse.results,
+        totalCount: searchResponse.results.length,
+        executionTimeMs: searchResponse.latencyMs,
+      };
+    },
+  },
 ];
 
 export function getTrustedTool(toolKey: string, version?: string): TrustedToolRegistration | null {
-  const match = TRUSTED_TOOLS.find((t) => t.toolKey === toolKey);
+  const normalizedKey = toolKey === "knowledge_search" ? "knowledge.search" : toolKey;
+  const match = TRUSTED_TOOLS.find((t) => t.toolKey === normalizedKey || t.toolKey === toolKey);
   if (!match) return null;
   if (version && match.version !== version) return null;
   return match;

@@ -38,6 +38,9 @@ import type {
 import { AgentToolGatewayService } from "../tools/agent-tool-gateway.service.js";
 import { listTrustedTools, convertToToolDeclaration } from "../tools/trusted-tool-registry.js";
 import { AcademicLessonPlanRepository } from "../repositories/academic-lesson-plan.repository.js";
+import { KnowledgeService } from "./knowledge.service.js";
+import { CitationValidatorService } from "./citation-validator.service.js";
+import type { GroundedContextPackage } from "../knowledge.types.js";
 import { parseAndValidateLessonPlanOutput } from "../validation/academic-planning-validation.js";
 import type {
   AcademicLessonPlanRecord,
@@ -378,6 +381,80 @@ export class AgentRuntimeService {
         { role: "user", content: contentFromPayload(run.input) },
       ];
 
+      // Epic 17: Agent Context Engine - Retrieve and assemble authorized organizational knowledge
+      const knowledgeService = new KnowledgeService(this.database);
+      let contextPackage: GroundedContextPackage | null = null;
+
+      const authorizedSourceIds = Array.isArray(agent.configuration?.knowledge)
+        ? (agent.configuration.knowledge.filter((id): id is string => typeof id === "string") as string[])
+        : [];
+      const authorizedCollectionIds = Array.isArray((agent.configuration as any)?.knowledgeCollections)
+        ? (((agent.configuration as any).knowledgeCollections.filter((id: unknown): id is string => typeof id === "string")) as string[])
+        : [];
+
+      if (isAcademicPlanner && authorizedCollectionIds.length === 0 && authorizedSourceIds.length === 0) {
+        try {
+          const workspaceCollections = await knowledgeService.listCollections(run.organizationId, run.workspaceId);
+          const curriculumCollection = workspaceCollections.find(
+            (col) => col.industry === "education" || col.name.toLowerCase().includes("curriculum"),
+          );
+          if (curriculumCollection) {
+            authorizedCollectionIds.push(curriculumCollection.id);
+          }
+        } catch {
+          // Non-fatal collection discovery
+        }
+      }
+
+      if (authorizedSourceIds.length > 0 || authorizedCollectionIds.length > 0) {
+        const userPrompt = contentFromPayload(run.input);
+        try {
+          contextPackage = await knowledgeService.assembleContext(
+            run.organizationId,
+            run.workspaceId,
+            run.requestedBy,
+            userPrompt,
+            authorizedSourceIds,
+            authorizedCollectionIds,
+          );
+
+          if (contextPackage && contextPackage.retrievedChunks.length > 0) {
+            await runtimeRepo.recordEvent({
+              organizationId: run.organizationId,
+              workspaceId: run.workspaceId,
+              runId: run.id,
+              attemptId: attempt.id,
+              eventType: "context_retrieved",
+              payload: {
+                chunksCount: contextPackage.retrievedChunks.length,
+                sources: contextPackage.retrievedChunks.map((ch) => ({
+                  title: ch.documentTitle,
+                  chunkId: ch.chunkId,
+                  score: ch.relevanceScore,
+                  method: ch.retrievalMethod,
+                })),
+                tokenEstimate: contextPackage.tokenEstimate,
+                semanticIndexingAvailable: contextPackage.semanticIndexingAvailable,
+              },
+            });
+
+            messages[messages.length - 1] = {
+              role: "user",
+              content: `${contextPackage.formattedContext}\n\n### USER REQUEST\n${userPrompt}`,
+            };
+          }
+        } catch (ctxErr: any) {
+          await runtimeRepo.recordEvent({
+            organizationId: run.organizationId,
+            workspaceId: run.workspaceId,
+            runId: run.id,
+            attemptId: attempt.id,
+            eventType: "context_retrieval_failed",
+            payload: { error: ctxErr.message },
+          });
+        }
+      }
+
       let stepCount = 0;
       let finalResponse: ModelInvocationResponse | null = null;
       let cumulativeInputTokens = 0;
@@ -496,6 +573,30 @@ export class AgentRuntimeService {
         costMicros,
       });
 
+      // Epic 17: Citation validation against retrieved context
+      let citationAnalysis: ReturnType<typeof CitationValidatorService.validateCitations> | null = null;
+      if (contextPackage && contextPackage.retrievedChunks.length > 0) {
+        citationAnalysis = CitationValidatorService.validateCitations(
+          response.content,
+          contextPackage.retrievedChunks,
+        );
+
+        await runtimeRepo.recordEvent({
+          organizationId: run.organizationId,
+          workspaceId: run.workspaceId,
+          runId: run.id,
+          attemptId: attempt.id,
+          eventType: "citations_validated",
+          payload: {
+            totalCitations: citationAnalysis.citations.length,
+            validCount: citationAnalysis.validCount,
+            invalidCount: citationAnalysis.invalidCount,
+            groundednessScore: citationAnalysis.groundednessScore,
+            citations: citationAnalysis.citations,
+          },
+        });
+      }
+
       // Complete attempt
       await runtimeRepo.updateAttempt(attempt.id, {
         status: "completed",
@@ -508,6 +609,8 @@ export class AgentRuntimeService {
           responseFinishReason: response.finishReason,
           isMockFallback,
           stepsExecuted: stepCount,
+          citationsCount: citationAnalysis ? citationAnalysis.validCount : 0,
+          groundednessScore: citationAnalysis ? citationAnalysis.groundednessScore : undefined,
         },
       });
 
@@ -517,6 +620,14 @@ export class AgentRuntimeService {
       if (isAcademicPlanner) {
         try {
           parsedLessonPlan = parseAndValidateLessonPlanOutput(response.content);
+
+          if (citationAnalysis && citationAnalysis.validCount > 0) {
+            parsedLessonPlan.curriculumAlignment.verified = true;
+            if (!parsedLessonPlan.curriculumAlignment.reference || parsedLessonPlan.curriculumAlignment.reference.includes("null")) {
+              parsedLessonPlan.curriculumAlignment.reference = citationAnalysis.citations[0].documentTitle;
+            }
+            parsedLessonPlan.curriculumAlignment.statement = `Verified Aligned to Curriculum Standards: ${citationAnalysis.citations[0].documentTitle}`;
+          }
           const lessonPlanRepo = new AcademicLessonPlanRepository(createRepositoryContext(this.database.db));
 
           const inputData = (run.input ?? {}) as Record<string, unknown>;

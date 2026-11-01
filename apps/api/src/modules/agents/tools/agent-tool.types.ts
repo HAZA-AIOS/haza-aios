@@ -11,7 +11,7 @@ export interface ToolDefinition {
   toolKey: string;
   name: string;
   description: string;
-  category: "academic_structure" | "curriculum" | "lesson_planning" | "system";
+  category: "academic_structure" | "curriculum" | "lesson_planning" | "system" | "knowledge";
   industry: "education" | "cross_industry";
   version: string;
   inputSchema: Record<string, unknown>;

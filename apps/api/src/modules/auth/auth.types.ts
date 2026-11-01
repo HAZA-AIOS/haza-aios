@@ -60,7 +60,12 @@ export type PermissionKey =
   | "education.lesson_plan.read"
   | "education.lesson_plan.create"
   | "education.lesson_plan.manage"
-  | "education.lesson_plan.publish";
+  | "education.lesson_plan.publish"
+  | "knowledge.read"
+  | "knowledge.manage"
+  | "knowledge.ingest"
+  | "knowledge.retrieve"
+  | "knowledge.search";
 
 export type AuthMembership = {
   id: string;

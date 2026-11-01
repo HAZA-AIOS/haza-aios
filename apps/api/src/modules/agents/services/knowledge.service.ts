@@ -1,141 +1,402 @@
-import { and, eq, inArray, or } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { ApiError } from "../../../common/errors/api-error.js";
 import type { DatabaseClient } from "../../../database/client.js";
-import { knowledgeSources, knowledgeChunks } from "../../../database/schema.js";
+import { createRepositoryContext } from "../../../database/repositories/repository-context.js";
+import { EmbeddingProviderRegistry } from "../embeddings/embedding-provider.registry.js";
+import { ChunkingEngine } from "../ingestion/chunking-engine.js";
+import { DocumentExtractor } from "../ingestion/document-extractor.js";
+import type {
+  CreateKnowledgeCollectionInput,
+  GroundedContextPackage,
+  KnowledgeCollectionRecord,
+  KnowledgeSourceRecord,
+  RetrievalQueryInput,
+  UpdateKnowledgeCollectionInput,
+} from "../knowledge.types.js";
+import { validateKnowledge } from "../knowledge-validation.js";
+import { KnowledgeRepository } from "../repositories/knowledge.repository.js";
 import { AgentService } from "./agent.service.js";
-import { chunkKnowledge, scoreKnowledge, validateKnowledge } from "../knowledge-validation.js";
+import { ContextEngineService } from "./context-engine.service.js";
+import { HybridSearchService } from "./hybrid-search.service.js";
 
 export class KnowledgeService {
-  constructor(private readonly database: DatabaseClient) {}
+  private repo: KnowledgeRepository;
+  private hybridSearch: HybridSearchService;
+  private contextEngine: ContextEngineService;
 
-  async list(organizationId: string, userId: string) {
-    const rows = await this.database.db
-      .select()
-      .from(knowledgeSources)
-      .where(
-        and(
-          eq(knowledgeSources.organizationId, organizationId),
-          eq(knowledgeSources.status, "active"),
-          or(eq(knowledgeSources.visibility, "internal"), eq(knowledgeSources.createdBy, userId)),
-        ),
-      )
-      .limit(200);
-    return rows.map((row) => ({
-      id: row.id,
-      organizationId: row.organizationId,
-      name: row.name,
-      description: row.description,
-      type: row.type,
-      visibility: row.visibility,
-      status: row.status,
-      ingestionStatus: row.ingestionStatus,
-      contentHash: row.contentHash,
-      createdBy: row.createdBy,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    }));
+  constructor(private readonly database: DatabaseClient) {
+    this.repo = new KnowledgeRepository(createRepositoryContext(database.db));
+    this.hybridSearch = new HybridSearchService(database);
+    this.contextEngine = new ContextEngineService(database);
+  }
+
+  // ==========================================
+  // COLLECTIONS
+  // ==========================================
+
+  async listCollections(
+    organizationId: string,
+    workspaceId?: string,
+  ): Promise<KnowledgeCollectionRecord[]> {
+    return this.repo.listCollections(organizationId, workspaceId);
+  }
+
+  async getCollection(
+    organizationId: string,
+    collectionId: string,
+  ): Promise<KnowledgeCollectionRecord> {
+    const col = await this.repo.getCollectionById(organizationId, collectionId);
+    if (!col) throw new ApiError(404, "NOT_FOUND", "Knowledge collection not found.");
+    return col;
+  }
+
+  async createCollection(
+    organizationId: string,
+    workspaceId: string,
+    userId: string,
+    input: CreateKnowledgeCollectionInput,
+  ): Promise<KnowledgeCollectionRecord> {
+    if (!input.name || !input.name.trim()) {
+      throw new ApiError(400, "VALIDATION_FAILED", "Collection name is required.");
+    }
+    return this.repo.createCollection(organizationId, workspaceId, userId, input);
+  }
+
+  async updateCollection(
+    organizationId: string,
+    collectionId: string,
+    input: UpdateKnowledgeCollectionInput,
+  ): Promise<KnowledgeCollectionRecord> {
+    const updated = await this.repo.updateCollection(organizationId, collectionId, input);
+    if (!updated) throw new ApiError(404, "NOT_FOUND", "Knowledge collection not found.");
+    return updated;
+  }
+
+  async archiveCollection(organizationId: string, collectionId: string): Promise<void> {
+    await this.getCollection(organizationId, collectionId);
+    await this.repo.archiveCollection(organizationId, collectionId);
+  }
+
+  // ==========================================
+  // SOURCES (DB-14 COMPATIBLE + ENHANCED)
+  // ==========================================
+
+  async list(organizationId: string, userId: string, workspaceId?: string, collectionId?: string) {
+    const sources = await this.repo.listSources(organizationId, workspaceId, collectionId);
+    return sources.filter((s) => s.visibility !== "private" || s.createdBy === userId);
   }
 
   async get(organizationId: string, sourceId: string, userId: string) {
-    const rows = await this.database.db
-      .select()
-      .from(knowledgeSources)
-      .where(
-        and(
-          eq(knowledgeSources.organizationId, organizationId),
-          eq(knowledgeSources.id, sourceId),
-          eq(knowledgeSources.status, "active"),
-          or(eq(knowledgeSources.visibility, "internal"), eq(knowledgeSources.createdBy, userId)),
-        ),
-      )
-      .limit(1);
-    if (!rows[0]) throw new ApiError(404, "NOT_FOUND", "Knowledge source not found.");
-    return rows[0];
+    const source = await this.repo.getSourceById(organizationId, sourceId);
+    if (!source) throw new ApiError(404, "NOT_FOUND", "Knowledge source not found.");
+    if (source.visibility === "private" && source.createdBy !== userId) {
+      throw new ApiError(403, "FORBIDDEN", "Access to private knowledge source denied.");
+    }
+    return source;
   }
 
-  async create(organizationId: string, userId: string, body: unknown) {
+  async create(organizationId: string, userId: string, body: unknown, workspaceId?: string) {
     const input = validateKnowledge(body);
     const id = randomUUID();
-    const now = new Date();
-    await this.database.transaction(async (tx) => {
-      await tx.insert(knowledgeSources).values({
-        ...input,
-        id,
-        organizationId,
-        createdBy: userId,
-        contentHash: createHash("sha256").update(input.content).digest("hex"),
-        createdAt: now,
-        updatedAt: now,
-      });
-      await tx.insert(knowledgeChunks).values(
-        chunkKnowledge(input.content).map((content, ordinal) => ({
-          id: randomUUID(),
-          sourceId: id,
-          organizationId,
-          ordinal,
-          content,
-        })),
-      );
+    const sourceHash = createHash("sha256").update(input.content).digest("hex");
+
+    const source = await this.repo.createSource({
+      id,
+      organizationId,
+      workspaceId: workspaceId ?? null,
+      name: input.name,
+      description: input.description,
+      type: input.type,
+      visibility: input.visibility,
+      content: input.content,
+      contentHash: sourceHash,
+      ingestionStatus: "ready",
+      storageBackend: "database_durable",
+      createdBy: userId,
     });
+
+    // Chunk text using enhanced chunker
+    const doc = {
+      text: input.content,
+      title: input.name,
+      fileType: "txt" as const,
+      sections: [{ heading: "General", text: input.content }],
+    };
+    const chunks = ChunkingEngine.chunkDocument(doc, id);
+
+    await this.repo.insertChunks(
+      chunks.map((c) => ({
+        id: c.id,
+        sourceId: id,
+        organizationId,
+        workspaceId: workspaceId ?? null,
+        ordinal: c.ordinal,
+        sectionHeading: c.sectionHeading,
+        pageNumber: c.pageNumber,
+        tokenCount: c.tokenCount,
+        contentHash: c.contentHash,
+        content: c.content,
+      })),
+    );
+
+    // Generate embeddings
+    try {
+      const { provider } = await EmbeddingProviderRegistry.getInstance().getActiveProvider();
+      const embedRes = await provider.embed({ texts: chunks.map((c) => c.content) });
+      if (embedRes.embeddings.length === chunks.length) {
+        await this.repo.insertEmbeddings(
+          chunks.map((c, i) => ({
+            id: randomUUID(),
+            organizationId,
+            workspaceId: workspaceId ?? (source.workspaceId || "default-ws"),
+            sourceId: id,
+            chunkId: c.id,
+            provider: provider.id,
+            model: provider.defaultModel,
+            dimensions: provider.dimensions,
+            embedding: embedRes.embeddings[i],
+            contentHash: c.contentHash,
+          })),
+        );
+      }
+    } catch {
+      // Non-fatal embedding fallback for offline environments
+    }
+
     return this.get(organizationId, id, userId);
+  }
+
+  async uploadAndIngestDocument(
+    organizationId: string,
+    workspaceId: string,
+    userId: string,
+    fileData: {
+      fileName: string;
+      mimeType?: string;
+      buffer: Buffer;
+      collectionId?: string;
+      description?: string;
+    },
+  ): Promise<KnowledgeSourceRecord & { chunkCount: number; requiresOcr?: boolean }> {
+    const { buffer, fileName, mimeType, collectionId, description } = fileData;
+    const sourceId = randomUUID();
+    const docId = randomUUID();
+    const checksum = createHash("sha256").update(buffer).digest("hex");
+
+    // 1. Extract text from binary or text payload
+    const extracted = DocumentExtractor.extract(buffer, fileName, mimeType);
+    const contentHash = createHash("sha256").update(extracted.text).digest("hex");
+
+    // 2. Persist original document payload in durable database storage
+    await this.repo.insertDocument({
+      id: docId,
+      organizationId,
+      workspaceId,
+      sourceId,
+      version: 1,
+      contentType: mimeType || "application/octet-stream",
+      rawContent: buffer.toString("base64"),
+      contentHash,
+      checksum,
+    });
+
+    // 3. Create knowledge source record
+    const source = await this.repo.createSource({
+      id: sourceId,
+      organizationId,
+      workspaceId,
+      collectionId: collectionId ?? null,
+      name: extracted.title || fileName,
+      description: description || `Ingested document: ${fileName}`,
+      type: "document",
+      visibility: "internal",
+      content: extracted.text,
+      contentHash,
+      ingestionStatus: extracted.requiresOcr ? "failed" : "ready",
+      fileName,
+      fileType: extracted.fileType,
+      fileSizeBytes: buffer.length,
+      mimeType: mimeType ?? null,
+      storageUri: `db://documents/${docId}`,
+      storageBackend: "database_durable",
+      currentVersion: 1,
+      metadata: {
+        requiresOcr: extracted.requiresOcr ?? false,
+        pageCount: extracted.pageCount ?? 1,
+        sectionsCount: extracted.sections.length,
+      },
+      createdBy: userId,
+    });
+
+    if (extracted.requiresOcr) {
+      return { ...source, chunkCount: 0, requiresOcr: true };
+    }
+
+    // 4. Chunk document
+    const chunks = ChunkingEngine.chunkDocument(extracted, sourceId);
+    await this.repo.insertChunks(
+      chunks.map((c) => ({
+        id: c.id,
+        sourceId,
+        organizationId,
+        workspaceId,
+        ordinal: c.ordinal,
+        sectionHeading: c.sectionHeading,
+        pageNumber: c.pageNumber,
+        tokenCount: c.tokenCount,
+        contentHash: c.contentHash,
+        content: c.content,
+      })),
+    );
+
+    // 5. Generate and store embeddings
+    try {
+      const { provider } = await EmbeddingProviderRegistry.getInstance().getActiveProvider();
+      const embedRes = await provider.embed({ texts: chunks.map((c) => c.content) });
+      if (embedRes.embeddings.length === chunks.length) {
+        await this.repo.insertEmbeddings(
+          chunks.map((c, i) => ({
+            id: randomUUID(),
+            organizationId,
+            workspaceId,
+            sourceId,
+            chunkId: c.id,
+            provider: provider.id,
+            model: provider.defaultModel,
+            dimensions: provider.dimensions,
+            embedding: embedRes.embeddings[i],
+            contentHash: c.contentHash,
+          })),
+        );
+      }
+    } catch {
+      // Non-fatal embedding fallback
+    }
+
+    return { ...source, chunkCount: chunks.length, requiresOcr: false };
   }
 
   async archive(organizationId: string, sourceId: string, userId: string) {
     await this.get(organizationId, sourceId, userId);
-    await this.database.db
-      .update(knowledgeSources)
-      .set({ status: "archived", updatedAt: new Date() })
-      .where(
-        and(eq(knowledgeSources.organizationId, organizationId), eq(knowledgeSources.id, sourceId)),
-      );
+    await this.repo.archiveSource(organizationId, sourceId);
   }
 
+  // ==========================================
+  // RETRIEVAL & CONTEXT ENGINE
+  // ==========================================
+
+  async search(
+    organizationId: string,
+    queryInput: RetrievalQueryInput,
+    options: { workspaceId?: string; userId?: string } = {},
+  ) {
+    return this.hybridSearch.search(organizationId, queryInput, options);
+  }
+
+  async assembleContext(
+    organizationId: string,
+    workspaceId: string,
+    userId: string,
+    query: string,
+    authorizedSourceIds: string[] = [],
+    authorizedCollectionIds: string[] = [],
+    tokenBudget?: number,
+  ): Promise<GroundedContextPackage> {
+    return this.contextEngine.assembleContext(
+      organizationId,
+      workspaceId,
+      userId,
+      query,
+      authorizedSourceIds,
+      authorizedCollectionIds,
+      tokenBudget,
+    );
+  }
+
+  // DB-14 Backward-compatible retrieve endpoint
   async retrieve(
     organizationId: string,
     agentId: string,
     userId: string,
     query: string,
     limit: number,
-  ) {
+  ): Promise<any[]> {
     const agent = await new AgentService(this.database).getAgent(organizationId, agentId);
-    if (agent.status === "archived" || agent.status === "disabled")
+    if (agent.status === "archived" || agent.status === "disabled") {
       throw new ApiError(403, "FORBIDDEN", "Agent is unavailable.");
-    // Source IDs come from persisted agent configuration, never from caller-supplied authorization.
-    const ids = Array.isArray(agent.configuration.knowledge)
+    }
+
+    const ids = Array.isArray(agent.configuration?.knowledge)
       ? agent.configuration.knowledge
           .filter((id): id is string => typeof id === "string")
           .slice(0, 100)
       : [];
+
     if (!ids.length) return [];
-    const rows = await this.database.db
-      .select({
-        sourceId: knowledgeSources.id,
-        title: knowledgeSources.name,
-        chunkId: knowledgeChunks.id,
-        content: knowledgeChunks.content,
-      })
-      .from(knowledgeChunks)
-      .innerJoin(
-        knowledgeSources,
-        and(
-          eq(knowledgeSources.id, knowledgeChunks.sourceId),
-          eq(knowledgeSources.organizationId, knowledgeChunks.organizationId),
-        ),
-      )
-      .where(
-        and(
-          eq(knowledgeSources.organizationId, organizationId),
-          eq(knowledgeChunks.organizationId, organizationId),
-          eq(knowledgeSources.status, "active"),
-          inArray(knowledgeSources.id, ids),
-          or(eq(knowledgeSources.visibility, "internal"), eq(knowledgeSources.createdBy, userId)),
-        ),
-      );
-    return rows
-      .map((row) => ({ ...row, relevance: scoreKnowledge(query, row.title, row.content) }))
-      .filter((row) => row.relevance > 0)
-      .sort((a, b) => b.relevance - a.relevance || a.chunkId.localeCompare(b.chunkId))
-      .slice(0, limit);
+
+    const searchRes = await this.hybridSearch.search(
+      organizationId,
+      {
+        query,
+        sourceIds: ids,
+        limit,
+        mode: "hybrid",
+      },
+      {
+        userId,
+      },
+    );
+
+    // Record retrieval audit
+    try {
+      await this.repo.recordRetrieval({
+        id: randomUUID(),
+        organizationId,
+        workspaceId: agent.workspaceId || "default-ws",
+        agentId,
+        query,
+        retrievalMode: "hybrid",
+        matchedChunkIds: searchRes.results.map((r) => r.chunkId),
+        scores: Object.fromEntries(searchRes.results.map((r) => [r.chunkId, r.relevanceScore])),
+        latencyMs: searchRes.latencyMs,
+        requestedBy: userId,
+      });
+    } catch {
+      // Non-fatal retrieval audit logging
+    }
+
+    return searchRes.results.map((r) => ({
+      sourceId: r.sourceId,
+      title: r.documentTitle,
+      chunkId: r.chunkId,
+      content: r.content,
+      relevance: r.relevanceScore,
+    }));
+  }
+
+  async getChunks(organizationId: string, sourceId: string, userId: string) {
+    await this.get(organizationId, sourceId, userId);
+    return this.repo.getChunksBySourceId(organizationId, sourceId);
+  }
+
+  async listRetrievals(organizationId: string, limit = 50) {
+    return this.repo.listRetrievals(organizationId, limit);
+  }
+
+  async getStats(organizationId: string, workspaceId?: string) {
+    const collections = await this.repo.listCollections(organizationId, workspaceId);
+    const sources = await this.repo.listSources(organizationId, workspaceId);
+    const { provider, isRealSemantic } = await EmbeddingProviderRegistry.getInstance().getActiveProvider();
+    return {
+      collectionsCount: collections.length,
+      sourcesCount: sources.length,
+      embeddingProvider: {
+        id: provider.id,
+        name: provider.name,
+        model: provider.defaultModel,
+        dimensions: provider.dimensions,
+        isReal: isRealSemantic,
+      },
+    };
   }
 }

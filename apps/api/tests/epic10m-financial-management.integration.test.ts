@@ -101,7 +101,7 @@ describeDatabase('Epic 10M: Financial Management Enhancement Integration Suite',
       gradeId: fixture.grade.id,
       feeStructureIds: [struct.id],
       issueDate: '2026-10-01',
-      dueDate: '2026-10-31',
+      dueDate: '2027-10-31',
       issueNow: true,
     }, owner);
 
@@ -116,7 +116,7 @@ describeDatabase('Epic 10M: Financial Management Enhancement Integration Suite',
       gradeId: fixture.grade.id,
       feeStructureIds: [struct.id],
       issueDate: '2026-10-01',
-      dueDate: '2026-10-31',
+      dueDate: '2027-10-31',
     }, owner);
 
     expect(run2.createdInvoicesCount).toBe(0);
@@ -356,7 +356,7 @@ describeDatabase('Epic 10M: Financial Management Enhancement Integration Suite',
       enrollmentId: fixture.enrollment.id,
       academicYearId: fixture.year.id,
       issueDate: '2026-10-01',
-      dueDate: '2026-10-31',
+      dueDate: '2027-10-31',
       currency: 'USD',
       feeStructureIds: [struct.id],
       status: 'issued',

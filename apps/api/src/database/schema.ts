@@ -3109,6 +3109,39 @@ export const portalUpdateRequests = mysqlTable(
   ],
 );
 
+export const knowledgeCollections = mysqlTable(
+  "knowledge_collections",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    name: varchar("name", { length: 200 }).notNull(),
+    slug: varchar("slug", { length: 200 }).notNull(),
+    description: text("description"),
+    industry: varchar("industry", { length: 60 }).notNull().default("education"),
+    visibility: varchar("visibility", { length: 20 }).notNull().default("workspace"),
+    accessPolicy: json("access_policy").$type<Record<string, unknown>>(),
+    status: varchar("status", { length: 20 }).notNull().default("active"),
+    createdBy: char("created_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    index("knowledge_collections_org_ws_status_idx").on(
+      table.organizationId,
+      table.workspaceId,
+      table.status,
+    ),
+    uniqueIndex("knowledge_collections_org_slug_idx").on(table.organizationId, table.slug),
+  ],
+);
+
 export const knowledgeSources = mysqlTable(
   "knowledge_sources",
   {
@@ -3116,6 +3149,14 @@ export const knowledgeSources = mysqlTable(
     organizationId: char("organization_id", { length: 36 })
       .notNull()
       .references(() => organizations.id),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    collectionId: char("collection_id", { length: 36 }).references(() => knowledgeCollections.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
     name: varchar("name", { length: 200 }).notNull(),
     description: text("description").notNull(),
     type: mysqlEnum("type", ["text", "document", "structured"]).notNull(),
@@ -3123,14 +3164,26 @@ export const knowledgeSources = mysqlTable(
     status: mysqlEnum("status", ["active", "archived"]).notNull().default("active"),
     content: text("content").notNull(),
     contentHash: varchar("content_hash", { length: 64 }).notNull(),
-    ingestionStatus: mysqlEnum("ingestion_status", ["ready"]).notNull().default("ready"),
+    ingestionStatus: varchar("ingestion_status", { length: 40 }).notNull().default("ready"),
+    fileName: varchar("file_name", { length: 255 }),
+    fileType: varchar("file_type", { length: 50 }),
+    fileSizeBytes: bigint("file_size_bytes", { mode: "number" }),
+    mimeType: varchar("mime_type", { length: 120 }),
+    storageUri: varchar("storage_uri", { length: 500 }),
+    storageBackend: varchar("storage_backend", { length: 40 }).notNull().default("database_durable"),
+    currentVersion: int("current_version").notNull().default(1),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
     createdBy: char("created_by", { length: 36 })
       .notNull()
       .references(() => users.id),
     createdAt: datetime("created_at").notNull(),
     updatedAt: datetime("updated_at").notNull(),
   },
-  (table) => [index("knowledge_sources_tenant_idx").on(table.organizationId, table.status)],
+  (table) => [
+    index("knowledge_sources_tenant_idx").on(table.organizationId, table.status),
+    index("knowledge_sources_collection_idx").on(table.collectionId),
+    index("knowledge_sources_ws_idx").on(table.workspaceId),
+  ],
 );
 
 export const knowledgeChunks = mysqlTable(
@@ -3143,12 +3196,104 @@ export const knowledgeChunks = mysqlTable(
     organizationId: char("organization_id", { length: 36 })
       .notNull()
       .references(() => organizations.id),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
     ordinal: int("ordinal").notNull(),
+    sectionHeading: varchar("section_heading", { length: 255 }),
+    pageNumber: int("page_number"),
+    tokenCount: int("token_count").notNull().default(0),
+    contentHash: varchar("content_hash", { length: 64 }),
     content: text("content").notNull(),
   },
   (table) => [
     uniqueIndex("knowledge_chunks_source_ordinal_idx").on(table.sourceId, table.ordinal),
     index("knowledge_chunks_tenant_idx").on(table.organizationId),
+  ],
+);
+
+export const aiAgentKnowledgeDocuments = mysqlTable(
+  "ai_agent_knowledge_documents",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    sourceId: char("source_id", { length: 36 })
+      .notNull()
+      .references(() => knowledgeSources.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    version: int("version").notNull().default(1),
+    contentType: varchar("content_type", { length: 120 }).notNull(),
+    rawContent: text("raw_content"),
+    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    checksum: varchar("checksum", { length: 128 }).notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("ai_agent_knowledge_docs_source_ver_idx").on(table.sourceId, table.version),
+    index("ai_agent_knowledge_docs_org_ws_idx").on(table.organizationId, table.workspaceId),
+  ],
+);
+
+export const aiAgentKnowledgeEmbeddings = mysqlTable(
+  "ai_agent_knowledge_embeddings",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    sourceId: char("source_id", { length: 36 })
+      .notNull()
+      .references(() => knowledgeSources.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    chunkId: char("chunk_id", { length: 36 })
+      .notNull()
+      .references(() => knowledgeChunks.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    provider: varchar("provider", { length: 60 }).notNull().default("mock"),
+    model: varchar("model", { length: 120 }).notNull().default("mock-text-embedding"),
+    dimensions: int("dimensions").notNull().default(1536),
+    embedding: json("embedding").$type<number[]>().notNull(),
+    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_agent_knowledge_embeddings_chunk_unique").on(table.chunkId),
+    index("ai_agent_knowledge_embeddings_source_idx").on(table.sourceId),
+    index("ai_agent_knowledge_embeddings_org_ws_idx").on(table.organizationId, table.workspaceId),
+  ],
+);
+
+export const aiAgentKnowledgeRetrievals = mysqlTable(
+  "ai_agent_knowledge_retrievals",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: char("agent_id", { length: 36 }),
+    runId: char("run_id", { length: 36 }),
+    query: varchar("query", { length: 1000 }).notNull(),
+    retrievalMode: varchar("retrieval_mode", { length: 40 }).notNull().default("hybrid"),
+    matchedChunkIds: json("matched_chunk_ids").$type<string[]>().notNull(),
+    scores: json("scores").$type<Record<string, number>>().notNull(),
+    latencyMs: int("latency_ms").notNull().default(0),
+    requestedBy: char("requested_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("ai_agent_knowledge_ret_org_created_idx").on(table.organizationId, table.createdAt),
+    index("ai_agent_knowledge_ret_run_idx").on(table.runId),
   ],
 );
 
@@ -3393,6 +3538,10 @@ export const schema = {
   aiAgentToolVersions,
   aiAgentToolTenantPolicies,
   aiAgentToolExecutions,
+  knowledgeCollections,
+  aiAgentKnowledgeDocuments,
+  aiAgentKnowledgeEmbeddings,
+  aiAgentKnowledgeRetrievals,
   workspaces,
 };
 

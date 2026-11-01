@@ -6,3 +6,5 @@ export * from "./runtime/AgentRunHistoryPage";
 export * from "./runtime/AgentRunDetailsPage";
 export * from "./runtime/AgentApprovalInboxPage";
 export * from "./runtime/AgentRuntimeMonitoringPage";
+export * from "./tools/AgentToolsPage";
+export * from "./knowledge/AgentKnowledgePage";

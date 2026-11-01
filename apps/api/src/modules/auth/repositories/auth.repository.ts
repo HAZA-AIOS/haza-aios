@@ -52,6 +52,11 @@ export const corePermissions: PermissionSeed[] = [
   { key: "billing.read", description: "Read organization SaaS billing records." },
   { key: "member.read", description: "Read organization members." },
   { key: "member.manage", description: "Manage organization members and roles." },
+  { key: "knowledge.read", description: "Read organization knowledge collections and sources." },
+  { key: "knowledge.manage", description: "Manage organization knowledge collections, sources, and policies." },
+  { key: "knowledge.ingest", description: "Ingest, extract, and index documents into knowledge collections." },
+  { key: "knowledge.retrieve", description: "Retrieve grounded knowledge chunks for agent context." },
+  { key: "knowledge.search", description: "Execute hybrid search across organizational knowledge." },
 ];
 
 export class AuthRepository {

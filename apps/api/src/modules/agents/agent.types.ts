@@ -573,7 +573,10 @@ export type AgentRunEventType =
   | "retry_scheduled"
   | "lease_recovered"
   | "lesson_plan_draft_created"
-  | "lesson_plan_parse_error";
+  | "lesson_plan_parse_error"
+  | "context_retrieved"
+  | "context_retrieval_failed"
+  | "citations_validated";
 
 export type AgentRunEventRecord = {
   id: string;

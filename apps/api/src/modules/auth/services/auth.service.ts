@@ -26,6 +26,11 @@ import type { EmailConfig } from "../../../config/env.js";
 import { EmailService } from "./email.service.js";
 
 const ownerPermissions: PermissionKey[] = [
+  "knowledge.read",
+  "knowledge.manage",
+  "knowledge.ingest",
+  "knowledge.retrieve",
+  "knowledge.search",
   "organization.read",
   "organization.manage",
   "workspace.read",
@@ -48,6 +53,11 @@ const ownerPermissions: PermissionKey[] = [
 ];
 
 const adminPermissions: PermissionKey[] = [
+  "knowledge.read",
+  "knowledge.manage",
+  "knowledge.ingest",
+  "knowledge.retrieve",
+  "knowledge.search",
   "organization.read",
   "workspace.read",
   "workspace.manage",
@@ -69,6 +79,9 @@ const adminPermissions: PermissionKey[] = [
 ];
 
 const memberPermissions: PermissionKey[] = [
+  "knowledge.read",
+  "knowledge.retrieve",
+  "knowledge.search",
   "organization.read",
   "workspace.read",
   "module.read",

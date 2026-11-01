@@ -1,3 +1,16 @@
+## [0.17.0-epic17] - 2026-11-01
+
+### Added
+- **Epic 17 — Agent Knowledge & Context Engine:** multi-tenant collections, document extraction (TXT/Markdown/HTML/PDF/DOCX), heading-aware chunking and SHA-256 content hashes.
+- Provider-neutral embeddings with OpenAI `text-embedding-3-small` adapter and explicitly labeled deterministic fallback.
+- Hybrid lexical/vector retrieval, source context and citation validation, trusted `knowledge.search` tool, Academic Planning Assistant knowledge integration and five-tab knowledge workspace.
+- Migration `0027_agent_knowledge_context_engine.sql`, reported six production knowledge tables.
+
+### Verification
+- PR [#53](https://github.com/HAZA-AIOS/haza-aios/pull/53) merged; annotated release tag `v0.17.0-epic17` points to `ede2e06ce8dcd71bef5d5ba692bf138ddc9904a9`.
+- Release report: 386 API + 292 Web = 678 automated tests passing; migration rehearsal 37 DDL statements; 8/8 production smoke steps.
+- **Limitations:** the smoke transcript does not establish live semantic embedding inference, an upload-to-cited-answer end-to-end demonstration or deletion propagation. Deterministic mock vectors are not proof of semantic retrieval.
+
 ## [0.16.0-epic16] - 2026-10-30
 
 ### Added

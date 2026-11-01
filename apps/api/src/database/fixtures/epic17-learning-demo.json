@@ -1,0 +1,369 @@
+{
+  "schemaVersion": "1.0.0",
+  "fixtureSet": "HAZA-AIOS_EPIC17_LEARNING_DEMO",
+  "synthetic": true,
+  "school": {
+    "id": "demo-cedar-valley",
+    "name": "Cedar Valley Learning Academy (FICTIONAL)",
+    "organizationId": "DEMO-ORG-ONLY",
+    "workspaceId": "DEMO-WORKSPACE-ONLY"
+  },
+  "learner": {
+    "id": "DEMO-STUDENT-001",
+    "displayName": "Demo Learner (FICTIONAL)"
+  },
+  "teacher": {
+    "id": "DEMO-TEACHER-001",
+    "displayName": "Demo Teacher (FICTIONAL)"
+  },
+  "usage": {
+    "mode": "fixture-only",
+    "productionAutoSeed": false,
+    "realIdentities": false,
+    "approvedFor": "isolated test/dev or explicitly provisioned demo tenant",
+    "notes": "Not direct SQL seed data; import adapters must resolve actual tenant IDs and validate permissions."
+  },
+  "sections": [
+    {
+      "id": "DEMO-LEARN-001",
+      "section": "academic-years",
+      "type": "Academic Year",
+      "title": "Fictional 2026–2027 Academic Session",
+      "content": "Academic year 2026–2027 for the fictional Cedar Valley Learning Academy. Terms: Autumn and Spring. All identifiers are synthetic.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-002",
+      "section": "grade-levels",
+      "type": "Grade Level",
+      "title": "Grade 6",
+      "content": "Fictional Grade 6, intended for ages typically associated with middle school; no real student records.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-003",
+      "section": "classes-sections",
+      "type": "Class and Section",
+      "title": "Grade 6 — Section A",
+      "content": "Fictional Grade 6 Section A, code DEMO-G6-A, under fictional Cedar Valley Learning Academy.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-004",
+      "section": "subjects",
+      "type": "Subject",
+      "title": "Grade 6 Science",
+      "content": "Science curriculum themes: cells, ecosystems, and energy; locally authored demo content, not official curriculum.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-005",
+      "section": "curriculum-frameworks",
+      "type": "Curriculum Framework",
+      "title": "Fictional Science Framework",
+      "content": "Locally authored demo framework: observe scientifically, compare evidence, explain simple systems; not an accredited standard.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-006",
+      "section": "learning-objectives",
+      "type": "Learning Objective",
+      "title": "Identify Cell Parts",
+      "content": "Students identify nucleus, membrane, and cytoplasm and explain a basic function of each.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-007",
+      "section": "units",
+      "type": "Learning Unit",
+      "title": "Cells and Living Systems",
+      "content": "Four fictional lessons: what cells are; cell structures; tissues; simple microscopy safety.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-008",
+      "section": "lesson-plans",
+      "type": "Lesson Plan",
+      "title": "Cells: Structure and Function",
+      "content": "40-minute lesson: warm-up 5 min, diagram reading 10 min, guided labeling 15 min, exit ticket 10 min. Objective: identify three cell parts.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-009",
+      "section": "resource-library",
+      "type": "Learning Resource",
+      "title": "Cells Vocabulary Sheet",
+      "content": "Original demo glossary: cell—basic unit of living things; nucleus—contains genetic material; membrane—regulates movement into and out of the cell.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-010",
+      "section": "activities",
+      "type": "Learning Activity",
+      "title": "Cell Diagram Labeling",
+      "content": "Students label membrane, cytoplasm, and nucleus on a teacher-provided fictional diagram; completion is formative, not a grade.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-011",
+      "section": "assignments",
+      "type": "Assignment",
+      "title": "Compare Plant and Animal Cells",
+      "content": "Write three similarities and two differences between plant and animal cells; submit a short paragraph.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-012",
+      "section": "submissions",
+      "type": "Student Submission",
+      "title": "Demo Student Response",
+      "content": "Synthetic learner DEMO-STUDENT-001: Both plant and animal cells have membranes, cytoplasm and nuclei. Plant cells usually have cell walls and chloroplasts.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-013",
+      "section": "teacher-feedback",
+      "type": "Teacher Feedback",
+      "title": "Demo Feedback on Cell Comparison",
+      "content": "Synthetic teacher feedback: Good identification of shared parts. Add an explanation of how chloroplasts support photosynthesis.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-014",
+      "section": "rubrics",
+      "type": "Assessment Rubric",
+      "title": "Cell Comparison Rubric",
+      "content": "Criteria: scientific accuracy 0–4; completeness 0–4; clarity 0–2. Maximum 10 points. Illustrative rubric only.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-015",
+      "section": "gradebook",
+      "type": "Gradebook Entry",
+      "title": "Fictional Cells Assignment Result",
+      "content": "Synthetic learner DEMO-STUDENT-001: 8/10 on the fictional cell-comparison rubric; never a real grade.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-016",
+      "section": "student-portfolios",
+      "type": "Digital Portfolio Artifact",
+      "title": "My Cells Reflection",
+      "content": "Synthetic learner DEMO-STUDENT-001: I learned that plant and animal cells share structures and that plant cells have some extra features.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-017",
+      "section": "progress-tracking",
+      "type": "Learning Progress",
+      "title": "Cells Unit Progress Snapshot",
+      "content": "Synthetic learner DEMO-STUDENT-001: 3 of 4 unit objectives marked demonstrated; fictional data for UI testing.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-018",
+      "section": "interventions",
+      "type": "Learning Intervention",
+      "title": "Vocabulary Reinforcement",
+      "content": "Fictional support plan: review five cell-related terms using flashcards twice weekly; reassess after one week.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-019",
+      "section": "question-bank",
+      "type": "Question Bank Item",
+      "title": "Which Structure Controls Cell Activities?",
+      "content": "Multiple choice: A nucleus; B cell wall; C vacuole. Correct answer: A. Demo item only.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-020",
+      "section": "assessments",
+      "type": "Assessment",
+      "title": "Cells Mini Quiz",
+      "content": "Three questions: name a cell structure; identify plant-only structures; explain one function of the cell membrane.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-021",
+      "section": "certificates",
+      "type": "Certificate Template",
+      "title": "Cells Unit Completion Certificate",
+      "content": "Fictional certificate template for completion of the Cells and Living Systems demo unit; not an issued credential.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-022",
+      "section": "reports",
+      "type": "Learning Report",
+      "title": "Cells Unit Summary",
+      "content": "Synthetic class snapshot: 12 fictional learners, 9 demonstrated cell structure identification; numbers are invented for testing.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-023",
+      "section": "ai-assistance",
+      "type": "AI Learning Assistance",
+      "title": "Lesson Draft Suggestion",
+      "content": "Fictional assistant suggestion: begin with an everyday analogy, then use a labeled cell diagram and a quick formative check.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-024",
+      "section": "knowledge-collections",
+      "type": "Knowledge Collection",
+      "title": "Demo Grade 6 Science Library",
+      "content": "Collection of original fictional curriculum, cell vocabulary and classroom notes; authorized for demo teacher retrieval.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-025",
+      "section": "knowledge-sources",
+      "type": "Knowledge Source",
+      "title": "Cells Reference Note",
+      "content": "Plant and animal cells have membranes, cytoplasm, and genetic material. Many plant cells have a rigid cell wall and chloroplasts. This is original demonstration reference text.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-026",
+      "section": "knowledge-search",
+      "type": "Knowledge Search Expected Result",
+      "title": "What parts do plant and animal cells share?",
+      "content": "Expected grounded answer: Both have cell membranes, cytoplasm and genetic material. Citation must point to the actual ingested Cells Reference Note chunk.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-027",
+      "section": "timetable",
+      "type": "Timetable Entry",
+      "title": "Science Demo Session",
+      "content": "Grade 6 Section A, Tuesday 10:00–10:40, fictional timetable slot; no live scheduling.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-028",
+      "section": "attendance",
+      "type": "Attendance Record",
+      "title": "Demo Attendance",
+      "content": "Synthetic learner DEMO-STUDENT-001 marked present for the fictional Tuesday Science session; no real attendance.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-029",
+      "section": "teacher-workspace",
+      "type": "Teacher Workspace Task",
+      "title": "Review Cells Lesson Draft",
+      "content": "Synthetic teacher DEMO-TEACHER-001 reviews a lesson-plan draft and confirms citations before any publication.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-030",
+      "section": "student-workspace",
+      "type": "Student Workspace Item",
+      "title": "Cells Practice Assignment",
+      "content": "Synthetic learner sees a fictional assignment with an unpublished draft status and a sample due date.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    },
+    {
+      "id": "DEMO-LEARN-031",
+      "section": "parent-workspace",
+      "type": "Parent Workspace Summary",
+      "title": "Cells Unit Family Update",
+      "content": "Synthetic family summary: the learner practiced identifying cell structures; no personal or real family details.",
+      "synthetic": true,
+      "visibility": "demo-only",
+      "subject": "Science",
+      "grade": "6"
+    }
+  ]
+}

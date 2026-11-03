@@ -3636,6 +3636,301 @@ export const billingStatements = mysqlTable(
   ],
 );
 
+
+// ============================================================================
+// Epic 19 — Multi-Agent Collaboration & Orchestration Schema
+// ============================================================================
+
+export const agentTeams = mysqlTable(
+  "agent_teams",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    name: varchar("name", { length: 180 }).notNull(),
+    description: varchar("description", { length: 1000 }).notNull(),
+    status: varchar("status", { length: 40 }).notNull().default("active"),
+    createdBy: char("created_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    index("agent_teams_org_idx").on(table.organizationId),
+    index("agent_teams_workspace_idx").on(table.workspaceId),
+  ],
+);
+
+export const agentTeamMembers = mysqlTable(
+  "agent_team_members",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    teamId: char("team_id", { length: 36 })
+      .notNull()
+      .references(() => agentTeams.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    role: varchar("role", { length: 60 }).notNull(),
+    capabilities: json("capabilities").$type<string[]>().notNull(),
+    priority: int("priority").notNull().default(0),
+    status: varchar("status", { length: 40 }).notNull().default("active"),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("agent_team_members_team_agent_unique").on(table.teamId, table.agentId),
+    index("agent_team_members_team_idx").on(table.teamId),
+    index("agent_team_members_agent_idx").on(table.agentId),
+    index("agent_team_members_org_idx").on(table.organizationId),
+  ],
+);
+
+export const agentWorkflowDefinitions = mysqlTable(
+  "agent_workflow_definitions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    teamId: char("team_id", { length: 36 }).references(() => agentTeams.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    name: varchar("name", { length: 180 }).notNull(),
+    description: varchar("description", { length: 1000 }).notNull(),
+    pattern: varchar("pattern", { length: 60 }).notNull().default("sequential"),
+    status: varchar("status", { length: 40 }).notNull().default("draft"),
+    version: varchar("version", { length: 40 }).notNull().default("1.0.0"),
+    revision: int("revision").notNull().default(1),
+    inputSchema: json("input_schema").$type<Record<string, unknown>>().notNull(),
+    outputSchema: json("output_schema").$type<Record<string, unknown>>(),
+    configuration: json("configuration").$type<Record<string, unknown>>().notNull(),
+    createdBy: char("created_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    index("agent_wf_defs_org_status_idx").on(table.organizationId, table.status),
+    index("agent_wf_defs_workspace_idx").on(table.workspaceId),
+    index("agent_wf_defs_team_idx").on(table.teamId),
+  ],
+);
+
+export const agentWorkflowSteps = mysqlTable(
+  "agent_workflow_steps",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    workflowDefinitionId: char("workflow_definition_id", { length: 36 })
+      .notNull()
+      .references(() => agentWorkflowDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    stepKey: varchar("step_key", { length: 80 }).notNull(),
+    name: varchar("name", { length: 180 }).notNull(),
+    description: varchar("description", { length: 1000 }).notNull(),
+    stepOrder: int("step_order").notNull().default(0),
+    assignedRole: varchar("assigned_role", { length: 60 }).notNull(),
+    assignedAgentId: char("assigned_agent_id", { length: 36 }).references(
+      () => aiAgentDefinitions.id,
+      { onDelete: "set null", onUpdate: "cascade" },
+    ),
+    dependsOnStepKeys: json("depends_on_step_keys").$type<string[]>().notNull(),
+    requiresApproval: boolean("requires_approval").notNull().default(false),
+    approvalRoles: json("approval_roles").$type<string[]>(),
+    inputMapping: json("input_mapping").$type<Record<string, unknown>>().notNull(),
+    outputKey: varchar("output_key", { length: 80 }).notNull(),
+    maxRetries: int("max_retries").notNull().default(2),
+    timeoutSeconds: int("timeout_seconds").notNull().default(300),
+    configuration: json("configuration").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("agent_wf_steps_def_key_unique").on(table.workflowDefinitionId, table.stepKey),
+    index("agent_wf_steps_def_idx").on(table.workflowDefinitionId),
+    index("agent_wf_steps_org_idx").on(table.organizationId),
+    index("agent_wf_steps_agent_idx").on(table.assignedAgentId),
+  ],
+);
+
+export const agentWorkflowRuns = mysqlTable(
+  "agent_workflow_runs",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workflowDefinitionId: char("workflow_definition_id", { length: 36 })
+      .notNull()
+      .references(() => agentWorkflowDefinitions.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    teamId: char("team_id", { length: 36 }).references(() => agentTeams.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    workflowRevision: int("workflow_revision").notNull().default(1),
+    initiatorUserId: char("initiator_user_id", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    status: varchar("status", { length: 40 }).notNull().default("queued"),
+    idempotencyKey: varchar("idempotency_key", { length: 160 }),
+    initialInput: json("initial_input").$type<Record<string, unknown>>().notNull(),
+    finalOutput: json("final_output").$type<Record<string, unknown>>(),
+    sharedContext: json("shared_context").$type<Record<string, unknown>>().notNull(),
+    currentStepKey: varchar("current_step_key", { length: 80 }),
+    totalDurationMs: int("total_duration_ms").notNull().default(0),
+    totalEstimatedCostUsd: decimal("total_estimated_cost_usd", { precision: 10, scale: 6 })
+      .notNull()
+      .default("0.000000"),
+    totalPromptTokens: int("total_prompt_tokens").notNull().default(0),
+    totalCompletionTokens: int("total_completion_tokens").notNull().default(0),
+    safeErrorMessage: varchar("safe_error_message", { length: 1000 }),
+    startedAt: timestamp("started_at", { fsp: 3 }),
+    completedAt: timestamp("completed_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("agent_wf_runs_idempotency_unique").on(
+      table.workspaceId,
+      table.workflowDefinitionId,
+      table.idempotencyKey,
+    ),
+    index("agent_wf_runs_org_status_idx").on(table.organizationId, table.status),
+    index("agent_wf_runs_workspace_status_idx").on(table.workspaceId, table.status),
+    index("agent_wf_runs_wf_def_idx").on(table.workflowDefinitionId),
+    index("agent_wf_runs_initiator_idx").on(table.initiatorUserId),
+  ],
+);
+
+export const agentWorkflowStepRuns = mysqlTable(
+  "agent_workflow_step_runs",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    workflowRunId: char("workflow_run_id", { length: 36 })
+      .notNull()
+      .references(() => agentWorkflowRuns.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    stepId: char("step_id", { length: 36 })
+      .notNull()
+      .references(() => agentWorkflowSteps.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    stepKey: varchar("step_key", { length: 80 }).notNull(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    assignedAgentId: char("assigned_agent_id", { length: 36 }).references(
+      () => aiAgentDefinitions.id,
+      { onDelete: "set null", onUpdate: "cascade" },
+    ),
+    agentRunId: char("agent_run_id", { length: 36 }).references(() => aiAgentRuns.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    status: varchar("status", { length: 40 }).notNull().default("pending"),
+    attempt: int("attempt").notNull().default(1),
+    inputPayload: json("input_payload").$type<Record<string, unknown>>().notNull(),
+    outputPayload: json("output_payload").$type<Record<string, unknown>>(),
+    stepArtifacts: json("step_artifacts").$type<Array<Record<string, unknown>>>(),
+    safeErrorMessage: varchar("safe_error_message", { length: 1000 }),
+    durationMs: int("duration_ms").notNull().default(0),
+    startedAt: timestamp("started_at", { fsp: 3 }),
+    completedAt: timestamp("completed_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("agent_wf_step_runs_run_step_attempt_unique").on(
+      table.workflowRunId,
+      table.stepKey,
+      table.attempt,
+    ),
+    index("agent_wf_step_runs_run_idx").on(table.workflowRunId),
+    index("agent_wf_step_runs_step_idx").on(table.stepId),
+    index("agent_wf_step_runs_agent_run_idx").on(table.agentRunId),
+    index("agent_wf_step_runs_org_status_idx").on(table.organizationId, table.status),
+  ],
+);
+
+export const agentWorkflowArtifacts = mysqlTable(
+  "agent_workflow_artifacts",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    workflowRunId: char("workflow_run_id", { length: 36 })
+      .notNull()
+      .references(() => agentWorkflowRuns.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    stepRunId: char("step_run_id", { length: 36 }).references(() => agentWorkflowStepRuns.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    artifactType: varchar("artifact_type", { length: 60 }).notNull(),
+    name: varchar("name", { length: 180 }).notNull(),
+    content: json("content").$type<Record<string, unknown>>().notNull(),
+    provenance: json("provenance").$type<Record<string, unknown>>().notNull(),
+    citations: json("citations").$type<Array<Record<string, unknown>>>(),
+    visibility: varchar("visibility", { length: 40 }).notNull().default("workspace"),
+    createdBy: char("created_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    index("agent_wf_artifacts_run_idx").on(table.workflowRunId),
+    index("agent_wf_artifacts_step_idx").on(table.stepRunId),
+    index("agent_wf_artifacts_org_idx").on(table.organizationId),
+    index("agent_wf_artifacts_workspace_idx").on(table.workspaceId),
+  ],
+);
+
+export const agentWorkflowEvents = mysqlTable(
+  "agent_workflow_events",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    workflowRunId: char("workflow_run_id", { length: 36 })
+      .notNull()
+      .references(() => agentWorkflowRuns.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    stepRunId: char("step_run_id", { length: 36 }).references(() => agentWorkflowStepRuns.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    eventType: varchar("event_type", { length: 80 }).notNull(),
+    payload: json("payload").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("agent_wf_events_run_created_idx").on(table.workflowRunId, table.createdAt),
+    index("agent_wf_events_org_idx").on(table.organizationId),
+  ],
+);
+
 export const schema = {
   usageMeterEvents,
   saasPlans,
@@ -3739,6 +4034,14 @@ export const schema = {
   aiModelPricingCatalog,
   aiUsageBudgets,
   aiUsageLedger,
+  agentTeams,
+  agentTeamMembers,
+  agentWorkflowDefinitions,
+  agentWorkflowSteps,
+  agentWorkflowRuns,
+  agentWorkflowStepRuns,
+  agentWorkflowArtifacts,
+  agentWorkflowEvents,
   workspaces,
 };
 

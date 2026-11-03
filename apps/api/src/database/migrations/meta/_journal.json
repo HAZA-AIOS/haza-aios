@@ -204,6 +204,13 @@
       "when": 1793400000000,
       "tag": "0028_live_ai_provider_integration",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "5",
+      "when": 1793688029045,
+      "tag": "0029_multi_agent_orchestration",
+      "breakpoints": true
     }
   ]
 }

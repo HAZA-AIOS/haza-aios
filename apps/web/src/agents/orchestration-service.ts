@@ -194,7 +194,7 @@ export class OrchestrationService {
       `/api/v1/organizations/${organizationId}/agent-teams`,
       {
         method: "POST",
-        body: payload,
+        body: JSON.stringify(payload),
         authToken: this.getAuthToken(),
       },
     );
@@ -255,7 +255,7 @@ export class OrchestrationService {
       `/api/v1/organizations/${organizationId}/agent-workflows`,
       {
         method: "POST",
-        body: payload,
+        body: JSON.stringify(payload),
         authToken: this.getAuthToken(),
       },
     );
@@ -295,7 +295,7 @@ export class OrchestrationService {
       `/api/v1/organizations/${organizationId}/agent-workflows/${workflowId}/runs`,
       {
         method: "POST",
-        body: { input, idempotencyKey },
+        body: JSON.stringify({ input, idempotencyKey }),
         authToken: this.getAuthToken(),
       },
     );
@@ -340,7 +340,7 @@ export class OrchestrationService {
       `/api/v1/organizations/${organizationId}/agent-workflow-runs/${runId}/steps/${stepKey}/approval`,
       {
         method: "POST",
-        body: { decision, notes },
+        body: JSON.stringify({ decision, notes }),
         authToken: this.getAuthToken(),
       },
     );

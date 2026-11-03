@@ -36,7 +36,7 @@ const orchestrationService = new OrchestrationService();
 export const MultiAgentOrchestrationPage: React.FC = () => {
   const { currentOrganization } = useOrganization();
   const organizationId = currentOrganization?.id || "org-mentor-school";
-  const workspaceId = currentOrganization?.workspaces?.[0]?.id || "ws-default";
+  const workspaceId = "ws-default";
 
   const [activeTab, setActiveTab] = useState<"teams" | "builder" | "monitor" | "approvals" | "artifacts">("teams");
   const [teams, setTeams] = useState<AgentTeam[]>([]);
@@ -231,7 +231,7 @@ export const MultiAgentOrchestrationPage: React.FC = () => {
   const pendingApprovals = runs.filter((r) => r.status === "waiting_approval");
 
   return (
-    <AppShell title="Multi-Agent Collaboration & Orchestration">
+    <AppShell>
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
         {/* Top Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-zinc-800 pb-6">

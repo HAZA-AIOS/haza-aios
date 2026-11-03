@@ -23,6 +23,7 @@ import { AgentRuntimeService } from "./services/agent-runtime.service.js";
 import { validateAcademicPlanningInput } from "./validation/academic-planning-validation.js";
 import { ACADEMIC_PLANNING_AGENT_TEMPLATE } from "./academic-planning.types.js";
 import { AiProviderRegistry } from "./providers/provider-registry.js";
+import { UnifiedAiProviderGateway } from "./providers/ai-provider-gateway.js";
 import type { AcademicLessonPlanRecord, LessonPlanStatus } from "./academic-planning.types.js";
 import { AgentToolRepository } from "./repositories/agent-tool.repository.js";
 import { AgentToolGatewayService } from "./tools/agent-tool-gateway.service.js";
@@ -97,6 +98,156 @@ export const agentsModule: BackendModule = {
         );
         const providers = await new AgentService(database).listProviders();
         sendJson(response, 200, { providers });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/providers/config",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const gateway = UnifiedAiProviderGateway.getInstance(database);
+        const configs = await gateway.listTenantConfigs(tenant.organizationId);
+        sendJson(response, 200, { configs });
+      },
+    });
+
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agents/providers/config",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const providerId = (body.providerId as string) || "openai";
+        const gateway = UnifiedAiProviderGateway.getInstance(database);
+
+        const config = await gateway.updateTenantConfig(
+          tenant.organizationId,
+          {
+            providerId,
+            liveModeEnabled: body.liveModeEnabled !== undefined ? Boolean(body.liveModeEnabled) : undefined,
+            environmentMode: body.environmentMode as any,
+            apiKey: body.apiKey as string | undefined,
+            defaultModel: body.defaultModel as string | undefined,
+            allowedModels: Array.isArray(body.allowedModels) ? (body.allowedModels as string[]) : undefined,
+            embeddingModel: body.embeddingModel as string | undefined,
+            embeddingLiveEnabled: body.embeddingLiveEnabled !== undefined ? Boolean(body.embeddingLiveEnabled) : undefined,
+            status: body.status as any,
+            statusMessage: body.statusMessage as string | undefined,
+          },
+          auth.user.id,
+        );
+
+        sendJson(response, 200, { config });
+      },
+    });
+
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agents/providers/validate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const providerId = (body.providerId as string) || "openai";
+        const gateway = UnifiedAiProviderGateway.getInstance(database);
+        const result = await gateway.probeProvider(tenant.organizationId, providerId);
+        sendJson(response, 200, { validation: result });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/providers/models",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const providerId = url.searchParams.get("providerId") ?? undefined;
+        const gateway = UnifiedAiProviderGateway.getInstance(database);
+        const models = await gateway.listAvailableModels(tenant.organizationId, providerId);
+        sendJson(response, 200, { models });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/providers/budgets",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
+        const gateway = UnifiedAiProviderGateway.getInstance(database);
+        const budget = await gateway.getBudget(tenant.organizationId, workspaceId);
+        sendJson(response, 200, { budget });
+      },
+    });
+
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agents/providers/budgets",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as Record<string, unknown>;
+        const workspaceId = body.workspaceId as string | undefined;
+        const gateway = UnifiedAiProviderGateway.getInstance(database);
+        const updated = await gateway.updateBudget(
+          tenant.organizationId,
+          {
+            monthlyBudgetUsd: typeof body.monthlyBudgetUsd === "number" ? body.monthlyBudgetUsd : undefined,
+            dailyBudgetUsd: typeof body.dailyBudgetUsd === "number" ? body.dailyBudgetUsd : undefined,
+            perRequestMaxCostUsd: typeof body.perRequestMaxCostUsd === "number" ? body.perRequestMaxCostUsd : undefined,
+            enforceHardLimit: typeof body.enforceHardLimit === "boolean" ? body.enforceHardLimit : undefined,
+            notifyThresholdPercent: typeof body.notifyThresholdPercent === "number" ? body.notifyThresholdPercent : undefined,
+            status: body.status as string | undefined,
+          },
+          auth.user.id,
+          workspaceId,
+        );
+        sendJson(response, 200, { budget: updated });
+      },
+    });
+
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agents/providers/usage",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const limitParam = Number(url.searchParams.get("limit") || 50);
+        const gateway = UnifiedAiProviderGateway.getInstance(database);
+        const usage = await gateway.getUsageMetrics(tenant.organizationId, limitParam);
+        sendJson(response, 200, { usage });
       },
     });
 

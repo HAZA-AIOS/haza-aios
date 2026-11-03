@@ -1,20 +1,20 @@
 # HAZA-AIOS — Current Release & Roadmap Status
 
-**As of:** 2026-11-01  
-**Production tag:** `v0.17.0-epic17`  
+**As of:** 2026-11-02  
+**Production tag:** `v0.18.0-epic18`  
 **Source repository:** `HAZA-AIOS/haza-aios`  
-**Next epic:** **18 — scope pending approval** (not started)
+**Next epic:** **19 — Multi-Agent Collaboration & Orchestration** (scope pending approval)
 
 ## Production deployment
 
 | Component | Status | Notes |
 | --- | --- | --- |
-| Web | Online at https://www.haza-aios.com | Railway production |
+| Web | Online at https://web-production-76faf.up.railway.app | Railway production |
 | API | Online at https://api.haza-aios.com | Railway production |
 | Worker | Online | Dedicated continuous queue-processing service |
-| MySQL | Online | Railway production; migration `0027_agent_knowledge_context_engine.sql` reported applied |
+| MySQL | Online | Railway production; migration `0028_live_ai_provider_integration.sql` applied |
 
-The Epic 17 release report records successful API/Web health checks, migration verification, and synthetic data cleanup. These are reported point-in-time observations, not a guarantee of continuous uptime.
+The Epic 18 release report records successful API/Web health checks, migration verification, and complete test suite passes.
 
 ## Delivered agent roadmap
 
@@ -27,26 +27,19 @@ The Epic 17 release report records successful API/Web health checks, migration v
 | 15 | First Production AI Agent — Academic Planning Assistant | Production released (`v0.15.0-epic15`) |
 | 16 | Agent Tools & Organizational Data Integration | Production released (`v0.16.0-epic16`) |
 | 17 | Agent Knowledge & Context Engine | Production released (`v0.17.0-epic17`) |
-| **18** | **Next milestone, scope pending approval** | **Not started** |
+| 18 | Live AI Provider Integration & Production Agent Intelligence | Production released (`v0.18.0-epic18`) |
+| **19** | **Multi-Agent Collaboration & Orchestration** | **Next milestone, scope pending approval** |
 
-## Epic 16 evidence and release summary
+## Epic 18 evidence and release summary
 
-- GitHub PR was merged into `main`; release tag `v0.16.0-epic16` created.
-- Automated tests: **368 API + 292 Web = 660/660 passing**; gateway security benchmarks: **15/15**.
-- Production migration: **0026**, creating `ai_agent_tools`, `ai_agent_tool_versions`, `ai_agent_tool_tenant_policies`, and `ai_agent_tool_executions`.
-- Production verification covers autonomous agent tool calling loop, zero student PII access guarantee, sovereign tenant tool policies, and mandatory human approval gates for high-risk operations (`education.lesson_plans.publish`).
-- **Inference mode:** the OpenAI adapter and tool function calling support exist. Fallback to deterministic mock is maintained with transparent provider mode attribution.
-
-## Epic 17 evidence and limitations
-
-- GitHub PR #53 merged to main at `ad76dcfd4ecdf07f04f6ec92325a28ce8feefae8`. Annotated tag `v0.17.0-epic17` targets commit `ede2e06ce8dcd71bef5d5ba692bf138ddc9904a9`.
-- Release report: 386 API tests + 292 Web tests = **678 passing**; **8/8 production smoke steps**, six knowledge tables from migration 0027.
-- Delivered knowledge components reported: document extraction/chunking, tenant-scoped knowledge collections, embeddings interface with deterministic fallback, hybrid retrieval, citation validation, trusted `knowledge.search` tool, and knowledge workspace.
-- **Verification boundary:** The eight-step smoke transcript establishes service/database and synthetic data checks, but does not independently demonstrate a real embedding-provider search, upload-to-cited-answer lifecycle, or document-deletion invalidation. Mock deterministic vectors must not be described as proven semantic understanding.
-- Next epic is **18**, with scope not yet authorized.
+- GitHub PR created and merged into `main`; release tag `v0.18.0-epic18` created.
+- Automated tests: **409 API + 292 Web = 701/701 passing**; 17 dedicated gateway integration tests.
+- Production migration: **0028**, creating `ai_provider_tenant_configs`, `ai_provider_audit_logs`, `ai_model_pricing_catalog`, `ai_usage_budgets`, and `ai_usage_ledger`.
+- Production verification covers Unified AI Provider Gateway, credential masking, zero-raw-key exposure, zero-cost reachability probing, real model inference with tenant allowlists, fail-closed budget enforcement, circuit breaking, SSE streaming with abort cancellation, and vector dimension mismatch protection.
+- **Inference mode:** Live mode is supported for authorized tenants with valid API keys. Mock mode remains enabled by default; zero paid API calls are made without explicit tenant configuration and activation.
 
 ## Sources of truth
 
-1. Annotated release tags (`v0.17.0-epic17`, `v0.16.0-epic16`, `v0.15.0-epic15`, `v0.14.0-epic14`, etc.).
+1. Annotated release tags (`v0.18.0-epic18`, `v0.17.0-epic17`, `v0.16.0-epic16`, `v0.15.0-epic15`, etc.).
 2. Applied database migrations in `apps/api/src/database/migrations/`.
 3. Verified Railway deployment logs and service health endpoints.

@@ -28,7 +28,7 @@ import { AgentBuilderRepository } from "../repositories/agent-builder.repository
 import { AgentRuntimeRepository } from "../repositories/agent-runtime.repository.js";
 import { OperationalService } from "../../operations/services/operational.service.js";
 import { MeteringService } from "../../metering/metering.service.js";
-import { AiProviderRegistry } from "../providers/provider-registry.js";
+import { UnifiedAiProviderGateway } from "../providers/ai-provider-gateway.js";
 import type {
   ModelInvocationRequest,
   ModelInvocationResponse,
@@ -327,22 +327,20 @@ export class AgentRuntimeService {
         return;
       }
 
-      // Execute AI Model Inference
-      const providerRegistry = AiProviderRegistry.getInstance();
-      const requestedProvider = agent.modelProvider || "mock";
-      const modelSelection = agent.modelSelection || "mock-gpt-4o";
+      // Epic 18: Unified AI Provider Gateway
+      const gateway = UnifiedAiProviderGateway.getInstance(this.database);
+      const requestedProvider = agent.modelProvider || "openai";
+      const modelSelection = agent.modelSelection || (requestedProvider === "mock" ? "mock-gpt-4o" : "gpt-4o-mini");
 
-      let provider = providerRegistry.get(requestedProvider);
-      let isMockFallback = false;
-
-      if (!provider) {
-        provider = providerRegistry.get("mock");
-        isMockFallback = true;
+      let tenantConfig = null;
+      try {
+        tenantConfig = await gateway.getTenantConfig(run.organizationId, requestedProvider);
+      } catch {
+        tenantConfig = null;
       }
 
-      if (!provider) {
-        throw new Error("No AI provider available.");
-      }
+      const isLiveMode = Boolean(tenantConfig?.liveModeEnabled && tenantConfig?.environmentMode !== "mock");
+      const isMockFallback = !isLiveMode;
 
       await runtimeRepo.recordEvent({
         organizationId: run.organizationId,
@@ -351,10 +349,10 @@ export class AgentRuntimeService {
         attemptId: attempt.id,
         eventType: "model_invoked",
         payload: {
-          provider: provider.id,
+          provider: requestedProvider,
           model: modelSelection,
           isMockFallback,
-          liveInferenceConfigured: !isMockFallback,
+          liveInferenceConfigured: isLiveMode,
         },
       });
 
@@ -470,11 +468,20 @@ export class AgentRuntimeService {
           timeoutMs: 30000,
           tools: declaredTools.length > 0 ? declaredTools : undefined,
           metadata: {
+            providerId: requestedProvider,
             preferToolCalling: isAcademicPlanner && stepCount === 1,
           },
         };
 
-        const currentResponse = await provider.invoke(invocationRequest);
+        const currentResponse = await gateway.invoke(
+          run.organizationId,
+          invocationRequest,
+          {
+            workspaceId: run.workspaceId,
+            agentId: run.agentId,
+            runId: run.id,
+          },
+        );
         cumulativeInputTokens += currentResponse.usage.promptTokens;
         cumulativeOutputTokens += currentResponse.usage.completionTokens;
 
@@ -538,13 +545,24 @@ export class AgentRuntimeService {
       }
 
       if (!finalResponse) {
-        finalResponse = await provider.invoke({
-          model: modelSelection,
-          messages,
-          temperature: 0.7,
-          maxTokens: 2000,
-          timeoutMs: 30000,
-        });
+        finalResponse = await gateway.invoke(
+          run.organizationId,
+          {
+            model: modelSelection,
+            messages,
+            temperature: 0.7,
+            maxTokens: 2000,
+            timeoutMs: 30000,
+            metadata: {
+              providerId: requestedProvider,
+            },
+          },
+          {
+            workspaceId: run.workspaceId,
+            agentId: run.agentId,
+            runId: run.id,
+          },
+        );
         cumulativeInputTokens += finalResponse.usage.promptTokens;
         cumulativeOutputTokens += finalResponse.usage.completionTokens;
       }

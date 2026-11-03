@@ -388,5 +388,49 @@ export const knowledgeModule: BackendModule = {
         });
       },
     });
+
+    // 16. Reindex Collection (Controlled re-embedding)
+    router.register({
+      method: "POST",
+      path: `${base}/collections/:collectionId/reindex`,
+      async handler(request, response, { database, routeParams }) {
+        const { organizationId } = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.collectionId, "collectionId");
+        await requireKnowledgeAuth(new AuthService(database), request, organizationId, [
+          "knowledge.manage",
+          "agent.manage",
+        ]);
+        const body = (request.body as any) || {};
+        const result = await new KnowledgeService(database).reindexCollection(
+          organizationId,
+          routeParams.collectionId,
+          {
+            allowLive: body.allowLive === true,
+            requestedProviderId: body.providerId,
+          },
+        );
+        sendJson(response, 200, { reindexed: result });
+      },
+    });
+
+    // 17. Delete Source (Permanent deletion with cascade to chunks and embeddings)
+    router.register({
+      method: "DELETE",
+      path: `${base}/sources/:sourceId`,
+      async handler(request, response, { database, routeParams }) {
+        const { organizationId } = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.sourceId, "sourceId");
+        const auth = await requireKnowledgeAuth(new AuthService(database), request, organizationId, [
+          "knowledge.manage",
+          "agent.manage",
+        ]);
+        await new KnowledgeService(database).deleteSource(
+          organizationId,
+          routeParams.sourceId,
+          auth.user.id,
+        );
+        sendJson(response, 200, { deleted: true });
+      },
+    });
   },
 };

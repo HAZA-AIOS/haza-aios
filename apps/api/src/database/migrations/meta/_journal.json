@@ -197,6 +197,13 @@
       "when": 1793300000000,
       "tag": "0027_agent_knowledge_context_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "5",
+      "when": 1793400000000,
+      "tag": "0028_live_ai_provider_integration",
+      "breakpoints": true
     }
   ]
 }

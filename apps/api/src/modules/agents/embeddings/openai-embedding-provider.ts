@@ -1,4 +1,5 @@
 import { ApiError } from "../../../common/errors/api-error.js";
+import { redactSecrets } from "../utils/secret-redactor.js";
 import type {
   EmbeddingProvider,
   EmbeddingRequest,
@@ -18,6 +19,10 @@ export class OpenAiEmbeddingProvider implements EmbeddingProvider {
   constructor(apiKey?: string, baseUrl?: string) {
     this.apiKey = apiKey || process.env.OPENAI_API_KEY || "";
     this.baseUrl = baseUrl || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+  }
+
+  setApiKey(key: string): void {
+    this.apiKey = key.trim();
   }
 
   async isAvailable(): Promise<boolean> {
@@ -57,14 +62,15 @@ export class OpenAiEmbeddingProvider implements EmbeddingProvider {
 
       if (!response.ok) {
         const errorText = await response.text();
+        const safeError = redactSecrets(errorText);
         throw new ApiError(
           response.status,
           "INTERNAL_SERVER_ERROR",
-          `OpenAI embeddings API responded with HTTP ${response.status}: ${errorText}`,
+          `OpenAI embeddings API responded with HTTP ${response.status}: ${safeError}`,
         );
       }
 
-      const data: any = await response.json();
+      const data = (await response.json()) as any;
       const embeddings = data.data.map((item: any) => item.embedding);
       const totalTokens = data.usage?.total_tokens ?? 0;
       const estimatedCostUsd = (totalTokens / 1_000_000) * 0.02; // $0.02 per 1M tokens
@@ -79,11 +85,17 @@ export class OpenAiEmbeddingProvider implements EmbeddingProvider {
           estimatedCostUsd,
         },
       };
-    } catch (err: any) {
-      if (err.name === "AbortError") {
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        throw err;
+      }
+      const errName = err && typeof err === "object" && "name" in err ? String((err as any).name) : "";
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      if (errName === "AbortError") {
         throw new ApiError(504, "INTERNAL_SERVER_ERROR", `OpenAI embeddings call timed out after ${timeoutMs}ms.`);
       }
-      throw err;
+      throw new ApiError(500, "INTERNAL_SERVER_ERROR", `OpenAI embeddings call failed: ${redactSecrets(errMsg)}`);
     } finally {
       clearTimeout(timer);
     }

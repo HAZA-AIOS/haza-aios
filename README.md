@@ -6,17 +6,15 @@ HAZA AIOS is a modular platform for organization operations, tenant workspaces, 
 
 Education SIS remains the most developed industry module. The production release now also includes an AI Agent Marketplace, configuration builder, durable execution runtime, and a teacher-supervised Academic Planning Assistant. The DB-0–DB-18 retrofit history is distinct from production Epic 11–17 delivery; see the current release status document.
 
-## Current Production Release (2026-11-01)
+## Current Production Release (2026-11-02)
 
-**Production release:** [`v0.17.0-epic17`](https://github.com/HAZA-AIOS/haza-aios/releases/tag/v0.17.0-epic17) · **Next epic:** **18 — scope pending approval** (not started).
+**Production release:** [`v0.18.0-epic18`](https://github.com/HAZA-AIOS/haza-aios/releases/tag/v0.18.0-epic18) · **Next epic:** **19 — Multi-Agent Collaboration & Orchestration** (scope pending approval).
 
-Epic 17 delivered **Agent Knowledge & Context Engine** (knowledge collections, extraction/chunking, hybrid retrieval, citations and trusted knowledge search), extending Epic 16's **Agent Tools & Organizational Data Integration**. following Epic 15's **HAZA Academic Planning Assistant**, the first production-deployed, human-supervised education agent. It uses the agent registry, marketplace, builder, and durable runtime from Epics 11–14. Teachers can generate and edit lesson-plan drafts, review and approve content, export Markdown/JSON, and explicitly publish approved plans through the LMS workflow. Automated verification reported **640/640 tests passing**; the release report documents an unattended worker execution and live production smoke checks. Production database migration **0025** added `academic_lesson_plans`.
+Epic 18 delivered **Live AI Provider Integration & Production Agent Intelligence** (Unified AI Provider Gateway, credential vault, real model inference with tenant allowlists, SSE streaming and abort signal cancellation, fail-closed budget caps, circuit breaker fault tolerance, usage telemetry ledger, and four-tab provider administration workspace), building directly upon Epic 17's **Agent Knowledge & Context Engine**, Epic 16's **Agent Tools & Organizational Data Integration**, and Epic 15's **HAZA Academic Planning Assistant**. Automated verification reports **52/52 test suites passing (409 tests)**; production database migration **0028** added 5 provider, budget, and ledger tables.
 
-**Epic 17 verification caveat:** The release report records 678 passing automated tests and 8/8 production smoke checks, but the smoke transcript does not independently prove live embeddings or a full upload-to-cited-answer path. Deterministic fallback is not equivalent to verified semantic search.
+**Production infrastructure:** [Web](https://web-production-76faf.up.railway.app) · [API](https://api.haza-aios.com) · dedicated Railway background worker · Railway MySQL. All services operate with secure credential masking, zero-raw-key frontend exposure, zero-cost reachability probing, and fail-closed financial protections. Live mode remains disabled by default.
 
-**Production infrastructure:** [Web](https://www.haza-aios.com) · [API](https://api.haza-aios.com) · dedicated Railway background worker · Railway MySQL. All four services were independently observed online on 2026-10-30. The assistant currently uses a **clearly attributed deterministic mock/fallback** when `OPENAI_API_KEY` is not configured; **live OpenAI inference has not been verified as activated**. Do not confuse deployed mock-backed functionality with live paid inference.
-
-**Completed agent epics:** 11 Foundation; 12 Registry & Marketplace; 13 Configuration & Builder; 14 Runtime & Execution; 15 First Production AI Agent; 16 Tools & Organizational Data Integration; 17 Knowledge & Context Engine. **Next:** 18 (scope pending approval).
+**Completed agent epics:** 11 Foundation; 12 Registry & Marketplace; 13 Configuration & Builder; 14 Runtime & Execution; 15 First Production AI Agent; 16 Tools & Organizational Data Integration; 17 Knowledge & Context Engine; 18 Live AI Provider Integration. **Next:** 19 (scope pending approval).
 
 See [current release and roadmap status](docs/product/CURRENT_RELEASE_STATUS.md) and [CHANGELOG](CHANGELOG.md). The root `package.json` workspace version (`0.1.0`) is not the production release tag; it is unchanged by this documentation-only update.
 

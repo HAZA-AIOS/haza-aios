@@ -5,8 +5,10 @@ import {
   ModelInvocationRequest,
   ModelInvocationResponse,
   ModelMetadata,
+  StreamingOptions,
   ToolCall,
 } from "./ai-provider.types.js";
+import { redactSecrets } from "../utils/secret-redactor.js";
 
 const DEFAULT_OPENAI_MODELS: ModelMetadata[] = [
   {
@@ -80,6 +82,10 @@ export class OpenAiProvider implements AiProvider {
     this.apiKey = key ? key.trim() : null;
   }
 
+  setBaseUrl(url: string): void {
+    this.baseUrl = url.trim();
+  }
+
   async listModels(): Promise<ModelMetadata[]> {
     return Array.from(this.models.values());
   }
@@ -102,6 +108,63 @@ export class OpenAiProvider implements AiProvider {
       valid: errors.length === 0,
       errors: errors.length > 0 ? errors : undefined,
     };
+  }
+
+  /**
+   * Health check validates configuration and reachability without making paid inference calls.
+   * Uses OpenAI's GET /models endpoint which lists models with zero token charges.
+   */
+  async healthCheck(): Promise<{ status: "healthy" | "degraded" | "error"; message?: string; latencyMs?: number }> {
+    const key = this.getApiKey();
+    if (!key) {
+      return {
+        status: "degraded",
+        message: "OpenAI API key not configured. Provider is inactive (Live mode disabled).",
+        latencyMs: 0,
+      };
+    }
+    const startTime = Date.now();
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(`${this.baseUrl}/models`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${key}`,
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const latencyMs = Math.max(1, Date.now() - startTime);
+
+      if (res.ok) {
+        return {
+          status: "healthy",
+          message: "OpenAI API reachable and authenticated (Zero token cost).",
+          latencyMs,
+        };
+      }
+      if (res.status === 401 || res.status === 403) {
+        return {
+          status: "error",
+          message: "OpenAI authentication failed: invalid API key.",
+          latencyMs,
+        };
+      }
+      return {
+        status: "degraded",
+        message: `OpenAI returned status ${res.status}`,
+        latencyMs,
+      };
+    } catch (err: unknown) {
+      const latencyMs = Math.max(1, Date.now() - startTime);
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        status: "degraded",
+        message: redactSecrets(msg),
+        latencyMs,
+      };
+    }
   }
 
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResponse> {
@@ -147,7 +210,6 @@ export class OpenAiProvider implements AiProvider {
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
-    // Link caller signal if provided
     if (request.signal) {
       request.signal.addEventListener("abort", () => controller.abort());
     }
@@ -281,8 +343,8 @@ export class OpenAiProvider implements AiProvider {
         : undefined;
 
       return {
-        id: data.id ?? `openai-${randomUUID()}`,
-        model: targetModel.id,
+        id: data.id || `chatcmpl-${randomUUID()}`,
+        model: data.model || targetModel.id,
         provider: this.id,
         content,
         finishReason,
@@ -296,18 +358,21 @@ export class OpenAiProvider implements AiProvider {
         latencyMs,
         metadata: {
           correlationId,
-          liveInference: true,
+          created: data.created,
           systemFingerprint: data.system_fingerprint,
         },
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       clearTimeout(timeoutHandle);
       if (err instanceof AiProviderError) {
         throw err;
       }
 
       const latencyMs = Math.max(1, Date.now() - startTime);
-      if (controller.signal.aborted || err.name === "AbortError") {
+      const errName = err && typeof err === "object" && "name" in err ? String((err as any).name) : "";
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      if (controller.signal.aborted || errName === "AbortError") {
         const isTimeout = !request.signal?.aborted;
         throw new AiProviderError(
           isTimeout
@@ -323,7 +388,7 @@ export class OpenAiProvider implements AiProvider {
         );
       }
 
-      throw new AiProviderError(`OpenAI network connection failure: ${redactSecrets(err.message)}`, {
+      throw new AiProviderError(`OpenAI network connection failure: ${redactSecrets(errMsg)}`, {
         code: "PROVIDER_ERROR",
         provider: this.id,
         retryable: true,
@@ -332,10 +397,236 @@ export class OpenAiProvider implements AiProvider {
       });
     }
   }
-}
 
-function redactSecrets(input: string): string {
-  return input
-    .replace(/sk-[a-zA-Z0-9_-]{20,}/g, "[REDACTED_API_KEY]")
-    .replace(/Bearer\s+[a-zA-Z0-9_\-\.]+/gi, "Bearer [REDACTED]");
+  /**
+   * Streaming model invocation via Server-Sent Events (SSE).
+   */
+  async stream(
+    request: ModelInvocationRequest,
+    options: StreamingOptions,
+  ): Promise<ModelInvocationResponse> {
+    const startTime = Date.now();
+    const correlationId = (request.metadata?.requestId as string) || randomUUID();
+
+    if (request.signal?.aborted) {
+      throw new AiProviderError("Model invocation was aborted by caller.", {
+        code: "CANCELLED",
+        provider: this.id,
+        retryable: false,
+      });
+    }
+
+    const key = this.getApiKey();
+    if (!key) {
+      throw new AiProviderError(
+        "OpenAI API key is not configured. Live streaming cannot be executed.",
+        {
+          code: "AUTHENTICATION_FAILED",
+          provider: this.id,
+          retryable: false,
+          statusCode: 401,
+          details: { correlationId },
+        },
+      );
+    }
+
+    const targetModel = (await this.getModel(request.model)) ?? {
+      id: request.model,
+      name: request.model,
+      provider: "openai",
+      contextWindow: 128_000,
+      maxOutputTokens: 4096,
+      capabilities: ["chat", "completion"],
+    };
+
+    const timeoutMs = request.timeoutMs ?? 60_000;
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+    if (request.signal) {
+      request.signal.addEventListener("abort", () => controller.abort());
+    }
+
+    const hasTools = Boolean(request.tools && request.tools.length > 0);
+
+    const payload: Record<string, unknown> = {
+      model: targetModel.id,
+      messages: request.messages.map((m) => {
+        if (m.role === "tool") {
+          return {
+            role: "tool",
+            tool_call_id: m.toolCallId || "call_default",
+            content: m.content,
+          };
+        }
+        return {
+          role: m.role,
+          content: m.content,
+          name: m.name,
+        };
+      }),
+      temperature: request.temperature ?? 0.7,
+      max_tokens: request.maxTokens ?? 3000,
+      stream: true,
+    };
+
+    if (hasTools) {
+      payload.tools = request.tools!.map((t) => ({
+        type: "function",
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters,
+        },
+      }));
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+          "X-Request-ID": correlationId,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        clearTimeout(timeoutHandle);
+        const errorText = await response.text();
+        const safeError = redactSecrets(errorText);
+        throw new AiProviderError(`OpenAI stream rejected (${response.status}): ${safeError}`, {
+          code: response.status === 429 ? "RATE_LIMITED" : "PROVIDER_ERROR",
+          provider: this.id,
+          retryable: response.status >= 500 || response.status === 429,
+          statusCode: response.status,
+        });
+      }
+
+      if (!response.body) {
+        throw new AiProviderError("OpenAI returned empty response body for streaming.", {
+          code: "PROVIDER_ERROR",
+          provider: this.id,
+          retryable: true,
+        });
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let fullContent = "";
+      let responseId = `chatcmpl-${randomUUID()}`;
+      let buffer = "";
+      let finishReason: ModelInvocationResponse["finishReason"] = "stop";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(":")) continue;
+          if (trimmed === "data: [DONE]") {
+            break;
+          }
+          if (trimmed.startsWith("data: ")) {
+            try {
+              const parsed = JSON.parse(trimmed.slice(6));
+              if (parsed.id) responseId = parsed.id;
+              const choice = parsed.choices?.[0];
+              const deltaContent = choice?.delta?.content ?? "";
+              if (choice?.finish_reason) {
+                finishReason = choice.finish_reason === "tool_calls" ? "tool_calls" : "stop";
+              }
+
+              if (deltaContent) {
+                fullContent += deltaContent;
+                await options.onChunk({
+                  id: responseId,
+                  model: targetModel.id,
+                  delta: deltaContent,
+                  finishReason: null,
+                });
+              }
+            } catch {
+              // Ignore partial JSON parse errors on stream split
+            }
+          }
+        }
+      }
+
+      clearTimeout(timeoutHandle);
+      const latencyMs = Math.max(1, Date.now() - startTime);
+      const promptTokens = Math.ceil(JSON.stringify(payload).length / 4);
+      const completionTokens = Math.ceil(fullContent.length / 4);
+      const totalTokens = promptTokens + completionTokens;
+
+      const pricing = targetModel.pricing;
+      const estimatedCostUsd = pricing
+        ? (promptTokens / 1000) * pricing.promptPerThousandTokensUsd +
+          (completionTokens / 1000) * pricing.completionPerThousandTokensUsd
+        : undefined;
+
+      const finalResponse: ModelInvocationResponse = {
+        id: responseId,
+        model: targetModel.id,
+        provider: this.id,
+        content: fullContent,
+        finishReason,
+        usage: {
+          promptTokens,
+          completionTokens,
+          totalTokens,
+          estimatedCostUsd,
+        },
+        latencyMs,
+        metadata: { correlationId, streamed: true },
+      };
+
+      await options.onChunk({
+        id: responseId,
+        model: targetModel.id,
+        delta: "",
+        finishReason,
+        usage: finalResponse.usage,
+      });
+
+      return finalResponse;
+    } catch (err: unknown) {
+      clearTimeout(timeoutHandle);
+      if (err instanceof AiProviderError) {
+        throw err;
+      }
+      const latencyMs = Math.max(1, Date.now() - startTime);
+      const errName = err && typeof err === "object" && "name" in err ? String((err as any).name) : "";
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      if (controller.signal.aborted || errName === "AbortError") {
+        const isTimeout = !request.signal?.aborted;
+        throw new AiProviderError(
+          isTimeout
+            ? `OpenAI streaming request timed out after ${timeoutMs}ms.`
+            : "OpenAI streaming request was aborted by caller.",
+          {
+            code: isTimeout ? "TIMEOUT" : "CANCELLED",
+            provider: this.id,
+            retryable: isTimeout,
+            statusCode: isTimeout ? 504 : 499,
+          },
+        );
+      }
+
+      throw new AiProviderError(`OpenAI stream error: ${redactSecrets(errMsg)}`, {
+        code: "PROVIDER_ERROR",
+        provider: this.id,
+        retryable: true,
+        details: { correlationId, latencyMs },
+      });
+    }
+  }
 }

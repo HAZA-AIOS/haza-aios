@@ -5,6 +5,7 @@ import {
   ModelInvocationRequest,
   ModelInvocationResponse,
   ModelMetadata,
+  StreamingOptions,
   ToolCall,
 } from "./ai-provider.types.js";
 
@@ -276,6 +277,71 @@ export class MockAiProvider implements AiProvider {
         });
       }
     });
+  }
+
+  async stream(
+    request: ModelInvocationRequest,
+    options: StreamingOptions,
+  ): Promise<ModelInvocationResponse> {
+    const isAborted = Boolean(request.signal?.aborted || options?.signal?.aborted);
+    if (isAborted) {
+      throw new AiProviderError("Model invocation stream was aborted by client.", {
+        code: "CANCELLED",
+        provider: this.id,
+        retryable: false,
+      });
+    }
+
+    const fullResponse = await this.invoke(request);
+
+    if (fullResponse.content) {
+      const words = fullResponse.content.split(" ");
+      for (let i = 0; i < words.length; i++) {
+        if (request.signal?.aborted || options?.signal?.aborted) {
+          throw new AiProviderError("Model invocation stream was aborted by client.", {
+            code: "CANCELLED",
+            provider: this.id,
+            retryable: false,
+          });
+        }
+        const delta = i === 0 ? words[i] : ` ${words[i]}`;
+        if (options?.onChunk) {
+          await options.onChunk({
+            id: fullResponse.id,
+            model: fullResponse.model,
+            delta,
+            finishReason: i === words.length - 1 ? fullResponse.finishReason : null,
+            usage: i === words.length - 1 ? fullResponse.usage : undefined,
+          });
+        }
+      }
+    } else if (fullResponse.toolCalls) {
+      if (options?.onChunk) {
+        await options.onChunk({
+          id: fullResponse.id,
+          model: fullResponse.model,
+          delta: "",
+          finishReason: "tool_calls",
+          toolCallDeltas: fullResponse.toolCalls.map((tc, idx) => ({
+            index: idx,
+            id: tc.id,
+            name: tc.name,
+            argumentsDelta: JSON.stringify(tc.arguments),
+          })),
+          usage: fullResponse.usage,
+        });
+      }
+    }
+
+    return fullResponse;
+  }
+
+  async healthCheck(): Promise<{ status: "healthy" | "degraded" | "error"; message?: string; latencyMs?: number }> {
+    return {
+      status: "healthy",
+      message: "HAZA Mock AI Provider active and operational (Zero cost)",
+      latencyMs: 1,
+    };
   }
 }
 

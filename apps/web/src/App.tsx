@@ -37,6 +37,7 @@ import { MarketplaceReviewPage } from "./pages/admin/MarketplaceReviewPage";
 import { AgentBuilderPage } from "./pages/workspace/agents/builder/AgentBuilderPage";
 import { AgentToolsPage } from "./pages/workspace/agents/tools/AgentToolsPage";
 import { AgentKnowledgePage } from "./pages/workspace/agents/knowledge/AgentKnowledgePage";
+import { AiProvidersPage } from "./pages/workspace/agents/providers/AiProvidersPage";
 import { StudentDirectoryPage } from "./pages/workspace/education/students/StudentDirectoryPage";
 import { StudentAdmissionPage } from "./pages/workspace/education/students/StudentAdmissionPage";
 import { StudentProfilePage } from "./pages/workspace/education/students/StudentProfilePage";
@@ -696,6 +697,17 @@ function App() {
         <ProtectedRoute>
           <WorkspaceGuard>
             <AgentKnowledgePage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/agents/providers":
+    case "/workspace/agents/providers/models":
+    case "/workspace/agents/providers/budgets":
+    case "/workspace/agents/providers/usage":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AiProvidersPage />
           </WorkspaceGuard>
         </ProtectedRoute>
       );

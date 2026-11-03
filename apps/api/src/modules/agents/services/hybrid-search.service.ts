@@ -121,6 +121,9 @@ export class HybridSearchService {
             .select({
               chunkId: aiAgentKnowledgeEmbeddings.chunkId,
               embedding: aiAgentKnowledgeEmbeddings.embedding,
+              provider: aiAgentKnowledgeEmbeddings.provider,
+              model: aiAgentKnowledgeEmbeddings.model,
+              dimensions: aiAgentKnowledgeEmbeddings.dimensions,
             })
             .from(aiAgentKnowledgeEmbeddings)
             .where(
@@ -131,7 +134,14 @@ export class HybridSearchService {
             );
 
           for (const row of embeddingRows) {
-            chunkEmbeddingsMap.set(row.chunkId, row.embedding);
+            // Strict compatibility check: Never silently mix mock and live embeddings or mismatching dimensions
+            if (
+              row.provider === embeddingProvider.id &&
+              row.dimensions === embeddingProvider.dimensions &&
+              row.embedding.length === queryVector.length
+            ) {
+              chunkEmbeddingsMap.set(row.chunkId, row.embedding);
+            }
           }
         }
       } catch (err) {

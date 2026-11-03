@@ -3,6 +3,7 @@ import {
   boolean,
   char,
   datetime,
+  decimal,
   foreignKey,
   index,
   int,
@@ -3297,6 +3298,197 @@ export const aiAgentKnowledgeRetrievals = mysqlTable(
   ],
 );
 
+export const aiProviderTenantConfigs = mysqlTable(
+  "ai_provider_tenant_configs",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    providerId: varchar("provider_id", { length: 60 }).notNull(),
+    liveModeEnabled: boolean("live_mode_enabled").notNull().default(false),
+    environmentMode: varchar("environment_mode", { length: 30 }).notNull().default("mock"),
+    apiKeyEncrypted: text("api_key_encrypted"),
+    apiKeyMasked: varchar("api_key_masked", { length: 60 }),
+    defaultModel: varchar("default_model", { length: 120 }).notNull().default("gpt-4o-mini"),
+    allowedModels: json("allowed_models").$type<string[]>().notNull().default(["gpt-4o-mini", "gpt-4o"]),
+    embeddingModel: varchar("embedding_model", { length: 120 }).notNull().default("text-embedding-3-small"),
+    embeddingLiveEnabled: boolean("embedding_live_enabled").notNull().default(false),
+    status: varchar("status", { length: 40 }).notNull().default("inactive"),
+    statusMessage: varchar("status_message", { length: 500 }),
+    lastHealthCheckAt: timestamp("last_health_check_at", { fsp: 3 }),
+    updatedBy: char("updated_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_provider_tenant_configs_org_provider_unique").on(
+      table.organizationId,
+      table.providerId,
+    ),
+    index("ai_provider_tenant_configs_org_idx").on(table.organizationId),
+  ],
+);
+
+export const aiProviderAuditLogs = mysqlTable(
+  "ai_provider_audit_logs",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    providerId: varchar("provider_id", { length: 60 }).notNull(),
+    action: varchar("action", { length: 80 }).notNull(),
+    performedBy: char("performed_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    previousState: json("previous_state").$type<Record<string, unknown>>(),
+    newState: json("new_state").$type<Record<string, unknown>>(),
+    ipAddress: varchar("ip_address", { length: 45 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("ai_provider_audit_logs_org_provider_idx").on(
+      table.organizationId,
+      table.providerId,
+      table.createdAt,
+    ),
+    index("ai_provider_audit_logs_org_idx").on(table.organizationId),
+  ],
+);
+
+export const aiModelPricingCatalog = mysqlTable(
+  "ai_model_pricing_catalog",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    providerId: varchar("provider_id", { length: 60 }).notNull(),
+    modelId: varchar("model_id", { length: 120 }).notNull(),
+    promptPerThousandTokensUsd: decimal("prompt_per_thousand_tokens_usd", {
+      precision: 10,
+      scale: 6,
+    }).notNull(),
+    completionPerThousandTokensUsd: decimal("completion_per_thousand_tokens_usd", {
+      precision: 10,
+      scale: 6,
+    }).notNull(),
+    embeddingPerThousandTokensUsd: decimal("embedding_per_thousand_tokens_usd", {
+      precision: 10,
+      scale: 6,
+    })
+      .notNull()
+      .default("0.000000"),
+    contextWindow: int("context_window").notNull().default(128000),
+    maxOutputTokens: int("max_output_tokens").notNull().default(4096),
+    supportsStreaming: boolean("supports_streaming").notNull().default(true),
+    supportsTools: boolean("supports_tools").notNull().default(true),
+    supportsVision: boolean("supports_vision").notNull().default(false),
+    supportsJsonMode: boolean("supports_json_mode").notNull().default(true),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_model_pricing_catalog_provider_model_unique").on(
+      table.providerId,
+      table.modelId,
+    ),
+    index("ai_model_pricing_catalog_provider_idx").on(table.providerId),
+  ],
+);
+
+export const aiUsageBudgets = mysqlTable(
+  "ai_usage_budgets",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
+    monthlyBudgetUsd: decimal("monthly_budget_usd", { precision: 10, scale: 4 })
+      .notNull()
+      .default("50.0000"),
+    dailyBudgetUsd: decimal("daily_budget_usd", { precision: 10, scale: 4 })
+      .notNull()
+      .default("10.0000"),
+    perRequestMaxCostUsd: decimal("per_request_max_cost_usd", { precision: 10, scale: 4 })
+      .notNull()
+      .default("1.0000"),
+    currentMonthSpendUsd: decimal("current_month_spend_usd", { precision: 10, scale: 4 })
+      .notNull()
+      .default("0.0000"),
+    currentDaySpendUsd: decimal("current_day_spend_usd", { precision: 10, scale: 4 })
+      .notNull()
+      .default("0.0000"),
+    monthResetAt: timestamp("month_reset_at", { fsp: 3 }).notNull().defaultNow(),
+    dayResetAt: timestamp("day_reset_at", { fsp: 3 }).notNull().defaultNow(),
+    enforceHardLimit: boolean("enforce_hard_limit").notNull().default(true),
+    notifyThresholdPercent: int("notify_threshold_percent").notNull().default(80),
+    status: varchar("status", { length: 40 }).notNull().default("active"),
+    updatedBy: char("updated_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("ai_usage_budgets_org_workspace_unique").on(
+      table.organizationId,
+      table.workspaceId,
+    ),
+    index("ai_usage_budgets_org_idx").on(table.organizationId),
+  ],
+);
+
+export const aiUsageLedger = mysqlTable(
+  "ai_usage_ledger",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentId: char("agent_id", { length: 36 }).references(() => aiAgentDefinitions.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    runId: char("run_id", { length: 36 }).references(() => aiAgentRuns.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    providerId: varchar("provider_id", { length: 60 }).notNull(),
+    modelId: varchar("model_id", { length: 120 }).notNull(),
+    operationType: varchar("operation_type", { length: 40 }).notNull(),
+    promptTokens: int("prompt_tokens").notNull().default(0),
+    completionTokens: int("completion_tokens").notNull().default(0),
+    totalTokens: int("total_tokens").notNull().default(0),
+    estimatedCostUsd: decimal("estimated_cost_usd", { precision: 10, scale: 6 })
+      .notNull()
+      .default("0.000000"),
+    actualCostUsd: decimal("actual_cost_usd", { precision: 10, scale: 6 }),
+    latencyMs: int("latency_ms").notNull().default(0),
+    finishReason: varchar("finish_reason", { length: 40 }),
+    isLiveMode: boolean("is_live_mode").notNull().default(false),
+    correlationId: varchar("correlation_id", { length: 120 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("ai_usage_ledger_org_created_idx").on(table.organizationId, table.createdAt),
+    index("ai_usage_ledger_run_idx").on(table.runId),
+    index("ai_usage_ledger_correlation_idx").on(table.correlationId),
+  ],
+);
+
 export const usageMeterEvents = mysqlTable(
   "usage_meter_events",
   {
@@ -3542,6 +3734,11 @@ export const schema = {
   aiAgentKnowledgeDocuments,
   aiAgentKnowledgeEmbeddings,
   aiAgentKnowledgeRetrievals,
+  aiProviderTenantConfigs,
+  aiProviderAuditLogs,
+  aiModelPricingCatalog,
+  aiUsageBudgets,
+  aiUsageLedger,
   workspaces,
 };
 

@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import { aiAgentKnowledgeEmbeddings, knowledgeSources } from "../../../database/schema.js";
 import { ApiError } from "../../../common/errors/api-error.js";
 import type { DatabaseClient } from "../../../database/client.js";
 import { createRepositoryContext } from "../../../database/repositories/repository-context.js";
@@ -155,7 +157,7 @@ export class KnowledgeService {
             model: provider.defaultModel,
             dimensions: provider.dimensions,
             embedding: embedRes.embeddings[i],
-            contentHash: c.contentHash,
+            contentHash: c.contentHash || "unknown",
           })),
         );
       }
@@ -265,7 +267,7 @@ export class KnowledgeService {
             model: provider.defaultModel,
             dimensions: provider.dimensions,
             embedding: embedRes.embeddings[i],
-            contentHash: c.contentHash,
+            contentHash: c.contentHash || "unknown",
           })),
         );
       }
@@ -377,6 +379,75 @@ export class KnowledgeService {
   async getChunks(organizationId: string, sourceId: string, userId: string) {
     await this.get(organizationId, sourceId, userId);
     return this.repo.getChunksBySourceId(organizationId, sourceId);
+  }
+
+  async deleteSource(organizationId: string, sourceId: string, userId: string): Promise<void> {
+    await this.get(organizationId, sourceId, userId);
+    await this.database.db
+      .delete(knowledgeSources)
+      .where(and(eq(knowledgeSources.organizationId, organizationId), eq(knowledgeSources.id, sourceId)));
+  }
+
+  async reindexCollection(
+    organizationId: string,
+    collectionId: string,
+    options: { allowLive?: boolean; requestedProviderId?: string } = {},
+  ): Promise<{ reindexedChunks: number; provider: string; model: string; dimensions: number }> {
+    const col = await this.getCollection(organizationId, collectionId);
+    const sources = await this.repo.listSources(organizationId, col.workspaceId, collectionId);
+
+    if (sources.length === 0) {
+      return { reindexedChunks: 0, provider: "mock", model: "mock-text-embedding", dimensions: 64 };
+    }
+
+    const { provider } = await EmbeddingProviderRegistry.getInstance().getActiveProvider({
+      organizationId,
+      allowLive: options.allowLive === true,
+      requestedProviderId: options.requestedProviderId,
+    });
+
+    let totalChunksReindexed = 0;
+    for (const source of sources) {
+      const chunks = await this.repo.getChunksBySourceId(organizationId, source.id);
+      if (chunks.length === 0) continue;
+
+      const embedRes = await provider.embed({ texts: chunks.map((c) => c.content) });
+      if (embedRes.embeddings.length === chunks.length) {
+        for (const chunk of chunks) {
+          await this.database.db
+            .delete(aiAgentKnowledgeEmbeddings)
+            .where(
+              and(
+                eq(aiAgentKnowledgeEmbeddings.organizationId, organizationId),
+                eq(aiAgentKnowledgeEmbeddings.chunkId, chunk.id),
+              ),
+            );
+        }
+
+        await this.repo.insertEmbeddings(
+          chunks.map((c, i) => ({
+            id: randomUUID(),
+            organizationId,
+            workspaceId: source.workspaceId || "default-ws",
+            sourceId: source.id,
+            chunkId: c.id,
+            provider: provider.id,
+            model: provider.defaultModel,
+            dimensions: provider.dimensions,
+            embedding: embedRes.embeddings[i],
+            contentHash: c.contentHash || "unknown",
+          })),
+        );
+        totalChunksReindexed += chunks.length;
+      }
+    }
+
+    return {
+      reindexedChunks: totalChunksReindexed,
+      provider: provider.id,
+      model: provider.defaultModel,
+      dimensions: provider.dimensions,
+    };
   }
 
   async listRetrievals(organizationId: string, limit = 50) {

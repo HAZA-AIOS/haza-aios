@@ -1,3 +1,23 @@
+## [0.18.0-epic18] - 2026-11-02
+
+### Added
+- **Epic 18 — Live AI Provider Integration & Production Agent Intelligence:**
+  - **Unified AI Provider Gateway (`UnifiedAiProviderGateway`):** Centralized orchestration layer for AI model inference and embedding operations with automatic provider routing, circuit breaking (5 failures threshold, 60s cool-off), and secret redaction.
+  - **Enterprise Credential Vault & Redaction Engine:** Multi-tenant credential storage with masked client exposure (`sk-...xxxx`). Automatic deep redaction scrubs secrets from logs, error messages, and URL parameters.
+  - **Zero-Cost Reachability Probing:** Live API reachability validation via provider model catalog probes (`GET https://api.openai.com/v1/models`) without consuming inference tokens or incurring cost.
+  - **Tenant Model Allowlists & Governance:** Configurable model permissions per organization, rejecting unapproved model requests with HTTP 403 `MODEL_FORBIDDEN`.
+  - **Fail-Closed Budget & Hard Limit Enforcement:** Daily and monthly spending caps (USD) with real-time spend tracking and HTTP 429 `BUDGET_EXCEEDED` halt.
+  - **Streaming & Cancellation Protocol:** Real-time Server-Sent Events (SSE) streaming with word and token deltas, tool-call chunk aggregation, and instant client cancellation via `AbortSignal`.
+  - **Vector Dimension Mismatch Protection:** Strict dimensionality and provider validation in `HybridSearchService` preventing cross-dimension vector comparisons.
+  - **Database Migration 0028 (`0028_live_ai_provider_integration.sql`):** Created 5 tables: `ai_provider_tenant_configs`, `ai_provider_audit_logs`, `ai_model_pricing_catalog`, `ai_usage_budgets`, and `ai_usage_ledger`.
+  - **Provider Administration UI (`apps/web`):** Built 4-tab management dashboard at `/workspace/agents/providers` covering Gateway Configuration, Model Catalog & Allowlists, Spending Limits & Budgets, and Usage Telemetry & Ledger.
+
+### Verification
+- 52 automated test suites passing with 409 tests in `apps/api`.
+- 17 dedicated gateway integration tests in `epic18-provider-gateway.test.ts`.
+- 0 TypeScript compiler errors across `apps/api` and `apps/web`.
+- Schema verified with Drizzle Kit check.
+
 ## [0.17.0-epic17] - 2026-11-01
 
 ### Added

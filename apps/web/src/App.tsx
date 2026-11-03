@@ -29,6 +29,7 @@ import {
   AgentRunDetailsPage,
   AgentApprovalInboxPage,
   AgentRuntimeMonitoringPage,
+  MultiAgentOrchestrationPage,
 } from "./pages/workspace/agents";
 import { MarketplaceAgentProfilePage } from "./pages/workspace/marketplace/MarketplaceAgentProfilePage";
 import { InstalledAgentsPage } from "./pages/workspace/marketplace/InstalledAgentsPage";
@@ -708,6 +709,19 @@ function App() {
         <ProtectedRoute>
           <WorkspaceGuard>
             <AiProvidersPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/agents/orchestration":
+    case "/workspace/agents/orchestration/teams":
+    case "/workspace/agents/orchestration/workflows":
+    case "/workspace/agents/orchestration/runs":
+    case "/workspace/agents/teams":
+    case "/workspace/agents/workflows":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <MultiAgentOrchestrationPage />
           </WorkspaceGuard>
         </ProtectedRoute>
       );

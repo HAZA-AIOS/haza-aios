@@ -1,3 +1,9 @@
+import { AgentTeamService } from "./services/agent-team.service.js";
+import { AgentOrchestrationService } from "./services/agent-orchestration.service.js";
+import {
+  validateCreateAgentTeam,
+  validateCreateWorkflowDefinition,
+} from "./validation/orchestration-validation.js";
 import { sendJson } from "../../common/http/json.js";
 import { ApiError } from "../../common/errors/api-error.js";
 import type { BackendModule } from "../module-registry.js";
@@ -2031,9 +2037,296 @@ export const agentsModule: BackendModule = {
       },
     });
 
+
+    // ========================================================================
+    // Epic 19 — Multi-Agent Collaboration & Orchestration Routes
+    // ========================================================================
+
+    // 1. List Agent Teams
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-teams",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const workspaceId = url.searchParams.get("workspaceId") || undefined;
+        const teams = await new AgentTeamService(database).listTeams(tenant.organizationId, workspaceId);
+        sendJson(response, 200, { teams });
+      },
+    });
+
+    // 2. Create Agent Team
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-teams",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const input = validateCreateAgentTeam(tenant.organizationId, auth.user.id, request.body);
+        const team = await new AgentTeamService(database).createTeam(input);
+        sendJson(response, 201, { team });
+      },
+    });
+
+    // 3. Get Agent Team
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-teams/:teamId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.teamId, "teamId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const team = await new AgentTeamService(database).getTeam(tenant.organizationId, routeParams.teamId);
+        sendJson(response, 200, { team });
+      },
+    });
+
+    // 4. Update Agent Team
+    router.register({
+      method: "PATCH",
+      path: "/api/v1/organizations/:organizationId/agent-teams/:teamId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.teamId, "teamId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const team = await new AgentTeamService(database).updateTeam(
+          tenant.organizationId,
+          routeParams.teamId,
+          body,
+        );
+        sendJson(response, 200, { team });
+      },
+    });
+
+    // 5. Delete Agent Team
+    router.register({
+      method: "DELETE",
+      path: "/api/v1/organizations/:organizationId/agent-teams/:teamId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.teamId, "teamId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        await new AgentTeamService(database).deleteTeam(tenant.organizationId, routeParams.teamId);
+        sendJson(response, 200, { success: true });
+      },
+    });
+
+    // 6. List Workflow Definitions
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-workflows",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const workspaceId = url.searchParams.get("workspaceId") || undefined;
+        const workflows = await new AgentOrchestrationService(database).listDefinitions(
+          tenant.organizationId,
+          workspaceId,
+        );
+        sendJson(response, 200, { workflows });
+      },
+    });
+
+    // 7. Create Workflow Definition
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-workflows",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const input = validateCreateWorkflowDefinition(tenant.organizationId, auth.user.id, request.body);
+        const workflow = await new AgentOrchestrationService(database).createDefinition(input);
+        sendJson(response, 201, { workflow });
+      },
+    });
+
+    // 8. Get Workflow Definition
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-workflows/:workflowId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workflowId, "workflowId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const workflow = await new AgentOrchestrationService(database).getDefinition(
+          tenant.organizationId,
+          routeParams.workflowId,
+        );
+        sendJson(response, 200, { workflow });
+      },
+    });
+
+    // 9. Validate Workflow Definition
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-workflows/:workflowId/validate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workflowId, "workflowId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const validation = await new AgentOrchestrationService(database).validateDefinition(
+          tenant.organizationId,
+          routeParams.workflowId,
+        );
+        sendJson(response, 200, { validation });
+      },
+    });
+
+    // 10. Start Workflow Run
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-workflows/:workflowId/runs",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.workflowId, "workflowId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const initialInput = (body.input as Record<string, unknown>) || {};
+        const idempotencyKey = typeof body.idempotencyKey === "string" ? body.idempotencyKey : undefined;
+
+        const run = await new AgentOrchestrationService(database).startWorkflowRun(
+          tenant.organizationId,
+          routeParams.workflowId,
+          initialInput,
+          auth.user.id,
+          idempotencyKey,
+        );
+        sendJson(response, 201, { run });
+      },
+    });
+
+    // 11. Get Workflow Run
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-workflow-runs/:runId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.runId, "runId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const run = await new AgentOrchestrationService(database).getWorkflowRun(
+          tenant.organizationId,
+          routeParams.runId,
+        );
+        sendJson(response, 200, { run });
+      },
+    });
+
+    // 12. Cancel Workflow Run
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-workflow-runs/:runId/cancel",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.runId, "runId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const run = await new AgentOrchestrationService(database).cancelWorkflowRun(
+          tenant.organizationId,
+          routeParams.runId,
+          auth.user.id,
+        );
+        sendJson(response, 200, { run });
+      },
+    });
+
+    // 13. List Workflow Run Events
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-workflow-runs/:runId/events",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.runId, "runId");
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const events = await new AgentOrchestrationService(database).listWorkflowEvents(
+          tenant.organizationId,
+          routeParams.runId,
+        );
+        sendJson(response, 200, { events });
+      },
+    });
+
+    // 14. Approve / Reject Step Run
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-workflow-runs/:runId/steps/:stepKey/approval",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        assertUuid(routeParams.runId, "runId");
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const decision = body.decision === "rejected" ? "rejected" : "approved";
+        const notes = typeof body.notes === "string" ? body.notes : undefined;
+
+        const run = await new AgentOrchestrationService(database).approveStepRun(
+          tenant.organizationId,
+          routeParams.runId,
+          routeParams.stepKey,
+          decision,
+          auth.user.id,
+          notes,
+        );
+        sendJson(response, 200, { run });
+      },
+    });
+
   },
 };
-
 
 function toLessonPlanDto(plan: AcademicLessonPlanRecord) {
   const content = plan.content as any;

@@ -1,3 +1,33 @@
+## [0.19.0-epic19] - 2026-11-03
+
+### Added
+- **Epic 19 — Multi-Agent Collaboration & Orchestration:**
+  - **Agent Team Roster & Specialization (`AgentTeamService` & `AgentTeamRepository`):**
+    - Organization-scoped agent teams with support for four distinct functional roles: `planner`, `specialist`, `reviewer`, and `supervisor`.
+    - Capability tags, execution priorities, and tenant-isolated membership configurations.
+  - **DAG Workflow Definition Engine (`orchestration-validation.ts`):**
+    - Versioned workflow definitions supporting sequential, parallel (split-merge), and supervisor-worker patterns.
+    - Kahn's topological sort algorithm for dependency graph resolution and cycle detection.
+    - Missing dependency, self-referencing step, and team role coverage validation.
+  - **Durable Orchestration Coordinator (`AgentOrchestrationService` & `AgentWorkflowRepository`):**
+    - Hierarchical execution coordinator traversing the DAG, resolving runnable steps, and dispatching tasks through the existing durable `AgentRuntimeService`.
+    - Shared context engine propagating upstream outputs into downstream step prompts via structured `upstreamOutputs` envelopes with prompt injection protection.
+    - Structured artifact engine recording immutable `AgentWorkflowArtifactRecord` entries with step provenance and citations.
+  - **Human-in-the-Loop Approval Gates:**
+    - Consequential action pause gates (`requiresApproval: true`) transitioning runs into `waiting_approval` status.
+    - Decision handler (`approveStepRun`) with resume on `approved` and fail-closed termination on `rejected`.
+  - **Database Migration 0029 (`0029_multi_agent_orchestration.sql`):**
+    - Created 8 relational tables: `agent_teams`, `agent_team_members`, `agent_workflow_definitions`, `agent_workflow_steps`, `agent_workflow_runs`, `agent_workflow_step_runs`, `agent_workflow_artifacts`, and `agent_workflow_events`.
+  - **Multi-Agent Orchestration Console (`apps/web`):**
+    - 5-screen interactive console at `/workspace/agents/orchestration` covering Agent Teams, DAG Visual Workflow Builder, Execution Monitor, Human Approval Queue, and Artifacts & Provenance.
+  - **14 REST API Endpoints:** Mounted under `/api/v1/organizations/:orgId/` for team, workflow, execution run, event, and human approval management.
+
+### Verification
+- 13/13 passing automated unit and integration tests in `apps/api/tests/epic19-orchestration.test.ts`.
+- Schema verified with `npm run db:check -w apps/api` ("Everything's fine 🐶🔥").
+- 0 TypeScript compiler errors across `apps/api` and `apps/web`.
+- Grade 6 Science "Cells and Living Systems" unit plan demonstrator scenario validated end-to-end.
+
 ## [0.18.0-epic18] - 2026-11-02
 
 ### Added

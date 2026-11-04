@@ -33,6 +33,7 @@ export * from "./components/academic-planning-primitives";
 export * from "./components/agent-tool-primitives";
 export * from "./components/knowledge-primitives";
 export * from "./components/sis-primitives";
+export * from "./components/autonomous-operations-primitives";
 export * from "./components/pagination";
 export * from "./lib/design-tokens";
 export * from "./lib/utils";

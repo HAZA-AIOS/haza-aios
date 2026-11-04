@@ -10,3 +10,4 @@ export * from "./tools/AgentToolsPage";
 export * from "./knowledge/AgentKnowledgePage";
 export * from "./providers/AiProvidersPage";
 export * from "./orchestration/MultiAgentOrchestrationPage";
+export * from "./operations/ContinuousOperationsPage";

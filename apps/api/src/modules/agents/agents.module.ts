@@ -1,3 +1,4 @@
+import { AutonomousTaskService } from "./services/autonomous-task.service.js";
 import { AgentTeamService } from "./services/agent-team.service.js";
 import { AgentOrchestrationService } from "./services/agent-orchestration.service.js";
 import {
@@ -2324,9 +2325,453 @@ export const agentsModule: BackendModule = {
         sendJson(response, 200, { run });
       },
     });
+    // =========================================================
+    // EPIC 20: AUTONOMOUS AGENTS & CONTINUOUS OPERATIONS
+    // =========================================================
 
+    // 1. Get Autonomous Policy
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/policy",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const workspaceId = url.searchParams.get("workspaceId") || "ws-default";
+        const policy = await new AutonomousTaskService(database).getPolicy(tenant.organizationId, workspaceId);
+        sendJson(response, 200, { policy });
+      },
+    });
+
+    // 2. Update Autonomous Policy
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/policy",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const workspaceId = body.workspaceId || "ws-default";
+        const policy = await new AutonomousTaskService(database).updatePolicy({
+          organizationId: tenant.organizationId,
+          workspaceId,
+          maxActiveTasks: body.maxActiveTasks,
+          maxGlobalConcurrency: body.maxGlobalConcurrency,
+          defaultAutonomyLevel: body.defaultAutonomyLevel,
+          allowedAutonomyLevels: body.allowedAutonomyLevels,
+        });
+        sendJson(response, 200, { policy });
+      },
+    });
+
+    // 3. Organization Emergency Stop All
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/emergency-stop-all",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const workspaceId = body.workspaceId || "ws-default";
+        const policy = await new AutonomousTaskService(database).emergencyStopAll(
+          tenant.organizationId,
+          workspaceId,
+          auth.user.id,
+        );
+        sendJson(response, 200, { policy, message: "Organization-wide emergency stop activated" });
+      },
+    });
+
+    // 4. Resume All Tasks
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/resume-all",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const workspaceId = body.workspaceId || "ws-default";
+        const policy = await new AutonomousTaskService(database).resumeAll(tenant.organizationId, workspaceId);
+        sendJson(response, 200, { policy, message: "Organization-wide emergency stop cleared" });
+      },
+    });
+
+    // 5. List Autonomous Tasks
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const workspaceId = url.searchParams.get("workspaceId") || undefined;
+        const status = (url.searchParams.get("status") as any) || undefined;
+        const tasks = await new AutonomousTaskService(database).listTasks(tenant.organizationId, workspaceId, status);
+        sendJson(response, 200, { tasks });
+      },
+    });
+
+    // 6. Create Autonomous Task
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const workspaceId = body.workspaceId || "ws-default";
+        const task = await new AutonomousTaskService(database).createTask(
+          tenant.organizationId,
+          workspaceId,
+          body,
+          auth.user.id,
+        );
+        sendJson(response, 201, { task });
+      },
+    });
+
+    // 7. Get Autonomous Task
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/:taskId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const task = await new AutonomousTaskService(database).getTask(tenant.organizationId, routeParams.taskId);
+        sendJson(response, 200, { task });
+      },
+    });
+
+    // 8. Update Autonomous Task
+    router.register({
+      method: "PATCH",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/:taskId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const task = await new AutonomousTaskService(database).updateTask(tenant.organizationId, routeParams.taskId, body);
+        sendJson(response, 200, { task });
+      },
+    });
+
+    // 9. Pause Task
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/:taskId/pause",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const task = await new AutonomousTaskService(database).pauseTask(tenant.organizationId, routeParams.taskId);
+        sendJson(response, 200, { task });
+      },
+    });
+
+    // 10. Resume Task
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/:taskId/resume",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const task = await new AutonomousTaskService(database).resumeTask(tenant.organizationId, routeParams.taskId);
+        sendJson(response, 200, { task });
+      },
+    });
+
+    // 11. Task Emergency Stop
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/:taskId/emergency-stop",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const task = await new AutonomousTaskService(database).emergencyStopTask(
+          tenant.organizationId,
+          routeParams.taskId,
+          auth.user.id,
+          body.reason,
+        );
+        sendJson(response, 200, { task });
+      },
+    });
+
+    // 12. Trigger Run On-Demand
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/:taskId/run",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const run = await new AutonomousTaskService(database).triggerTaskRun(
+          tenant.organizationId,
+          routeParams.taskId,
+          body,
+        );
+        sendJson(response, 201, { run });
+      },
+    });
+
+    // 13. List Triggers for Task
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/:taskId/triggers",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const triggers = await new AutonomousTaskService(database).listTriggers(tenant.organizationId, routeParams.taskId);
+        sendJson(response, 200, { triggers });
+      },
+    });
+
+    // 14. Create Trigger for Task
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/:taskId/triggers",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const workspaceId = body.workspaceId || "ws-default";
+        const trigger = await new AutonomousTaskService(database).createTrigger(
+          tenant.organizationId,
+          workspaceId,
+          { ...body, taskDefinitionId: routeParams.taskId },
+        );
+        sendJson(response, 201, { trigger });
+      },
+    });
+
+    // 15. Toggle Trigger (Enable / Disable)
+    router.register({
+      method: "PATCH",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/triggers/:triggerId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const trigger = await new AutonomousTaskService(database).toggleTrigger(
+          tenant.organizationId,
+          routeParams.triggerId,
+          Boolean(body.isEnabled),
+        );
+        sendJson(response, 200, { trigger });
+      },
+    });
+
+    // 16. Delete Trigger
+    router.register({
+      method: "DELETE",
+      path: "/api/v1/organizations/:organizationId/autonomous-tasks/triggers/:triggerId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        await new AutonomousTaskService(database).deleteTrigger(tenant.organizationId, routeParams.triggerId);
+        sendJson(response, 200, { success: true });
+      },
+    });
+
+    // 17. List Runs
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/autonomous-task-runs",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const taskDefinitionId = url.searchParams.get("taskDefinitionId") || undefined;
+        const status = (url.searchParams.get("status") as any) || undefined;
+        const runs = await new AutonomousTaskService(database).listRuns(tenant.organizationId, {
+          taskDefinitionId,
+          status,
+        });
+        sendJson(response, 200, { runs });
+      },
+    });
+
+    // 18. Get Run Details
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/autonomous-task-runs/:runId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const run = await new AutonomousTaskService(database).getRun(tenant.organizationId, routeParams.runId);
+        sendJson(response, 200, { run });
+      },
+    });
+
+    // 19. Cancel Run
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/autonomous-task-runs/:runId/cancel",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const run = await new AutonomousTaskService(database).cancelRun(
+          tenant.organizationId,
+          routeParams.runId,
+          body.reason,
+        );
+        sendJson(response, 200, { run });
+      },
+    });
+
+    // 20. Approve Run (Human Approval Gate)
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/autonomous-task-runs/:runId/approve",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const run = await new AutonomousTaskService(database).approveRun(
+          tenant.organizationId,
+          routeParams.runId,
+          auth.user.id,
+        );
+        sendJson(response, 200, { run });
+      },
+    });
+
+    // 21. Reject Run
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/autonomous-task-runs/:runId/reject",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const run = await new AutonomousTaskService(database).rejectRun(
+          tenant.organizationId,
+          routeParams.runId,
+          auth.user.id,
+          body.reason,
+        );
+        sendJson(response, 200, { run });
+      },
+    });
+
+    // 22. Get Run Events Audit Log
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/autonomous-task-runs/:runId/events",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const events = await new AutonomousTaskService(database).listEvents(tenant.organizationId, routeParams.runId);
+        sendJson(response, 200, { events });
+      },
+    });
+
+    // 23. Get Run Latest Checkpoint
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/autonomous-task-runs/:runId/checkpoint",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const checkpoint = await new AutonomousTaskService(database).getLatestCheckpoint(
+          tenant.organizationId,
+          routeParams.runId,
+        );
+        sendJson(response, 200, { checkpoint });
+      },
+    });
   },
 };
+
 
 function toLessonPlanDto(plan: AcademicLessonPlanRecord) {
   const content = plan.content as any;

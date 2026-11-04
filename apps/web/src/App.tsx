@@ -30,6 +30,7 @@ import {
   AgentApprovalInboxPage,
   AgentRuntimeMonitoringPage,
   MultiAgentOrchestrationPage,
+  ContinuousOperationsPage,
 } from "./pages/workspace/agents";
 import { MarketplaceAgentProfilePage } from "./pages/workspace/marketplace/MarketplaceAgentProfilePage";
 import { InstalledAgentsPage } from "./pages/workspace/marketplace/InstalledAgentsPage";
@@ -717,6 +718,22 @@ function App() {
     case "/workspace/agents/orchestration/workflows":
     case "/workspace/agents/orchestration/runs":
     case "/workspace/agents/teams":
+    case "/workspace/agents/operations":
+    case "/workspace/agents/operations/tasks":
+    case "/workspace/agents/operations/triggers":
+    case "/workspace/agents/operations/active":
+    case "/workspace/agents/operations/approvals":
+    case "/workspace/agents/operations/history":
+    case "/workspace/agents/operations/policies":
+    case "/workspace/agents/continuous":
+    case "/workspace/agents/autonomous":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <ContinuousOperationsPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
     case "/workspace/agents/workflows":
       return (
         <ProtectedRoute>

@@ -4162,6 +4162,279 @@ export const autonomousTaskEvents = mysqlTable(
   ],
 );
 
+
+export const agentTraceSpans = mysqlTable(
+  "agent_trace_spans",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    traceId: varchar("trace_id", { length: 64 }).notNull(),
+    spanId: varchar("span_id", { length: 64 }).notNull(),
+    parentSpanId: varchar("parent_span_id", { length: 64 }),
+    name: varchar("name", { length: 120 }).notNull(),
+    kind: varchar("kind", { length: 30 }).notNull().default("internal"),
+    status: varchar("status", { length: 20 }).notNull().default("ok"),
+    statusCode: int("status_code").notNull().default(0),
+    statusMessage: text("status_message"),
+    durationMs: int("duration_ms").notNull().default(0),
+    startTime: timestamp("start_time", { fsp: 3 }).notNull(),
+    endTime: timestamp("end_time", { fsp: 3 }),
+    serviceName: varchar("service_name", { length: 60 }).notNull().default("haza-aios-agent"),
+    attributes: json("attributes").$type<Record<string, unknown>>().notNull().default({}),
+    events: json("events").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    agentId: char("agent_id", { length: 36 }).references(() => aiAgentDefinitions.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentRunId: char("agent_run_id", { length: 36 }).references(() => aiAgentRuns.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    workflowRunId: char("workflow_run_id", { length: 36 }).references(() => agentWorkflowRuns.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    autonomousRunId: char("autonomous_run_id", { length: 36 }).references(() => autonomousTaskRuns.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("trace_spans_trace_idx").on(table.traceId),
+    index("trace_spans_org_time_idx").on(table.organizationId, table.startTime),
+    index("trace_spans_parent_idx").on(table.parentSpanId),
+    index("trace_spans_agent_run_idx").on(table.agentRunId),
+    index("trace_spans_wf_run_idx").on(table.workflowRunId),
+  ],
+);
+
+export const agentEvaluationDatasets = mysqlTable(
+  "agent_evaluation_datasets",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    name: varchar("name", { length: 120 }).notNull(),
+    description: text("description"),
+    targetType: varchar("target_type", { length: 40 }).notNull().default("agent"),
+    targetId: char("target_id", { length: 36 }),
+    version: varchar("version", { length: 30 }).notNull().default("1.0.0"),
+    status: varchar("status", { length: 20 }).notNull().default("active"),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdBy: char("created_by", { length: 36 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("eval_ds_org_target_idx").on(table.organizationId, table.targetType),
+  ],
+);
+
+export const agentEvaluationCases = mysqlTable(
+  "agent_evaluation_cases",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    datasetId: char("dataset_id", { length: 36 })
+      .notNull()
+      .references(() => agentEvaluationDatasets.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    name: varchar("name", { length: 150 }).notNull(),
+    description: text("description"),
+    inputPrompt: text("input_prompt").notNull(),
+    inputContext: json("input_context").$type<Record<string, unknown>>().notNull().default({}),
+    expectedOutput: text("expected_output"),
+    expectedOutputSchema: json("expected_output_schema").$type<Record<string, unknown>>(),
+    expectedTools: json("expected_tools").$type<string[]>().notNull().default([]),
+    requiredCitations: json("required_citations").$type<string[]>().notNull().default([]),
+    gradingCriteria: json("grading_criteria").$type<Record<string, unknown>>().notNull().default({}),
+    orderIndex: int("order_index").notNull().default(0),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("eval_cases_ds_idx").on(table.datasetId, table.orderIndex),
+    index("eval_cases_org_idx").on(table.organizationId),
+  ],
+);
+
+export const agentEvaluationRuns = mysqlTable(
+  "agent_evaluation_runs",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    datasetId: char("dataset_id", { length: 36 })
+      .notNull()
+      .references(() => agentEvaluationDatasets.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    targetType: varchar("target_type", { length: 40 }).notNull().default("agent"),
+    targetId: char("target_id", { length: 36 }),
+    status: varchar("status", { length: 30 }).notNull().default("running"),
+    totalCases: int("total_cases").notNull().default(0),
+    passedCases: int("passed_cases").notNull().default(0),
+    failedCases: int("failed_cases").notNull().default(0),
+    overallScore: decimal("overall_score", { precision: 5, scale: 2 }).notNull().default("0.00"),
+    groundingScore: decimal("grounding_score", { precision: 5, scale: 2 }).notNull().default("0.00"),
+    toolAccuracyScore: decimal("tool_accuracy_score", { precision: 5, scale: 2 }).notNull().default("0.00"),
+    formatComplianceScore: decimal("format_compliance_score", { precision: 5, scale: 2 }).notNull().default("0.00"),
+    isBaseline: boolean("is_baseline").notNull().default(false),
+    comparedToRunId: char("compared_to_run_id", { length: 36 }),
+    scoreDelta: decimal("score_delta", { precision: 5, scale: 2 }).notNull().default("0.00"),
+    summaryResults: json("summary_results").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    evaluatedBy: char("evaluated_by", { length: 36 }),
+    durationMs: int("duration_ms").notNull().default(0),
+    startedAt: timestamp("started_at", { fsp: 3 }),
+    completedAt: timestamp("completed_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("eval_runs_org_ds_created_idx").on(table.organizationId, table.datasetId, table.createdAt),
+  ],
+);
+
+export const agentSloDefinitions = mysqlTable(
+  "agent_slo_definitions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    name: varchar("name", { length: 120 }).notNull(),
+    description: text("description"),
+    metricType: varchar("metric_type", { length: 60 }).notNull(),
+    targetType: varchar("target_type", { length: 40 }).notNull().default("all"),
+    targetId: char("target_id", { length: 36 }),
+    targetValue: decimal("target_value", { precision: 10, scale: 4 }).notNull(),
+    comparisonOperator: varchar("comparison_operator", { length: 10 }).notNull().default("gte"),
+    windowDurationMinutes: int("window_duration_minutes").notNull().default(1440),
+    status: varchar("status", { length: 20 }).notNull().default("active"),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("slo_defs_org_metric_idx").on(table.organizationId, table.metricType),
+  ],
+);
+
+export const agentReliabilityMetrics = mysqlTable(
+  "agent_reliability_metrics",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    windowStart: timestamp("window_start", { fsp: 3 }).notNull(),
+    windowEnd: timestamp("window_end", { fsp: 3 }).notNull(),
+    totalRuns: int("total_runs").notNull().default(0),
+    successfulRuns: int("successful_runs").notNull().default(0),
+    failedRuns: int("failed_runs").notNull().default(0),
+    successRate: decimal("success_rate", { precision: 5, scale: 2 }).notNull().default("100.00"),
+    p50LatencyMs: int("p50_latency_ms").notNull().default(0),
+    p95LatencyMs: int("p95_latency_ms").notNull().default(0),
+    p99LatencyMs: int("p99_latency_ms").notNull().default(0),
+    activeWorkerCount: int("active_worker_count").notNull().default(1),
+    queueBacklog: int("queue_backlog").notNull().default(0),
+    staleLeasesReclaimed: int("stale_leases_reclaimed").notNull().default(0),
+    circuitBreakerTrips: int("circuit_breaker_trips").notNull().default(0),
+    rateLimitHits: int("rate_limit_hits").notNull().default(0),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("rel_metrics_org_window_idx").on(table.organizationId, table.windowStart),
+  ],
+);
+
+export const agentAlertRules = mysqlTable(
+  "agent_alert_rules",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    name: varchar("name", { length: 120 }).notNull(),
+    description: text("description"),
+    metricName: varchar("metric_name", { length: 60 }).notNull(),
+    conditionOperator: varchar("condition_operator", { length: 10 }).notNull().default("gt"),
+    thresholdValue: decimal("threshold_value", { precision: 10, scale: 4 }).notNull(),
+    evaluationWindowMinutes: int("evaluation_window_minutes").notNull().default(15),
+    severity: varchar("severity", { length: 20 }).notNull().default("warning"),
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    channels: json("channels").$type<string[]>().notNull().default(["in_app"]),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("alert_rules_org_enabled_idx").on(table.organizationId, table.isEnabled),
+  ],
+);
+
+export const agentIncidents = mysqlTable(
+  "agent_incidents",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    alertRuleId: char("alert_rule_id", { length: 36 }).references(() => agentAlertRules.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    title: varchar("title", { length: 180 }).notNull(),
+    summary: text("summary").notNull(),
+    severity: varchar("severity", { length: 20 }).notNull().default("warning"),
+    status: varchar("status", { length: 20 }).notNull().default("open"),
+    impactedService: varchar("impacted_service", { length: 80 }).notNull().default("agent-runtime"),
+    impactedAgentId: char("impacted_agent_id", { length: 36 }),
+    rootCause: text("root_cause"),
+    mitigationSteps: text("mitigation_steps"),
+    acknowledgedBy: char("acknowledged_by", { length: 36 }),
+    acknowledgedAt: timestamp("acknowledged_at", { fsp: 3 }),
+    resolvedBy: char("resolved_by", { length: 36 }),
+    resolvedAt: timestamp("resolved_at", { fsp: 3 }),
+    occurrenceCount: int("occurrence_count").notNull().default(1),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("incidents_org_status_idx").on(table.organizationId, table.status),
+    index("incidents_org_created_idx").on(table.organizationId, table.createdAt),
+  ],
+);
+
 export const schema = {
   usageMeterEvents,
   saasPlans,
@@ -4279,6 +4552,14 @@ export const schema = {
   autonomousTaskRuns,
   autonomousTaskCheckpoints,
   autonomousTaskEvents,
+  agentTraceSpans,
+  agentEvaluationDatasets,
+  agentEvaluationCases,
+  agentEvaluationRuns,
+  agentSloDefinitions,
+  agentReliabilityMetrics,
+  agentAlertRules,
+  agentIncidents,
   workspaces,
 };
 

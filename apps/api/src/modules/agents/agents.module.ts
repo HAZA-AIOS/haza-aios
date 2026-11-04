@@ -1,4 +1,9 @@
 import { AutonomousTaskService } from "./services/autonomous-task.service.js";
+import { AgentObservabilityRepository } from "./repositories/agent-observability.repository.js";
+import { AgentObservabilityService } from "./services/agent-observability.service.js";
+import { AgentEvaluationService } from "./services/agent-evaluation.service.js";
+import { AgentReliabilityService } from "./services/agent-reliability.service.js";
+import { AgentCostService } from "./services/agent-cost.service.js";
 import { AgentTeamService } from "./services/agent-team.service.js";
 import { AgentOrchestrationService } from "./services/agent-orchestration.service.js";
 import {
@@ -2767,6 +2772,416 @@ export const agentsModule: BackendModule = {
           routeParams.runId,
         );
         sendJson(response, 200, { checkpoint });
+      },
+    });
+
+    // =========================================================================
+    // EPIC 21: AGENT OPERATIONS OBSERVABILITY, EVALUATION & RELIABILITY
+    // =========================================================================
+
+    // 1. Record / Ingest Trace Span
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-observability/spans",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentObservabilityService(repo);
+        const body = (request.body ?? {}) as any;
+        const span = await service.recordSpan({
+          ...body,
+          organizationId: tenant.organizationId,
+        });
+        sendJson(response, 201, { span });
+      },
+    });
+
+    // 2. List Spans
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-observability/spans",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentObservabilityService(repo);
+        const status = url.searchParams.get("status") || undefined;
+        const agentId = url.searchParams.get("agentId") || undefined;
+        const limit = Number(url.searchParams.get("limit") || "50");
+        const offset = Number(url.searchParams.get("offset") || "0");
+        const spans = await service.listSpans(tenant.organizationId, {
+          status,
+          agentId,
+          limit,
+          offset,
+        });
+        sendJson(response, 200, { spans });
+      },
+    });
+
+    // 3. Get Trace Execution Tree
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-observability/traces/:traceId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentObservabilityService(repo);
+        const tree = await service.getTraceTree(tenant.organizationId, routeParams.traceId);
+        sendJson(response, 200, tree);
+      },
+    });
+
+    // 4. List Evaluation Datasets
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-evaluation/datasets",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentEvaluationService(repo);
+        const datasets = await service.listDatasets(tenant.organizationId);
+        sendJson(response, 200, { datasets });
+      },
+    });
+
+    // 5. Create Evaluation Dataset
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-evaluation/datasets",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentEvaluationService(repo);
+        const dataset = await service.createDataset({
+          organizationId: tenant.organizationId,
+          workspaceId: body.workspaceId,
+          name: body.name,
+          description: body.description,
+          version: body.version,
+          metadata: { domain: body.domain },
+          createdBy: auth.user.id,
+        });
+        sendJson(response, 201, { dataset });
+      },
+    });
+
+    // 6. List Evaluation Cases
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-evaluation/datasets/:datasetId/cases",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentEvaluationService(repo);
+        const cases = await service.getCases(routeParams.datasetId);
+        sendJson(response, 200, { cases });
+      },
+    });
+
+    // 7. Add Evaluation Case
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-evaluation/datasets/:datasetId/cases",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentEvaluationService(repo);
+        const evaluationCase = await service.addCase({
+          datasetId: routeParams.datasetId,
+          organizationId: tenant.organizationId,
+          name: body.name,
+          description: body.description,
+          inputPrompt: body.inputPrompt || body.prompt,
+          inputContext: body.inputContext,
+          expectedOutput: body.expectedOutput,
+          expectedOutputSchema: body.expectedOutputSchema,
+          expectedTools: body.expectedTools,
+          requiredCitations: body.requiredCitations || body.contextChunkIds,
+          gradingCriteria: body.gradingCriteria,
+          orderIndex: body.orderIndex,
+        });
+        sendJson(response, 201, { case: evaluationCase });
+      },
+    });
+
+    // 8. Run Evaluation Suite
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-evaluation/runs",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentEvaluationService(repo);
+        const run = await service.runEvaluationSuite({
+          organizationId: tenant.organizationId,
+          workspaceId: body.workspaceId,
+          datasetId: body.datasetId,
+          targetType: body.targetType || 'agent',
+          targetId: body.targetAgentId || body.targetWorkflowId || body.targetId,
+          isBaseline: body.isBaseline,
+          mockResultsByCaseId: body.mockResultsByCaseId,
+          executedBy: auth.user.id,
+        });
+        sendJson(response, 201, { run });
+      },
+    });
+
+    // 9. List Evaluation Runs
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-evaluation/runs",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const datasetId = url.searchParams.get("datasetId") || undefined;
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentEvaluationService(repo);
+        const runs = await service.listRuns(tenant.organizationId, datasetId);
+        sendJson(response, 200, { runs });
+      },
+    });
+
+    // 10. Get Evaluation Run
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-evaluation/runs/:runId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentEvaluationService(repo);
+        const run = await service.getRun(tenant.organizationId, routeParams.runId);
+        if (!run) {
+          throw new ApiError(404, "NOT_FOUND", "Evaluation run not found");
+        }
+        sendJson(response, 200, { run });
+      },
+    });
+
+    // 11. List SLO Definitions
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-reliability/slos",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentReliabilityService(repo);
+        const slos = await service.listSlos(tenant.organizationId);
+        sendJson(response, 200, { slos });
+      },
+    });
+
+    // 12. Upsert SLO Definition
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-reliability/slos",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentReliabilityService(repo);
+        const slo = await service.defineSlo({
+          organizationId: tenant.organizationId,
+          name: body.name,
+          metricType: body.metricType,
+          targetValue: Number(body.targetValue),
+          windowDurationMinutes: body.windowDurationMinutes || (body.windowHours ? Number(body.windowHours) * 60 : undefined),
+          status: body.status,
+        });
+        sendJson(response, 200, { slo });
+      },
+    });
+
+    // 13. Aggregate & Get Reliability Metrics
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-reliability/metrics",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const windowMinutes = Number(url.searchParams.get("windowMinutes") || "60");
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentReliabilityService(repo);
+        const metric = await service.aggregateMetrics(tenant.organizationId, windowMinutes);
+        sendJson(response, 200, { metric });
+      },
+    });
+
+    // 14. List Alert Rules
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-reliability/alert-rules",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentReliabilityService(repo);
+        const alertRules = await service.listAlertRules(tenant.organizationId);
+        sendJson(response, 200, { alertRules });
+      },
+    });
+
+    // 15. Create Alert Rule
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-reliability/alert-rules",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentReliabilityService(repo);
+        const alertRule = await service.createAlertRule({
+          organizationId: tenant.organizationId,
+          name: body.name,
+          metricName: body.metricName || body.metricType,
+          thresholdValue: Number(body.thresholdValue),
+          conditionOperator: body.conditionOperator || body.comparisonOperator,
+          evaluationWindowMinutes: body.evaluationWindowMinutes || body.windowMinutes,
+          severity: body.severity,
+          isEnabled: body.isEnabled,
+          channels: body.channels,
+        });
+        sendJson(response, 201, { alertRule });
+      },
+    });
+
+    // 16. List Incidents
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-reliability/incidents",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const status = url.searchParams.get("status") as any;
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentReliabilityService(repo);
+        const incidents = await service.listIncidents(tenant.organizationId, status);
+        sendJson(response, 200, { incidents });
+      },
+    });
+
+    // 17. Update Incident Status (Acknowledge / Mitigate / Resolve)
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-reliability/incidents/:incidentId/status",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentReliabilityService(repo);
+        let incident;
+        if (body.status === "acknowledged") {
+          incident = await service.acknowledgeIncident(tenant.organizationId, routeParams.incidentId, auth.user.id);
+        } else if (body.status === "mitigated") {
+          incident = await service.mitigateIncident(tenant.organizationId, routeParams.incidentId, body.mitigationSteps);
+        } else if (body.status === "resolved") {
+          incident = await service.resolveIncident(tenant.organizationId, routeParams.incidentId, auth.user.id, body.mitigationSteps);
+        } else {
+          throw new ApiError(400, "BAD_REQUEST", "Invalid incident status update");
+        }
+        sendJson(response, 200, { incident });
+      },
+    });
+
+    // 18. Cost Attribution Intelligence
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-cost/attribution",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const days = Number(url.searchParams.get("days") || "30");
+        const repo = new AgentObservabilityRepository(createRepositoryContext(database.db));
+        const service = new AgentCostService(repo);
+        const costAttribution = await service.getCostAttribution(tenant.organizationId, days);
+        sendJson(response, 200, { costAttribution });
       },
     });
   },

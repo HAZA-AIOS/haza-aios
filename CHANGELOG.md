@@ -1,3 +1,38 @@
+## [0.20.0-epic20] - 2026-11-04
+
+### Added
+- **Epic 20 — Advanced Autonomous Agents & Continuous Operations:**
+  - **Autonomy Level Governance & Policy Engine (`autonomous-task.service.ts` & `autonomous.types.ts`):**
+    - Organization-level autonomy policy with L0–L3 levels: L0 (Read-Only), L1 (Bounded Advisory), L2 (Supervised Execution), and L3 (Continuous Operations).
+    - Hard limit enforcement per organization and task: maximum active tasks, concurrency caps, step limits, timeout durations, and daily token/cost caps.
+    - Global emergency kill switch (`emergencyStopAll`) and individual task kill switch controls with audit reason tracking.
+  - **Scheduling & Domain Event Trigger Engine (`autonomous-scheduler.service.ts`):**
+    - Timezone-aware cron scheduling supporting standard 5-part cron expressions, interval specifications (`*/15 * * * *`), and macros (`@daily`, `@hourly`).
+    - Missed schedule handling policies (`run_once`, `skip`, `run_all`).
+    - Application domain event pattern matcher supporting wildcard expressions (`education.curriculum.*`, `*`).
+    - Deterministic idempotency key calculation preventing duplicate executions within the same schedule window.
+  - **Continuous Execution Engine & Worker Leasing (`worker.ts` & `autonomous-task.repository.ts`):**
+    - Atomic background worker leasing with lease duration expiration and periodic heartbeats.
+    - Automatic stale lease detection and crash recovery reclaiming dead worker leases and requeueing tasks up to `maxRetries`.
+    - Durable state checkpointing across step transitions, graceful pauses, retry recoveries, and human sign-off gates.
+    - Immutable append-only audit event stream recording all task lifecycle milestones.
+  - **Adaptive Planning & Recovery Engine (`autonomous-recovery.service.ts`):**
+    - Intelligent failure classification: transient / retryable (network errors, 429 rate limits, lock timeouts, deadlocks) versus terminal (permission denied, 401/403, missing required fields).
+    - Bounded replanning validation ensuring adapted plans do not cause objective drift, add unapproved agents, or expand privileges.
+    - Consequential state mutation gates halting L1/L2 autonomous tasks into `waiting_approval` status.
+  - **Database Migration 0030 (`0030_autonomous_continuous_operations.sql`):**
+    - Created 6 relational tables: `autonomous_task_policies`, `autonomous_task_definitions`, `autonomous_task_triggers`, `autonomous_task_runs`, `autonomous_task_checkpoints`, and `autonomous_task_events`.
+  - **Continuous Operations Console (`apps/web`):**
+    - 6-view dark premium operations console at `/workspace/agents/operations` covering Autonomous Tasks, Schedules & Triggers, Active Operations (live heartbeats and worker leases), Approvals & Exceptions, Execution History, and Policies & Limits.
+    - Reusable UI primitives in `@haza-aios/ui`: `AutonomyBadge`, `OperationalStatusBadge`, `HeartbeatIndicator`, `TaskMetricCard`, and `ApprovalActionCard`.
+  - **23 REST API Endpoints:** Mounted under `/api/v1/organizations/:orgId/autonomous-tasks` and `/autonomous-task-runs` with tenant RBAC protection.
+
+### Verification
+- 22/22 passing automated unit and integration tests in `apps/api/tests/epic20-autonomous-operations.test.ts`.
+- Schema verified with `npm run db:check -w apps/api` ("Everything's fine 🐶🔥").
+- 0 TypeScript compiler errors across `apps/api` and `apps/web`.
+- All autonomous tasks run via deterministic mock inference with zero paid AI token consumption.
+
 ## [0.19.0-epic19] - 2026-11-03
 
 ### Added

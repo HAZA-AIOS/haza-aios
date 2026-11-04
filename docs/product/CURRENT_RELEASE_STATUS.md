@@ -1,9 +1,10 @@
 # HAZA-AIOS — Current Release & Roadmap Status
 
-**As of:** 2026-11-03  
-**Production tag:** `v0.19.0-epic19`  
+**As of:** 2026-11-04  
+**Production tag:** `v0.19.0-epic19` (Current live deployment)  
+**Target release:** `v0.20.0-epic20` (Implemented and verified on feature branch)  
 **Source repository:** `HAZA-AIOS/haza-aios`  
-**Next epic:** **20 — Advanced Autonomous Agents & Continuous Operations** (planned)
+**Current branch:** `feature/epic-20-autonomous-continuous-operations`  
 
 ## Production deployment
 
@@ -28,15 +29,17 @@ The Epic 19 release report records successful API/Web health checks, migration v
 | 16 | Agent Tools & Organizational Data Integration | Production released (`v0.16.0-epic16`) |
 | 17 | Agent Knowledge & Context Engine | Production released (`v0.17.0-epic17`) |
 | 18 | Live AI Provider Integration & Production Agent Intelligence | Production released (`v0.18.0-epic18`) |
-| **19** | **Multi-Agent Collaboration & Orchestration** | **Production released (`v0.19.0-epic19`)** |
+| 19 | Multi-Agent Collaboration & Orchestration | Production released (`v0.19.0-epic19`) |
+| **20** | **Advanced Autonomous Agents & Continuous Operations** | **Verified & Release Ready (`feature/epic-20-autonomous-continuous-operations`)** |
 
-## Epic 19 evidence and release summary
+## Epic 20 evidence and release summary
 
-- GitHub PR created and merged into `main`; release tag `v0.19.0-epic19` created.
-- Automated tests: **13/13 dedicated multi-agent orchestration tests passing** in `apps/api/tests/epic19-orchestration.test.ts`.
-- Production migration: **0029**, creating `agent_teams`, `agent_team_members`, `agent_workflow_definitions`, `agent_workflow_steps`, `agent_workflow_runs`, `agent_workflow_step_runs`, `agent_workflow_artifacts`, and `agent_workflow_events`.
-- Production verification covers Agent Teams roster & role specialization, DAG validation & Kahn's topological sort cycle detection, durable workflow coordinator dispatching via existing `AgentRuntimeService`, shared context engine with structured outputs and prompt injection isolation, human approval pause gates, and 5-screen Multi-Agent Orchestration Console in `@haza-aios/ui`.
-- **Demonstrator Scenario:** Grade 6 Science "Cells and Living Systems" unit plan validated end-to-end with Planner, Activities Specialist, Assessment Specialist, Reviewer, and Coordinator approval gate.
+- Branch: `feature/epic-20-autonomous-continuous-operations`
+- Automated tests: **22/22 passing automated tests** in `apps/api/tests/epic20-autonomous-operations.test.ts`.
+- Database migration: **0030**, creating `autonomous_task_policies`, `autonomous_task_definitions`, `autonomous_task_triggers`, `autonomous_task_runs`, `autonomous_task_checkpoints`, and `autonomous_task_events`.
+- Capabilities: L0–L3 autonomy levels, timezone-aware cron expressions, domain event triggers, worker leasing and heartbeats, automatic stale lease crash reclamation, checkpointing, adaptive recovery with privilege non-expansion, consequential mutation approval gates, and 6-view Continuous Operations Console in `@haza-aios/ui`.
+- Multi-Tenant & Security: Strict tenant boundaries enforced across all tables and routes; global and task-specific emergency kill switches verified.
+- Non-Destructive Migration: Migration 0030 timestamped with folderMillis `1793700000000` (strictly greater than production journal row 30 `1793694010000`), ensuring completely forward-only execution without re-running earlier DDL statements.
 
 ## Sources of truth
 

@@ -5,6 +5,8 @@ import { createLogger, type Logger } from "./common/logging/logger.js";
 import { loadConfig, type ApiConfig } from "./config/env.js";
 import { createDatabaseClient, type DatabaseClient } from "./database/client.js";
 import { AgentRuntimeService } from "./modules/agents/services/agent-runtime.service.js";
+import { AutonomousTaskService } from "./modules/agents/services/autonomous-task.service.js";
+import { AgentOrchestrationService } from "./modules/agents/services/agent-orchestration.service.js";
 
 export interface WorkerOptions {
   workerId?: string;
@@ -20,6 +22,7 @@ export class AgentExecutionWorker {
   private readonly logger: Logger;
   private readonly database: DatabaseClient;
   private readonly runtimeService: AgentRuntimeService;
+  private readonly autonomousService: AutonomousTaskService;
 
   private readonly pollIntervalMs: number;
   private readonly maxConcurrency: number;
@@ -46,6 +49,15 @@ export class AgentExecutionWorker {
     this.logger = logger;
     this.database = database;
     this.runtimeService = new AgentRuntimeService(database);
+    const orchestrationService = new AgentOrchestrationService(database);
+    this.autonomousService = new AutonomousTaskService(
+      database,
+      undefined,
+      undefined,
+      undefined,
+      orchestrationService,
+      this.runtimeService,
+    );
 
     const suffix = randomUUID().slice(0, 8);
     this.workerId = options.workerId ?? `worker-${os.hostname().slice(0, 16)}-${process.pid}-${suffix}`;
@@ -110,7 +122,45 @@ export class AgentExecutionWorker {
 
     try {
       this.activeJobsCount++;
-      const outcome = await this.runtimeService.claimAndExecute(this.workerId);
+      // 1. Process due triggers & reclaim stale leases
+            try {
+              await this.autonomousService.processDueTriggers();
+              await this.autonomousService.reclaimStaleLeases();
+            } catch (err: any) {
+              this.logger.warn("agent_worker_autonomous_maintenance_error", {
+                workerId: this.workerId,
+                error: err?.message || String(err),
+              });
+            }
+      
+            // 2. Attempt to lease and execute an autonomous task run
+            const autonomousRun = await this.autonomousService.leaseNextRun(this.workerId, this.leaseDurationSeconds);
+            if (autonomousRun) {
+              this.processedRunsTotal++;
+              this.logger.info("agent_worker_autonomous_run_leased", {
+                workerId: this.workerId,
+                runId: autonomousRun.id,
+                taskDefinitionId: autonomousRun.taskDefinitionId,
+                autonomyLevel: autonomousRun.autonomyLevel,
+              });
+      
+              const executedRun = await this.autonomousService.executeLeasedRun(
+                autonomousRun.organizationId,
+                autonomousRun.id,
+                this.workerId,
+              );
+      
+              if (executedRun.status === "failed") {
+                this.failedRunsTotal++;
+              }
+      
+              this.activeJobsCount = Math.max(0, this.activeJobsCount - 1);
+              this.scheduleNextPoll(50);
+              return;
+            }
+      
+            // 3. Fallback to standard agent runtime queue
+            const outcome = await this.runtimeService.claimAndExecute(this.workerId);
 
       if (outcome.executed && outcome.run) {
         this.processedRunsTotal++;

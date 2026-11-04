@@ -3931,6 +3931,237 @@ export const agentWorkflowEvents = mysqlTable(
   ],
 );
 
+
+export const autonomousTaskPolicies = mysqlTable(
+  "autonomous_task_policies",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    maxActiveTasks: int("max_active_tasks").notNull().default(10),
+    maxGlobalConcurrency: int("max_global_concurrency").notNull().default(5),
+    defaultAutonomyLevel: varchar("default_autonomy_level", { length: 20 }).notNull().default("L1"),
+    allowedAutonomyLevels: json("allowed_autonomy_levels").$type<string[]>().notNull(),
+    emergencyStopAll: boolean("emergency_stop_all").notNull().default(false),
+    emergencyStoppedAt: timestamp("emergency_stopped_at", { fsp: 3 }),
+    emergencyStoppedBy: char("emergency_stopped_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("auto_policies_org_ws_unique").on(table.organizationId, table.workspaceId),
+  ],
+);
+
+export const autonomousTaskDefinitions = mysqlTable(
+  "autonomous_task_definitions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    name: varchar("name", { length: 180 }).notNull(),
+    description: varchar("description", { length: 1000 }).notNull(),
+    autonomyLevel: varchar("autonomy_level", { length: 20 }).notNull().default("L1"),
+    targetType: varchar("target_type", { length: 40 }).notNull(),
+    workflowDefinitionId: char("workflow_definition_id", { length: 36 }).references(
+      () => agentWorkflowDefinitions.id,
+      { onDelete: "set null", onUpdate: "cascade" },
+    ),
+    agentId: char("agent_id", { length: 36 }).references(() => aiAgentDefinitions.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    status: varchar("status", { length: 40 }).notNull().default("active"),
+    executionPolicy: json("execution_policy").$type<{
+      maxRuntimeSeconds: number;
+      maxRetries: number;
+      timeoutSeconds: number;
+      maxConcurrency: number;
+      retryDelaySeconds: number;
+    }>().notNull(),
+    approvalPolicy: json("approval_policy").$type<{
+      requireApprovalForMutations: boolean;
+      requireApprovalOnReplanning: boolean;
+      allowedApproverRoles: string[];
+    }>().notNull(),
+    limits: json("limits").$type<{
+      maxDailyRuns: number;
+      maxTokensPerRun: number;
+      maxCostUsdPerRun: number;
+    }>().notNull(),
+    defaultInput: json("default_input").$type<Record<string, unknown>>().notNull().default({}),
+    createdBy: char("created_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    emergencyStoppedAt: timestamp("emergency_stopped_at", { fsp: 3 }),
+    emergencyStoppedBy: char("emergency_stopped_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    emergencyStopReason: varchar("emergency_stop_reason", { length: 500 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    index("auto_tasks_org_status_idx").on(table.organizationId, table.status),
+    index("auto_tasks_workspace_idx").on(table.workspaceId),
+    index("auto_tasks_wf_idx").on(table.workflowDefinitionId),
+    index("auto_tasks_agent_idx").on(table.agentId),
+  ],
+);
+
+export const autonomousTaskTriggers = mysqlTable(
+  "autonomous_task_triggers",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    taskDefinitionId: char("task_definition_id", { length: 36 })
+      .notNull()
+      .references(() => autonomousTaskDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    name: varchar("name", { length: 180 }).notNull(),
+    triggerType: varchar("trigger_type", { length: 40 }).notNull(),
+    scheduleType: varchar("schedule_type", { length: 40 }),
+    cronExpression: varchar("cron_expression", { length: 100 }),
+    timezone: varchar("timezone", { length: 80 }).notNull().default("UTC"),
+    scheduledAt: timestamp("scheduled_at", { fsp: 3 }),
+    nextRunAt: timestamp("next_run_at", { fsp: 3 }),
+    lastRunAt: timestamp("last_run_at", { fsp: 3 }),
+    eventPattern: varchar("event_pattern", { length: 255 }),
+    missedSchedulePolicy: varchar("missed_schedule_policy", { length: 40 })
+      .notNull()
+      .default("run_once"),
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    configuration: json("configuration").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    index("auto_triggers_task_idx").on(table.taskDefinitionId),
+    index("auto_triggers_next_run_idx").on(table.isEnabled, table.nextRunAt),
+    index("auto_triggers_event_idx").on(table.isEnabled, table.eventPattern),
+    index("auto_triggers_org_idx").on(table.organizationId),
+  ],
+);
+
+export const autonomousTaskRuns = mysqlTable(
+  "autonomous_task_runs",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    taskDefinitionId: char("task_definition_id", { length: 36 })
+      .notNull()
+      .references(() => autonomousTaskDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    triggerId: char("trigger_id", { length: 36 }).references(() => autonomousTaskTriggers.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 })
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workflowRunId: char("workflow_run_id", { length: 36 }).references(
+      () => agentWorkflowRuns.id,
+      { onDelete: "set null", onUpdate: "cascade" },
+    ),
+    agentRunId: char("agent_run_id", { length: 36 }).references(() => aiAgentRuns.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    status: varchar("status", { length: 40 }).notNull().default("queued"),
+    idempotencyKey: varchar("idempotency_key", { length: 180 }).notNull(),
+    autonomyLevel: varchar("autonomy_level", { length: 20 }).notNull().default("L1"),
+    workerId: varchar("worker_id", { length: 120 }),
+    leasedAt: timestamp("leased_at", { fsp: 3 }),
+    leaseExpiresAt: timestamp("lease_expires_at", { fsp: 3 }),
+    heartbeatAt: timestamp("heartbeat_at", { fsp: 3 }),
+    retryCount: int("retry_count").notNull().default(0),
+    maxRetries: int("max_retries").notNull().default(3),
+    inputPayload: json("input_payload").$type<Record<string, unknown>>().notNull().default({}),
+    outputPayload: json("output_payload").$type<Record<string, unknown>>(),
+    errorDetails: json("error_details").$type<Record<string, unknown>>(),
+    adaptationHistory: json("adaptation_history")
+      .$type<Array<Record<string, unknown>>>()
+      .notNull()
+      .default([]),
+    currentPlanRevision: int("current_plan_revision").notNull().default(0),
+    startedAt: timestamp("started_at", { fsp: 3 }),
+    completedAt: timestamp("completed_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("auto_runs_idempotency_unique").on(
+      table.workspaceId,
+      table.taskDefinitionId,
+      table.idempotencyKey,
+    ),
+    index("auto_runs_status_lease_idx").on(table.status, table.leaseExpiresAt),
+    index("auto_runs_org_status_idx").on(table.organizationId, table.status),
+    index("auto_runs_task_idx").on(table.taskDefinitionId),
+    index("auto_runs_worker_idx").on(table.workerId),
+  ],
+);
+
+export const autonomousTaskCheckpoints = mysqlTable(
+  "autonomous_task_checkpoints",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    taskRunId: char("task_run_id", { length: 36 })
+      .notNull()
+      .references(() => autonomousTaskRuns.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    checkpointType: varchar("checkpoint_type", { length: 60 }).notNull(),
+    stepPointer: varchar("step_pointer", { length: 100 }),
+    stateSnapshot: json("state_snapshot").$type<Record<string, unknown>>().notNull(),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("auto_chkpt_run_idx").on(table.taskRunId),
+    index("auto_chkpt_org_idx").on(table.organizationId),
+  ],
+);
+
+export const autonomousTaskEvents = mysqlTable(
+  "autonomous_task_events",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    taskRunId: char("task_run_id", { length: 36 })
+      .notNull()
+      .references(() => autonomousTaskRuns.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    eventType: varchar("event_type", { length: 80 }).notNull(),
+    payload: json("payload").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("auto_events_run_created_idx").on(table.taskRunId, table.createdAt),
+    index("auto_events_org_idx").on(table.organizationId),
+  ],
+);
+
 export const schema = {
   usageMeterEvents,
   saasPlans,
@@ -4042,6 +4273,12 @@ export const schema = {
   agentWorkflowStepRuns,
   agentWorkflowArtifacts,
   agentWorkflowEvents,
+  autonomousTaskPolicies,
+  autonomousTaskDefinitions,
+  autonomousTaskTriggers,
+  autonomousTaskRuns,
+  autonomousTaskCheckpoints,
+  autonomousTaskEvents,
   workspaces,
 };
 

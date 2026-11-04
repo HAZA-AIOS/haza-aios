@@ -1,3 +1,37 @@
+## [0.21.0-epic21] - 2026-11-04
+
+### Added
+- **Epic 21 — Agent Operations Observability, Evaluation & Reliability:**
+  - **Distributed Tracing & Context Propagation (`agent-observability.service.ts`):**
+    - W3C distributed trace context propagation (`traceparent` format: `00-{traceId}-{spanId}-{flags}`).
+    - Parent-child span hierarchy generation (`agent_trace_spans`) tracking agent runs, workflow steps, tool invocations, provider inferences, and autonomous tasks.
+    - Deep secret redaction in spans, logs, and attributes automatically scrubbing API keys (`sk-...`), Bearer authentication headers, passwords, secrets, and database connection strings.
+    - Non-blocking telemetry ingestion supporting asynchronous span recording and hierarchical trace waterfall assembly.
+  - **Agent Evaluation Engine (`agent-evaluation.service.ts`):**
+    - Versioned evaluation datasets and benchmark test cases (`agent_evaluation_datasets`, `agent_evaluation_cases`) with input prompts, required citations, expected tool calls, and output schemas.
+    - Deterministic multi-dimensional rubric scoring across four dimensions: Context Grounding & Citation Accuracy (35%), Tool Selection & Argument Accuracy (25%), Structural & Schema Compliance (20%), and Safety & Policy Adherence (20%).
+    - Automated evaluation runs (`agent_evaluation_runs`) with historical baseline comparisons and regression alert triggering when composite score drop exceeds 5% (`scoreDelta < -5%`).
+  - **Reliability & SLO Engine (`agent-reliability.service.ts`):**
+    - Configurable Service Level Objectives (`agent_slo_definitions`) defining target availability and latency thresholds across sliding evaluation windows (1h, 24h, 7d, 30d).
+    - Latency percentile calculation (p50, p95, p99) and success rate metric rollups stored in `agent_reliability_metrics`.
+    - Automated alert rules (`agent_alert_rules`) evaluating metrics against breach thresholds.
+    - Incident management engine (`agent_incidents`) with intelligent deduplication by `incidentKey`/title, occurrence counters, severity tagging (`sev1`–`sev4`), and acknowledgement/resolution workflows.
+  - **Cost & Performance Intelligence (`agent-cost.service.ts`):**
+    - Multi-dimensional spending attribution (by organization, agent, model provider, and workflow run) utilizing existing Epic 18 `ai_usage_ledger` without table duplication.
+    - Cost anomaly detection flagging runs exceeding average or configured budget thresholds.
+  - **Database Migration 0031 (`0031_agent_observability_evaluation_reliability.sql`):**
+    - Created 8 relational tables: `agent_trace_spans`, `agent_evaluation_datasets`, `agent_evaluation_cases`, `agent_evaluation_runs`, `agent_slo_definitions`, `agent_reliability_metrics`, `agent_alert_rules`, and `agent_incidents`.
+  - **Operations Intelligence Console (`apps/web` & `@haza-aios/ui`):**
+    - 6-view dark premium operations console at `/workspace/agents/observability` covering Operations Overview, Distributed Trace Explorer, Evaluation Center, Reliability & SLOs, Cost Intelligence, and Incidents & Alerts.
+    - Reusable UI primitives: `TraceWaterfallViewer`, `SloHealthCard`, `EvaluationBenchmarkCard`, and `IncidentManagerTable`.
+  - **18 REST API Endpoints:** Mounted under `/api/v1/organizations/:orgId/observability` with tenant RBAC protection.
+
+### Verification
+- 12/12 passing automated unit and integration tests in `apps/api/tests/epic21-observability-reliability.test.ts`.
+- Schema verified with `npm run db:check -w apps/api` ("Everything's fine 🐶🔥").
+- 0 TypeScript compiler errors across `apps/api` and `apps/web`.
+- Zero live paid AI tokens consumed; deterministic rubrics and mock metrics evaluated in-process.
+
 ## [0.20.0-epic20] - 2026-11-04
 
 ### Added

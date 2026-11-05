@@ -27,9 +27,19 @@ import {
   type PolicyScopeType,
   type PolicySeverity,
   type PolicyEnforcementAction,
+  type GovernanceEnforcementMode,
+  type WebPolicySimulationResult,
+  type WebPolicyVersionComparisonResult,
 } from "../../../../agents/governance-service";
 
-type ActiveTab = "overview" | "policies" | "profiles" | "ownership" | "audit";
+type ActiveTab =
+  | "overview"
+  | "policies"
+  | "simulation"
+  | "decisions"
+  | "profiles"
+  | "ownership"
+  | "audit";
 
 export function AgentGovernancePage() {
   const { currentOrganization } = useOrganization();
@@ -41,17 +51,21 @@ export function AgentGovernancePage() {
   const [actionSuccess, setActionSuccess] = React.useState<string | null>(null);
 
   // Data state
+  const [enforcementMode, setEnforcementMode] = React.useState<GovernanceEnforcementMode>("MONITOR");
   const [overview, setOverview] = React.useState<WebGovernanceOverviewStats | null>(null);
   const [policies, setPolicies] = React.useState<WebAgentGovernancePolicy[]>([]);
   const [profiles, setProfiles] = React.useState<WebAgentGovernanceProfile[]>([]);
   const [ownershipList, setOwnershipList] = React.useState<WebAgentOwnershipAssignment[]>([]);
   const [auditLogs, setAuditLogs] = React.useState<WebAgentGovernanceAuditLog[]>([]);
+  const [decisionHistory, setDecisionHistory] = React.useState<WebAgentGovernanceAuditLog[]>([]);
 
   // Dialog / Modal states
   const [showCreatePolicy, setShowCreatePolicy] = React.useState(false);
   const [selectedAgentForProfile, setSelectedAgentForProfile] = React.useState<string | null>(null);
   const [selectedAgentForReview, setSelectedAgentForReview] = React.useState<string | null>(null);
   const [selectedAgentForOwnership, setSelectedAgentForOwnership] = React.useState<string | null>(null);
+  const [selectedPolicyForCompare, setSelectedPolicyForCompare] = React.useState<string | null>(null);
+  const [versionComparison, setVersionComparison] = React.useState<WebPolicyVersionComparisonResult | null>(null);
 
   // Policy form state
   const [newPolicyName, setNewPolicyName] = React.useState("");
@@ -61,6 +75,16 @@ export function AgentGovernancePage() {
   const [newPolicySeverity, setNewPolicySeverity] = React.useState<PolicySeverity>("high");
   const [newPolicyScope, setNewPolicyScope] = React.useState<PolicyScopeType>("organization");
   const [newPolicyEnforcement, setNewPolicyEnforcement] = React.useState<PolicyEnforcementAction>("warn");
+
+  // Simulation form state
+  const [simAgentId, setSimAgentId] = React.useState("");
+  const [simToolKey, setSimToolKey] = React.useState("");
+  const [simAction, setSimAction] = React.useState("tool_invocation");
+  const [simClassification, setSimClassification] = React.useState<string>("internal");
+  const [simRiskTier, setSimRiskTier] = React.useState<string>("medium");
+  const [simAutonomyLevel, setSimAutonomyLevel] = React.useState<number>(2);
+  const [simulating, setSimulating] = React.useState(false);
+  const [simulationResult, setSimulationResult] = React.useState<WebPolicySimulationResult | null>(null);
 
   // Profile form state
   const [profileClassification, setProfileClassification] = React.useState<SecurityClassification>("internal");
@@ -84,13 +108,15 @@ export function AgentGovernancePage() {
       setLoading(true);
       setError(null);
 
-      const [overviewData, policiesData, profilesData, ownershipData, logsData] =
+      const [overviewData, policiesData, profilesData, ownershipData, logsData, modeData, decisionsData] =
         await Promise.allSettled([
           agentGovernanceService.getOverview(orgId),
           agentGovernanceService.listPolicies(orgId),
           agentGovernanceService.listProfiles(orgId),
           agentGovernanceService.listOwnership(orgId),
           agentGovernanceService.listAuditLogs(orgId, { limit: 50 }),
+          agentGovernanceService.getEnforcementMode(orgId),
+          agentGovernanceService.listDecisions(orgId, 50),
         ]);
 
       if (overviewData.status === "fulfilled") setOverview(overviewData.value);
@@ -98,6 +124,8 @@ export function AgentGovernancePage() {
       if (profilesData.status === "fulfilled") setProfiles(profilesData.value);
       if (ownershipData.status === "fulfilled") setOwnershipList(ownershipData.value);
       if (logsData.status === "fulfilled") setAuditLogs(logsData.value);
+      if (modeData.status === "fulfilled") setEnforcementMode(modeData.value);
+      if (decisionsData.status === "fulfilled") setDecisionHistory(decisionsData.value);
     } catch (err: any) {
       setError(err?.message || "Failed to load governance telemetry");
     } finally {
@@ -108,6 +136,19 @@ export function AgentGovernancePage() {
   React.useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Mode Change Handler
+  const handleChangeEnforcementMode = async (newMode: GovernanceEnforcementMode) => {
+    try {
+      setError(null);
+      await agentGovernanceService.setEnforcementMode(orgId, newMode);
+      setEnforcementMode(newMode);
+      setActionSuccess(`Enforcement mode switched to ${newMode}`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to update enforcement mode");
+    }
+  };
 
   // Lifecycle Transition Handler
   const handleTransitionPolicy = async (policyId: string, targetState: string) => {
@@ -148,6 +189,41 @@ export function AgentGovernancePage() {
       await loadData();
     } catch (err: any) {
       setError(err?.message || "Failed to create policy");
+    }
+  };
+
+  // Policy Simulation Handler
+  const handleRunSimulation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setSimulating(true);
+      setError(null);
+      const res = await agentGovernanceService.simulatePolicy(orgId, {
+        agentId: simAgentId || null,
+        toolKey: simToolKey || null,
+        action: simAction,
+        resourceClassification: simClassification,
+        riskTier: simRiskTier,
+        autonomyLevel: simAutonomyLevel,
+      });
+      setSimulationResult(res);
+      setActionSuccess("Policy simulation executed in read-only sandbox");
+    } catch (err: any) {
+      setError(err?.message || "Simulation failed");
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  // Policy Comparison Handler
+  const handleCompareVersions = async (policyId: string) => {
+    try {
+      setError(null);
+      const res = await agentGovernanceService.comparePolicyVersions(orgId, policyId, 1, 2);
+      setSelectedPolicyForCompare(policyId);
+      setVersionComparison(res);
+    } catch (err: any) {
+      setError(err?.message || "Failed to compare versions");
     }
   };
 
@@ -222,18 +298,34 @@ export function AgentGovernancePage() {
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold tracking-tight text-foreground">
-              Agent Governance & Security
+              Enterprise Agent Governance & Security
             </h2>
             <span className="text-[11px] font-mono px-2 py-0.5 rounded border border-primary/30 bg-primary/10 text-primary">
-              Phase 22A Foundation
+              Phase 22B Policy Engine
             </span>
           </div>
           <p className="text-muted-foreground text-sm mt-1">
-            Enterprise policy management, agent ownership accountability, risk classification, and audit ledger.
+            Deterministic policy evaluation, runtime enforcement boundaries, simulation sandbox, and audit verification.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* Enforcement Mode Selector */}
+          <div className="flex items-center gap-2 bg-card/80 border border-border/70 rounded-lg p-1.5 px-3">
+            <span className="text-[10px] font-mono uppercase text-muted-foreground mr-1">
+              Mode:
+            </span>
+            <select
+              value={enforcementMode}
+              onChange={(e) => handleChangeEnforcementMode(e.target.value as GovernanceEnforcementMode)}
+              className="text-xs bg-background border border-input rounded px-2 py-1 font-semibold text-foreground"
+            >
+              <option value="MONITOR">MONITOR (Telemetry & Audit)</option>
+              <option value="ENFORCE">ENFORCE (Active Enforcement)</option>
+              <option value="DISABLED">DISABLED (Legacy)</option>
+            </select>
+          </div>
+
           <Button
             variant="outline"
             size="sm"
@@ -250,6 +342,31 @@ export function AgentGovernancePage() {
             + New Policy
           </Button>
         </div>
+      </div>
+
+      {/* Mode Guidance Alert Banner */}
+      <div
+        className={`p-3.5 rounded-xl border text-xs flex items-center justify-between ${
+          enforcementMode === "ENFORCE"
+            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+            : enforcementMode === "MONITOR"
+            ? "border-amber-500/40 bg-amber-500/10 text-amber-400"
+            : "border-zinc-500/40 bg-zinc-500/10 text-zinc-400"
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          <span className="font-semibold uppercase tracking-wider font-mono">
+            Mode: {enforcementMode}
+          </span>
+          <span>
+            {enforcementMode === "ENFORCE"
+              ? "— Authoritative runtime blocking and approval gates active."
+              : enforcementMode === "MONITOR"
+              ? "— Safe rollout: Policies are evaluated and audited passively without runtime blocking."
+              : "— Governance policies bypassed; platform baseline security restrictions remain active."}
+          </span>
+        </div>
+        <span className="font-mono text-[11px] opacity-80">Precedence: Mandatory &gt; Deny &gt; Approval &gt; Allow</span>
       </div>
 
       {/* Notifications */}
@@ -281,14 +398,14 @@ export function AgentGovernancePage() {
         <GovernanceOverviewMetricCard
           title="Active Policies"
           value={overview?.activePolicies ?? policies.filter((p) => p.lifecycleState === "active").length}
-          subtitle={`Total: ${overview?.totalPolicies ?? policies.length} defined`}
+          subtitle={`Total: ${overview?.totalPolicies ?? policies.length} registered`}
           badge={<PolicyLifecycleBadge state="active" />}
         />
         <GovernanceOverviewMetricCard
           title="Accountability Coverage"
           value={
             overview
-              ? `${Math.max(0, (overview.totalProfiles - overview.orphanedAgents))}/${overview.totalProfiles || 1}`
+              ? `${Math.max(0, overview.totalProfiles - overview.orphanedAgents)}/${overview.totalProfiles || 1}`
               : `${ownershipList.length} Assigned`
           }
           subtitle={`${overview?.orphanedAgents ?? 0} orphaned agents`}
@@ -301,24 +418,18 @@ export function AgentGovernancePage() {
           }
         />
         <GovernanceOverviewMetricCard
-          title="Compliance Reviews"
-          value={overview?.pendingReviews ?? 0}
-          subtitle="Reviews due or overdue"
-          badge={
-            (overview?.pendingReviews ?? 0) > 0 ? (
-              <ComplianceStatusBadge status="needs_review" />
-            ) : (
-              <ComplianceStatusBadge status="compliant" />
-            )
-          }
+          title="Policy Decisions"
+          value={decisionHistory.length}
+          subtitle="Recorded evaluation events"
+          badge={<span className="text-[10px] font-mono text-muted-foreground">Audit Ledger</span>}
         />
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex border-b border-border/50 gap-2">
+      <div className="flex border-b border-border/50 gap-2 overflow-x-auto">
         <button
           onClick={() => setActiveTab("overview")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all ${
+          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
             activeTab === "overview"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -328,7 +439,7 @@ export function AgentGovernancePage() {
         </button>
         <button
           onClick={() => setActiveTab("policies")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all ${
+          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
             activeTab === "policies"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -337,8 +448,28 @@ export function AgentGovernancePage() {
           Policy Registry ({policies.length})
         </button>
         <button
+          onClick={() => setActiveTab("simulation")}
+          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+            activeTab === "simulation"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Policy Simulation Sandbox
+        </button>
+        <button
+          onClick={() => setActiveTab("decisions")}
+          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+            activeTab === "decisions"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Decision Stream ({decisionHistory.length})
+        </button>
+        <button
           onClick={() => setActiveTab("profiles")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all ${
+          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
             activeTab === "profiles"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -348,17 +479,17 @@ export function AgentGovernancePage() {
         </button>
         <button
           onClick={() => setActiveTab("ownership")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all ${
+          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
             activeTab === "ownership"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          Ownership & Accountability ({ownershipList.length})
+          Ownership ({ownershipList.length})
         </button>
         <button
           onClick={() => setActiveTab("audit")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all ${
+          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
             activeTab === "audit"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -429,16 +560,6 @@ export function AgentGovernancePage() {
               </div>
             </Card>
           </div>
-
-          {/* Quick Guidance Card */}
-          <Card className="p-5 bg-card/40 border-border/60">
-            <h4 className="text-sm font-semibold text-foreground mb-1">Governance Architecture Note</h4>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Phase 22A establishes the governance data model, registry, accountability assignments, and audit trails.
-              In accordance with architectural principles, live policy blocking is deferred to Phase 22B to guarantee
-              zero disruption to existing agent runtime executions.
-            </p>
-          </Card>
         </div>
       )}
 
@@ -454,39 +575,253 @@ export function AgentGovernancePage() {
           {policies.length === 0 ? (
             <div className="text-center py-12 border border-dashed border-border rounded-xl">
               <p className="text-muted-foreground text-sm">No governance policies defined yet.</p>
-              <Button
-                size="sm"
-                className="mt-3"
-                onClick={() => setShowCreatePolicy(true)}
-              >
+              <Button size="sm" className="mt-3" onClick={() => setShowCreatePolicy(true)}>
                 Create First Policy
               </Button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {policies.map((p) => (
-                <PolicyInventoryCard
-                  key={p.id}
-                  id={p.id}
-                  name={p.name}
-                  policyKey={p.policyKey}
-                  policyType={p.policyType}
-                  scopeType={p.scopeType}
-                  severity={p.severity}
-                  enforcementAction={p.enforcementAction}
-                  lifecycleState={p.lifecycleState}
-                  currentVersion={p.currentVersion}
-                  description={p.description}
-                  rulesCount={Object.keys(p.rules || {}).length}
-                  onTransitionState={(newState) => handleTransitionPolicy(p.id, newState)}
-                />
+                <div key={p.id} className="relative">
+                  <PolicyInventoryCard
+                    id={p.id}
+                    name={p.name}
+                    policyKey={p.policyKey}
+                    policyType={p.policyType}
+                    scopeType={p.scopeType}
+                    severity={p.severity}
+                    enforcementAction={p.enforcementAction}
+                    lifecycleState={p.lifecycleState}
+                    currentVersion={p.currentVersion}
+                    description={p.description}
+                    rulesCount={Object.keys(p.rules || {}).length}
+                    onTransitionState={(newState) => handleTransitionPolicy(p.id, newState)}
+                    onView={() => handleCompareVersions(p.id)}
+                  />
+                </div>
               ))}
             </div>
           )}
         </div>
       )}
 
-      {/* Tab 3: Agent Profiles */}
+      {/* Tab 3: Policy Simulation Sandbox */}
+      {activeTab === "simulation" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="p-6 bg-card/70 border-border/70 space-y-4">
+            <div>
+              <h3 className="font-semibold text-base text-foreground">Policy Decision Simulator</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Simulate hypothetical execution requests in a read-only sandbox without executing any actions.
+              </p>
+            </div>
+
+            <form onSubmit={handleRunSimulation} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-medium text-foreground mb-1">Target Agent ID (Optional)</label>
+                <Input
+                  placeholder="e.g. agent-academic-advisor-001"
+                  value={simAgentId}
+                  onChange={(e) => setSimAgentId(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block font-medium text-foreground mb-1">Tool Key (Optional)</label>
+                <Input
+                  placeholder="e.g. education.curriculum.generate"
+                  value={simToolKey}
+                  onChange={(e) => setSimToolKey(e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-foreground mb-1">Action Type</label>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+                    value={simAction}
+                    onChange={(e) => setSimAction(e.target.value)}
+                  >
+                    <option value="tool_invocation">Tool Invocation</option>
+                    <option value="agent_execution">Agent Execution</option>
+                    <option value="multi_agent_delegation">Multi-Agent Delegation</option>
+                    <option value="autonomous_task">Autonomous Continuous Task</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-medium text-foreground mb-1">Autonomy Level</label>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+                    value={simAutonomyLevel}
+                    onChange={(e) => setSimAutonomyLevel(Number(e.target.value))}
+                  >
+                    <option value={0}>L0 (Read Only)</option>
+                    <option value={1}>L1 (Assisted)</option>
+                    <option value={2}>L2 (Supervised)</option>
+                    <option value={3}>L3 (Autonomous Continuous)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-medium text-foreground mb-1">Data Classification</label>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+                    value={simClassification}
+                    onChange={(e) => setSimClassification(e.target.value)}
+                  >
+                    <option value="public">Public</option>
+                    <option value="internal">Internal</option>
+                    <option value="confidential">Confidential</option>
+                    <option value="restricted">Restricted</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-medium text-foreground mb-1">Risk Tier</label>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+                    value={simRiskTier}
+                    onChange={(e) => setSimRiskTier(e.target.value)}
+                  >
+                    <option value="low">Low Risk</option>
+                    <option value="medium">Medium Risk</option>
+                    <option value="high">High Risk</option>
+                    <option value="critical">Critical Risk</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <Button type="submit" disabled={simulating} className="w-full">
+                  {simulating ? "Evaluating..." : "Run Policy Simulation"}
+                </Button>
+              </div>
+            </form>
+          </Card>
+
+          {/* Simulation Output Panel */}
+          <Card className="p-6 bg-card/70 border-border/70 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between border-b border-border/40 pb-3 mb-4">
+                <h3 className="font-semibold text-base text-foreground">Simulation Outcome</h3>
+                {simulationResult && (
+                  <span
+                    className={`font-bold font-mono px-2.5 py-1 rounded text-xs ${
+                      simulationResult.decision === "ALLOW"
+                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                        : simulationResult.decision === "REQUIRE_APPROVAL"
+                        ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                        : "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                    }`}
+                  >
+                    {simulationResult.decision}
+                  </span>
+                )}
+              </div>
+
+              {!simulationResult ? (
+                <div className="text-center py-16 text-muted-foreground text-xs border border-dashed border-border/50 rounded-lg">
+                  Submit simulation parameters to inspect policy decision path and precedence trace.
+                </div>
+              ) : (
+                <div className="space-y-4 text-xs">
+                  <div className="p-3 bg-muted/30 rounded-lg border border-border/40 space-y-1.5">
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block">
+                      Precedence Hierarchy
+                    </span>
+                    <span className="font-medium text-foreground block">
+                      {simulationResult.precedenceDescription}
+                    </span>
+                    <span className="text-muted-foreground block">
+                      Reason: <strong className="text-foreground">{simulationResult.reasonCode}</strong> — {simulationResult.reasonDetails}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <div className="p-3 bg-muted/20 rounded-lg border border-border/30">
+                      <span className="text-[10px] uppercase text-muted-foreground block font-mono">
+                        Active Mode Execution
+                      </span>
+                      <span className="font-semibold text-foreground capitalize mt-1 block">
+                        Effective: {simulationResult.effectiveDecision}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        Under mode: {simulationResult.enforcementMode}
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-muted/20 rounded-lg border border-border/30">
+                      <span className="text-[10px] uppercase text-muted-foreground block font-mono">
+                        Approval Required
+                      </span>
+                      <span className="font-semibold text-foreground mt-1 block">
+                        {simulationResult.wouldRequireHumanApproval ? "YES (Sign-off Needed)" : "NO"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] uppercase font-mono text-muted-foreground block mb-1">
+                      Matched Policies ({simulationResult.matchedPolicies.length})
+                    </span>
+                    {simulationResult.matchedPolicies.length === 0 ? (
+                      <span className="text-muted-foreground italic">None (Default baseline applied)</span>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {simulationResult.matchedPolicies.map((m, idx) => (
+                          <div
+                            key={idx}
+                            className="p-2 rounded bg-card/80 border border-border/60 flex items-center justify-between"
+                          >
+                            <span className="font-mono text-foreground">{m.policyKey}</span>
+                            <span className="text-muted-foreground capitalize">{m.enforcementAction}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {simulationResult && (
+              <div className="pt-4 border-t border-border/40 text-[10px] font-mono text-muted-foreground flex justify-between">
+                <span>Correlation: {simulationResult.correlationId}</span>
+                <span>Timestamp: {new Date(simulationResult.simulatedAt).toLocaleTimeString()}</span>
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* Tab 4: Decision Stream */}
+      {activeTab === "decisions" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              Showing runtime policy evaluation decisions and simulation queries.
+            </span>
+          </div>
+
+          <GovernanceAuditLogTable
+            logs={decisionHistory.map((l) => ({
+              id: l.id,
+              action: l.action,
+              targetType: l.targetType,
+              targetId: l.targetId,
+              actorId: l.actorId,
+              createdAt: l.createdAt,
+              metadata: l.metadata,
+            }))}
+          />
+        </div>
+      )}
+
+      {/* Tab 5: Agent Profiles */}
       {activeTab === "profiles" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -537,7 +872,7 @@ export function AgentGovernancePage() {
         </div>
       )}
 
-      {/* Tab 4: Ownership & Accountability */}
+      {/* Tab 6: Ownership & Accountability */}
       {activeTab === "ownership" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -622,7 +957,7 @@ export function AgentGovernancePage() {
         </div>
       )}
 
-      {/* Tab 5: Audit Log Ledger */}
+      {/* Tab 7: Audit Log Ledger */}
       {activeTab === "audit" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -642,6 +977,78 @@ export function AgentGovernancePage() {
               metadata: l.metadata,
             }))}
           />
+        </div>
+      )}
+
+      {/* Modal: Version Comparison Drawer */}
+      {selectedPolicyForCompare && versionComparison && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <Card className="max-w-2xl w-full p-6 bg-card border-border/80 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <div>
+                <h3 className="font-semibold text-lg text-foreground">Policy Version Diff</h3>
+                <span className="font-mono text-xs text-muted-foreground">
+                  Comparing v{versionComparison.v1.version} and v{versionComparison.v2.version}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedPolicyForCompare(null);
+                  setVersionComparison(null);
+                }}
+                className="text-muted-foreground hover:text-foreground text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-muted/20 rounded border border-border/40">
+                  <span className="font-semibold text-foreground block mb-1">
+                    v{versionComparison.v1.version} ({versionComparison.v1.lifecycleState})
+                  </span>
+                  <pre className="font-mono text-[11px] text-muted-foreground overflow-auto max-h-48">
+                    {JSON.stringify(versionComparison.v1.rules, null, 2)}
+                  </pre>
+                </div>
+                <div className="p-3 bg-muted/20 rounded border border-border/40">
+                  <span className="font-semibold text-foreground block mb-1">
+                    v{versionComparison.v2.version} ({versionComparison.v2.lifecycleState})
+                  </span>
+                  <pre className="font-mono text-[11px] text-muted-foreground overflow-auto max-h-48">
+                    {JSON.stringify(versionComparison.v2.rules, null, 2)}
+                  </pre>
+                </div>
+              </div>
+
+              <div className="p-3 bg-card rounded border border-border/40 space-y-1">
+                <span className="font-semibold text-foreground block">Change Summary</span>
+                <span className="text-muted-foreground block">
+                  Added rules: {versionComparison.diff.addedRules.join(", ") || "none"}
+                </span>
+                <span className="text-muted-foreground block">
+                  Removed rules: {versionComparison.diff.removedRules.join(", ") || "none"}
+                </span>
+                <span className="text-muted-foreground block">
+                  Modified rules: {versionComparison.diff.modifiedRules.length} items
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-border/40">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSelectedPolicyForCompare(null);
+                  setVersionComparison(null);
+                }}
+              >
+                Close
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
 
@@ -730,7 +1137,7 @@ export function AgentGovernancePage() {
                   >
                     <option value="organization">Organization Wide</option>
                     <option value="workspace">Workspace Scoped</option>
-                    <option value="agent">Agent Specific</option>
+                    <option value="agent_specific">Agent Specific</option>
                   </select>
                 </div>
                 <div>
@@ -740,8 +1147,8 @@ export function AgentGovernancePage() {
                     value={newPolicyEnforcement}
                     onChange={(e) => setNewPolicyEnforcement(e.target.value as PolicyEnforcementAction)}
                   >
-                    <option value="audit">Audit Only (Silent)</option>
-                    <option value="warn">Warn (Telemetry)</option>
+                    <option value="log">Audit Only (Silent)</option>
+                    <option value="notify">Notify (Telemetry)</option>
                     <option value="require_approval">Require Approval</option>
                     <option value="block">Block Execution</option>
                   </select>
@@ -886,7 +1293,7 @@ export function AgentGovernancePage() {
                   onChange={(e) => setReviewStatus(e.target.value as ComplianceStatus)}
                 >
                   <option value="compliant">Compliant (Passed)</option>
-                  <option value="pending_review">Pending Additional Review</option>
+                  <option value="needs_review">Needs Additional Review</option>
                   <option value="non_compliant">Non-Compliant (Requires Remediation)</option>
                   <option value="exempt">Exempt</option>
                 </select>

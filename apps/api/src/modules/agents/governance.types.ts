@@ -16,7 +16,8 @@ export type PolicyType =
   | "behavioral"
   | "data_access"
   | "model_restriction"
-  | "tool_restriction";
+  | "tool_restriction"
+  | "enforcement_control";
 
 export type PolicySeverity = "low" | "medium" | "high" | "critical";
 export type PolicyScopeType = "organization" | "workspace" | "agent_specific";
@@ -49,6 +50,7 @@ export interface AgentGovernanceProfileEntity {
   complianceFrameworks: string[];
   maxAutonomyLevel: MaxAutonomyLevel;
   approvalPolicy: ApprovalPolicy;
+  requireApprovalForTools?: boolean;
   auditFrequency: AuditFrequency;
   strictTelemetry: boolean;
   reviewCadenceDays: number;
@@ -72,7 +74,7 @@ export interface AgentOwnershipAssignmentEntity {
   businessOwnerId: string | null;
   escalationContact: string;
   reviewCadence: string;
-  accountabilityStatus: "active" | "transferred" | "unassigned" | "vacant";
+  accountabilityStatus: "active" | "transferred" | "unassigned" | "vacant" | "orphaned";
   delegatedApproverIds: string[];
   assignedBy: string;
   createdAt: Date;

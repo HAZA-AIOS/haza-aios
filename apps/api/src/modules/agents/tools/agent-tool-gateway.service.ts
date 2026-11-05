@@ -3,6 +3,8 @@ import { createRepositoryContext } from "../../../database/repositories/reposito
 import { AgentRuntimeRepository } from "../repositories/agent-runtime.repository.js";
 import { AgentRepository } from "../repositories/agent.repository.js";
 import { AgentToolRepository } from "../repositories/agent-tool.repository.js";
+import { AgentGovernanceRepository } from "../repositories/agent-governance.repository.js";
+import { PolicyEvaluationEngine } from "../services/policy-evaluation-engine.service.js";
 import { getTrustedTool, listTrustedTools } from "./trusted-tool-registry.js";
 import type {
   ToolDomainContext,
@@ -70,6 +72,7 @@ export class AgentToolGatewayService {
   private toolRepo: AgentToolRepository;
   private runtimeRepo: AgentRuntimeRepository;
   private agentRepo: AgentRepository;
+  private policyEngine?: PolicyEvaluationEngine;
 
   constructor(
     private readonly database: any,
@@ -82,11 +85,16 @@ export class AgentToolGatewayService {
       this.toolRepo = toolRepo ?? new AgentToolRepository(repoCtx);
       this.runtimeRepo = runtimeRepo ?? new AgentRuntimeRepository(repoCtx);
       this.agentRepo = agentRepo ?? new AgentRepository(repoCtx);
+      this.policyEngine = new PolicyEvaluationEngine(new AgentGovernanceRepository(repoCtx));
     } else {
       this.toolRepo = (toolRepo || database?.toolRepo || database) as any;
       this.runtimeRepo = (runtimeRepo || database?.runtimeRepo || database) as any;
       this.agentRepo = (agentRepo || database?.agentRepo || database) as any;
     }
+  }
+
+  setPolicyEngine(engine: PolicyEvaluationEngine): void {
+    this.policyEngine = engine;
   }
 
   async initialize(): Promise<void> {
@@ -167,6 +175,48 @@ export class AgentToolGatewayService {
         },
         durationMs: Date.now() - startTime,
       };
+    }
+
+    // 1.1 Enterprise Governance Policy Engine Evaluation (Phase 22B)
+    const effectiveEngine = callerContext?.policyEngine || this.policyEngine;
+    if (effectiveEngine && typeof effectiveEngine.evaluate === "function") {
+      const govDecision = await effectiveEngine.evaluate({
+        organizationId,
+        workspaceId,
+        actorId: userId,
+        agentId,
+        toolKey: request.toolKey,
+        action: "tool_invocation",
+        resourceClassification: callerContext?.resourceClassification || null,
+        riskTier: callerContext?.riskTier || null,
+        correlationId: runId,
+      });
+
+      if (govDecision.effectiveDecision === "DENY") {
+        return {
+          success: false,
+          executionId: "unknown",
+          toolKey: request.toolKey,
+          toolVersion: request.toolVersion ?? "1.0.0",
+          error: {
+            category: "POLICY_VIOLATION",
+            message: `Tool execution blocked by governance policy: ${govDecision.reasonDetails}`,
+          },
+          durationMs: Date.now() - startTime,
+        };
+      } else if (govDecision.effectiveDecision === "REQUIRE_APPROVAL") {
+        return {
+          success: false,
+          executionId: "unknown",
+          toolKey: request.toolKey,
+          toolVersion: request.toolVersion ?? "1.0.0",
+          error: {
+            category: "APPROVAL_REQUIRED",
+            message: `Tool '${request.toolKey}' requires human approval before execution: ${govDecision.reasonDetails}`,
+          },
+          durationMs: Date.now() - startTime,
+        };
+      }
     }
 
     // 2. Resolve Agent Definition

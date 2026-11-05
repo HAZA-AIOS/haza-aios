@@ -6,6 +6,8 @@ import { AgentReliabilityService } from "./services/agent-reliability.service.js
 import { AgentCostService } from "./services/agent-cost.service.js";
 import { AgentGovernanceRepository } from "./repositories/agent-governance.repository.js";
 import { AgentGovernanceService } from "./services/agent-governance.service.js";
+import { PolicyEvaluationEngine } from "./services/policy-evaluation-engine.service.js";
+import { PolicySimulationService } from "./services/policy-simulation.service.js";
 import { AgentTeamService } from "./services/agent-team.service.js";
 import { AgentOrchestrationService } from "./services/agent-orchestration.service.js";
 import {
@@ -3499,6 +3501,136 @@ export const agentsModule: BackendModule = {
           limit,
         });
         sendJson(response, 200, { auditLogs });
+      },
+    });
+    // 15. Policy Evaluation
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/evaluate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const engine = new PolicyEvaluationEngine(repo);
+        const decision = await engine.evaluate({
+          ...body,
+          organizationId: tenant.organizationId,
+          actorId: body.actorId || authResult.user.id,
+        });
+        sendJson(response, 200, { decision });
+      },
+    });
+
+    // 16. Policy Simulation
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/simulate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const simService = new PolicySimulationService(repo);
+        const simulation = await simService.simulatePolicyDecision({
+          ...body,
+          organizationId: tenant.organizationId,
+          actorId: body.actorId || authResult.user.id,
+        });
+        sendJson(response, 200, { simulation });
+      },
+    });
+
+    // 17. Get Governance Enforcement Mode
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/mode",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const engine = new PolicyEvaluationEngine(repo);
+        const enforcementMode = await engine.getEnforcementMode(tenant.organizationId);
+        sendJson(response, 200, { enforcementMode });
+      },
+    });
+
+    // 18. Set Governance Enforcement Mode
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/mode",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const mode = body.mode;
+        if (mode !== "DISABLED" && mode !== "MONITOR" && mode !== "ENFORCE") {
+          throw new ApiError(400, "VALIDATION_FAILED", "Mode must be one of: DISABLED, MONITOR, ENFORCE");
+        }
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const engine = new PolicyEvaluationEngine(repo);
+        await engine.setEnforcementMode(tenant.organizationId, mode, authResult.user.id);
+        sendJson(response, 200, { enforcementMode: mode, updated: true });
+      },
+    });
+
+    // 19. List Policy Decision History
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/decisions",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const limit = Number(url.searchParams.get("limit") || "50");
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const allLogs = await repo.listAuditLogs(tenant.organizationId, { limit });
+        const decisions = allLogs.filter((l) => l.action === "policy_decision" || l.action === "policy_simulation");
+        sendJson(response, 200, { decisions: decisions.slice(0, limit) });
+      },
+    });
+
+    // 20. Compare Policy Versions
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/policies/:policyId/versions/compare",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const v1 = Number(url.searchParams.get("v1") || "1");
+        const v2 = Number(url.searchParams.get("v2") || "2");
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const simService = new PolicySimulationService(repo);
+        const comparison = await simService.comparePolicyVersions(
+          tenant.organizationId,
+          routeParams.policyId,
+          v1,
+          v2,
+        );
+        sendJson(response, 200, { comparison });
       },
     });
 

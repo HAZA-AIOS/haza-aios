@@ -1,3 +1,79 @@
+
+export type GovernanceEnforcementMode = "DISABLED" | "MONITOR" | "ENFORCE";
+export type PolicyDecisionType = "ALLOW" | "DENY" | "REQUIRE_APPROVAL" | "NOT_APPLICABLE";
+
+export interface WebPolicyEvaluationContext {
+  organizationId?: string;
+  workspaceId?: string | null;
+  actorId?: string;
+  actorRoles?: string[];
+  agentId?: string | null;
+  toolKey?: string | null;
+  action?: string | null;
+  resourceClassification?: string | null;
+  autonomyLevel?: string | number | null;
+  riskTier?: string | null;
+}
+
+export interface WebPolicyDecisionResult {
+  decision: PolicyDecisionType;
+  effectiveDecision: PolicyDecisionType;
+  enforcementMode: GovernanceEnforcementMode;
+  reasonCode: string;
+  reasonDetails: string;
+  matchedPolicies: string[];
+  matchedPolicyVersions: number[];
+  mandatoryRestrictionViolated: boolean;
+  requiredApprovalRoles?: string[];
+  correlationId: string;
+  timestamp: string;
+  simulated: boolean;
+}
+
+export interface WebPolicySimulationResult {
+  simulated: true;
+  decision: PolicyDecisionType;
+  effectiveDecision: PolicyDecisionType;
+  enforcementMode: GovernanceEnforcementMode;
+  precedenceLevel: number;
+  precedenceDescription: string;
+  matchedPolicies: Array<{
+    id: string;
+    policyKey: string;
+    name: string;
+    version: number;
+    severity: string;
+    enforcementAction: string;
+    matchedRule: string;
+  }>;
+  reasonCode: string;
+  reasonDetails: string;
+  wouldRequireHumanApproval: boolean;
+  requiredApprovalRoles: string[];
+  simulatedAt: string;
+  correlationId: string;
+}
+
+export interface WebPolicyVersionComparisonResult {
+  policyId: string;
+  v1: {
+    version: number;
+    lifecycleState: string;
+    rules: Record<string, unknown>;
+    changeSummary?: string | null;
+  };
+  v2: {
+    version: number;
+    lifecycleState: string;
+    rules: Record<string, unknown>;
+    changeSummary?: string | null;
+  };
+  diff: {
+    addedRules: string[];
+    removedRules: string[];
+    modifiedRules: Array<{ key: string; oldValue: unknown; newValue: unknown }>;
+  };
+}
 import { apiClient } from "../api/api-client";
 import { readStoredAuth } from "../auth/auth-storage";
 
@@ -324,6 +400,85 @@ export class AgentGovernanceService {
   }
 
   // --- Audit Logs ---
+
+  // --- Phase 22B: Enforcement Mode & Policy Engine ---
+  async getEnforcementMode(organizationId: string): Promise<GovernanceEnforcementMode> {
+    const res = await apiClient.request<{ enforcementMode: GovernanceEnforcementMode }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/mode`,
+      { authToken: this.getAuthToken() },
+    );
+    return res.enforcementMode;
+  }
+
+  async setEnforcementMode(
+    organizationId: string,
+    mode: GovernanceEnforcementMode,
+  ): Promise<GovernanceEnforcementMode> {
+    const res = await apiClient.request<{ enforcementMode: GovernanceEnforcementMode }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/mode`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ mode }),
+        authToken: this.getAuthToken(),
+      },
+    );
+    return res.enforcementMode;
+  }
+
+  async evaluatePolicy(
+    organizationId: string,
+    context: WebPolicyEvaluationContext,
+  ): Promise<WebPolicyDecisionResult> {
+    const res = await apiClient.request<{ decision: WebPolicyDecisionResult }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/evaluate`,
+      {
+        method: "POST",
+        body: JSON.stringify(context),
+        authToken: this.getAuthToken(),
+      },
+    );
+    return res.decision;
+  }
+
+  async simulatePolicy(
+    organizationId: string,
+    context: WebPolicyEvaluationContext,
+  ): Promise<WebPolicySimulationResult> {
+    const res = await apiClient.request<{ simulation: WebPolicySimulationResult }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/simulate`,
+      {
+        method: "POST",
+        body: JSON.stringify(context),
+        authToken: this.getAuthToken(),
+      },
+    );
+    return res.simulation;
+  }
+
+  async listDecisions(
+    organizationId: string,
+    limit: number = 50,
+  ): Promise<WebAgentGovernanceAuditLog[]> {
+    const res = await apiClient.request<{ decisions: WebAgentGovernanceAuditLog[] }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/decisions?limit=${limit}`,
+      { authToken: this.getAuthToken() },
+    );
+    return res.decisions;
+  }
+
+  async comparePolicyVersions(
+    organizationId: string,
+    policyId: string,
+    v1: number,
+    v2: number,
+  ): Promise<WebPolicyVersionComparisonResult> {
+    const res = await apiClient.request<{ comparison: WebPolicyVersionComparisonResult }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/policies/${policyId}/versions/compare?v1=${v1}&v2=${v2}`,
+      { authToken: this.getAuthToken() },
+    );
+    return res.comparison;
+  }
+
   async listAuditLogs(
     organizationId: string,
     filters?: { targetType?: string; targetId?: string; limit?: number },

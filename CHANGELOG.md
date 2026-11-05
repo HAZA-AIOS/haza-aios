@@ -1,3 +1,36 @@
+## [Unreleased - Epic 22B] - 2026-11-05
+
+### Added
+- **Epic 22B — Enterprise Policy & Permission Engine:**
+  - **Deterministic Policy Evaluation Engine (`policy-evaluation-engine.service.ts`):**
+    - 5-level deterministic authorization precedence: Mandatory Platform Security > Explicit Deny > Require Approval > Allow > Default Fallback (fail-closed).
+    - Hard platform security boundaries intercepting disallowed system/network primitives (`raw_socket`, `system_exec`) and cross-tenant violations with immediate `DENY`.
+    - Fail-closed error handling catching evaluation exceptions and enforcing `DENY` by default.
+  - **Context-Aware Permission Resolution (`permission-resolution.service.ts`):**
+    - Resolves tenant boundaries, agent governance profile constraints, and human accountability status.
+    - Blocks execution of unassigned or orphaned agents when accountability is required.
+  - **Safe Rollout Operational Modes (`DISABLED`, `MONITOR`, `ENFORCE`):**
+    - Configurable per-organization mode persisted as versioned, audited policy key `sys-enforcement-mode`.
+    - Default `MONITOR` mode records violations to audit trail without interrupting runtime workflows.
+    - `ENFORCE` mode executes runtime blocking on `DENY` and halts on `REQUIRE_APPROVAL`.
+  - **Runtime Enforcement Integration:**
+    - Integrated with Tool Gateway (`agent-tool-gateway.service.ts`) at Gate 1.1 with `POLICY_VIOLATION` or `APPROVAL_REQUIRED` rejection codes.
+    - Integrated with Agent Runtime (`agent-runtime.service.ts`) with HTTP 403 Forbidden gating on disallowed attempts.
+  - **Read-Only Simulation & Version Diffing (`policy-simulation.service.ts`):**
+    - Explainable simulation sandbox evaluating candidate contexts with zero runtime side-effects.
+    - Rule-level diff comparisons across immutable policy version snapshots.
+  - **Governance Center UI Additions (`apps/web`):**
+    - Interactive operational mode switcher and status alert banner.
+    - Policy decision simulation sandbox for dry-run testing.
+    - Live decision stream tab querying decision audit events.
+    - Policy version comparison modal displaying rule additions, removals, and changes.
+  - **6 REST API Endpoints:** Mounted under `/api/v1/organizations/:organizationId/agent-governance/` (`/evaluate`, `/simulate`, `/mode`, `/decisions`, `/policies/:policyId/versions/compare`).
+
+### Verification
+- 17/17 passing unit and integration tests in `apps/api/tests/epic22b-policy-engine.test.ts`.
+- 77/77 passing tests across all active test suites (Epics 19, 20, 21, 22A, 22B).
+- 0 TypeScript compiler errors across `apps/api` and `apps/web`.
+
 ## [Unreleased - Epic 22A] - 2026-11-05
 
 ### Added

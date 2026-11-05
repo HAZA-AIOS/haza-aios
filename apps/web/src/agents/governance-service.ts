@@ -215,6 +215,72 @@ export interface CreatePolicyPayload {
   metadata?: Record<string, unknown>;
 }
 
+export type WebApprovalRequestStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "expired"
+  | "revoked"
+  | "consumed";
+
+export interface WebAgentApprovalRequest {
+  id: string;
+  organizationId: string;
+  workspaceId?: string | null;
+  agentId: string;
+  actionType: string;
+  actionTarget: string;
+  resourceId?: string | null;
+  requestingActorId: string;
+  canonicalPayloadFingerprint: string;
+  payload: Record<string, unknown>;
+  approvalReason: string;
+  riskClassification: string;
+  securityClassification: string;
+  assignedReviewerId?: string | null;
+  assignedRole?: string | null;
+  status: WebApprovalRequestStatus;
+  decisionId?: string | null;
+  consumedAt?: string | null;
+  consumedBy?: string | null;
+  expiresAt: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebAgentApprovalDecision {
+  id: string;
+  approvalRequestId: string;
+  organizationId: string;
+  decision: "approved" | "rejected" | "revoked";
+  decidedByActorId: string;
+  decidedByActorType: string;
+  reason?: string | null;
+  justification?: string | null;
+  policySnapshot: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface WebAgentApprovalEscalation {
+  id: string;
+  approvalRequestId: string;
+  organizationId: string;
+  escalatedByActorId: string;
+  previousReviewerId?: string | null;
+  escalatedToReviewerId?: string | null;
+  escalationContact?: string | null;
+  reason: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface WebApprovalDetailsResult {
+  request: WebAgentApprovalRequest;
+  decisions: WebAgentApprovalDecision[];
+  escalations: WebAgentApprovalEscalation[];
+}
+
 export class AgentGovernanceService {
   private getAuthToken(): string | undefined {
     return readStoredAuth()?.session?.accessToken ?? undefined;
@@ -494,6 +560,127 @@ export class AgentGovernanceService {
       { authToken: this.getAuthToken() },
     );
     return res.auditLogs;
+  }
+
+  // ---------------------------------------------------------------------------
+  // HUMAN APPROVAL WORKFLOWS (Phase 22C)
+  // ---------------------------------------------------------------------------
+
+  async listApprovals(
+    organizationId: string,
+    filters?: { status?: string; agentId?: string; riskClassification?: string; limit?: number },
+  ): Promise<WebAgentApprovalRequest[]> {
+    const params = new URLSearchParams();
+    if (filters?.status && filters.status !== "all") params.set("status", filters.status);
+    if (filters?.agentId) params.set("agentId", filters.agentId);
+    if (filters?.riskClassification) params.set("riskClassification", filters.riskClassification);
+    if (filters?.limit) params.set("limit", String(filters.limit));
+    const qs = params.toString() ? `?${params.toString()}` : "";
+
+    const res = await apiClient.request<{ approvals: WebAgentApprovalRequest[] }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/approvals${qs}`,
+      { authToken: this.getAuthToken() },
+    );
+    return res.approvals;
+  }
+
+  async getApprovalDetails(
+    organizationId: string,
+    approvalId: string,
+  ): Promise<WebApprovalDetailsResult> {
+    const res = await apiClient.request<{ details: WebApprovalDetailsResult }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/approvals/${approvalId}`,
+      { authToken: this.getAuthToken() },
+    );
+    return res.details;
+  }
+
+  async approveRequest(
+    organizationId: string,
+    approvalId: string,
+    justification?: string,
+    reason?: string,
+  ): Promise<{ request: WebAgentApprovalRequest; decision: WebAgentApprovalDecision }> {
+    return await apiClient.request<{ request: WebAgentApprovalRequest; decision: WebAgentApprovalDecision }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/approvals/${approvalId}/approve`,
+      {
+        method: "POST",
+        body: JSON.stringify({ justification, reason }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async rejectRequest(
+    organizationId: string,
+    approvalId: string,
+    justification?: string,
+    reason?: string,
+  ): Promise<{ request: WebAgentApprovalRequest; decision: WebAgentApprovalDecision }> {
+    return await apiClient.request<{ request: WebAgentApprovalRequest; decision: WebAgentApprovalDecision }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/approvals/${approvalId}/reject`,
+      {
+        method: "POST",
+        body: JSON.stringify({ justification, reason }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async revokeRequest(
+    organizationId: string,
+    approvalId: string,
+    reason?: string,
+  ): Promise<{ request: WebAgentApprovalRequest; decision: WebAgentApprovalDecision }> {
+    return await apiClient.request<{ request: WebAgentApprovalRequest; decision: WebAgentApprovalDecision }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/approvals/${approvalId}/revoke`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async escalateRequest(
+    organizationId: string,
+    approvalId: string,
+    reason: string,
+    escalatedToReviewerId?: string,
+  ): Promise<{ request: WebAgentApprovalRequest; escalation: WebAgentApprovalEscalation }> {
+    return await apiClient.request<{ request: WebAgentApprovalRequest; escalation: WebAgentApprovalEscalation }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/approvals/${approvalId}/escalate`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason, escalatedToReviewerId }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async continueApprovedExecution(
+    organizationId: string,
+    approvalId: string,
+    providedPayload?: Record<string, unknown>,
+  ): Promise<{ continuation: any }> {
+    return await apiClient.request<{ continuation: any }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/approvals/${approvalId}/continue`,
+      {
+        method: "POST",
+        body: JSON.stringify({ providedPayload }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async sweepExpiredApprovals(organizationId: string): Promise<{ expiredCount: number }> {
+    return await apiClient.request<{ expiredCount: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/approvals/expire-sweep`,
+      {
+        method: "POST",
+        authToken: this.getAuthToken(),
+      },
+    );
   }
 }
 

@@ -114,3 +114,60 @@ Provide dedicated read-only policy simulation and version diff services:
 **Consequences:**  
 - Administrators gain complete visibility into policy impacts before deployment.
 - Clear explainability of which rule in the precedence stack caused an `ALLOW`, `DENY`, or `REQUIRE_APPROVAL`.
+
+
+---
+
+### ADR-022-07: Human-in-the-Loop Approval Request Domain Model and Immutable Decision Audit
+
+**Status:** Approved  
+**Date:** 2026-11-05  
+**Context:**  
+When governed agent operations evaluate to `REQUIRE_APPROVAL` under `ENFORCE` mode, the runtime cannot simply block or fail; it must suspend the operation, persist a tenant-scoped approval request, and route it to human reviewers. Decisions must be recorded as immutable historical entities rather than mutative overwrites.
+
+**Decision:**  
+Introduce three dedicated relational entities via migration `0033_agent_human_approval_workflows.sql`:
+1. `agent_approval_requests`: Organization-scoped table tracking requested agent action, target tool/action, canonical SHA-256 payload fingerprint, matched policy and version, expiration timestamp, assigned reviewer, and consumption status.
+2. `agent_approval_decisions`: Immutable append-only decision audit log recording decision (`approved`, `rejected`, `revoked`), decider identity, justification, policy snapshot, and timestamp.
+3. `agent_approval_escalations`: Audit log of reassignments and escalations to agent ownership contacts.
+
+**Consequences:**  
+- Complete historical auditability for all human oversight interventions.
+- Clear separation between the mutable request state machine and immutable reviewer decision records.
+
+---
+
+### ADR-022-08: Concurrency-Safe State Machine & One-Time Atomic Consumption
+
+**Status:** Approved  
+**Date:** 2026-11-05  
+**Context:**  
+Multiple reviewers may inspect the same pending approval simultaneously, or multiple concurrent attempts may attempt to execute an approved operation, risking replay attacks or duplicate side-effects.
+
+**Decision:**  
+Implement atomic compare-and-set queries for all state transitions:
+- `PENDING -> APPROVED / REJECTED / REVOKED / EXPIRED`: Only succeeds if `status === 'pending'`.
+- `APPROVED -> CONSUMED`: Only succeeds if `status === 'approved'`.
+All updates specify exact expected current statuses in database update predicates. If a conflict occurs, the service aborts with HTTP 409 and rejects execution.
+
+**Consequences:**  
+- Zero race conditions or duplicate execution side-effects.
+- Single-use execution guarantee for all approved requests.
+
+---
+
+### ADR-022-09: Canonical Payload Fingerprinting & Fresh Policy Re-evaluation
+
+**Status:** Approved  
+**Date:** 2026-11-05  
+**Context:**  
+An approval grant could potentially be exploited by submitting modified parameters at execution time, or policy rules could change to strictly block an action while an approval request was pending.
+
+**Decision:**  
+Before executing any approved operation via `AgentApprovalContinuationService`:
+1. **Fingerprint Verification:** Compute the canonical SHA-256 hash of sorted payload parameters. If the provided payload deviates in any key or value from the approved fingerprint, reject execution immediately with `BAD_REQUEST`.
+2. **Fresh Policy Re-evaluation:** Re-run the Policy Evaluation Engine against current active policies. If any mandatory platform restriction is violated or an active policy now explicitly blocks the operation, reject execution with `FORBIDDEN` (`POLICY_INVALIDATED`).
+
+**Consequences:**  
+- Complete anti-tampering protection against parameter manipulation.
+- Immunity to stale-policy authorization vulnerabilities.

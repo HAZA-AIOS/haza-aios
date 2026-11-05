@@ -10,6 +10,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { AgentGovernanceRepository } from "../repositories/agent-governance.repository.js";
+import type { AgentApprovalService } from "./agent-approval.service.js";
 import { PermissionResolutionService } from "./permission-resolution.service.js";
 import { redactSecrets } from "../utils/secret-redactor.js";
 import type {
@@ -35,8 +36,15 @@ const ENFORCEMENT_MODE_POLICY_KEY = "sys-enforcement-mode";
 export class PolicyEvaluationEngine {
   private readonly permissionResolver: PermissionResolutionService;
 
-  constructor(private readonly governanceRepo?: AgentGovernanceRepository) {
+  constructor(
+    private readonly governanceRepo?: AgentGovernanceRepository,
+    private approvalService?: AgentApprovalService,
+  ) {
     this.permissionResolver = new PermissionResolutionService(governanceRepo);
+  }
+
+  setApprovalService(service: AgentApprovalService): void {
+    this.approvalService = service;
   }
 
   /**
@@ -285,7 +293,7 @@ export class PolicyEvaluationEngine {
 
       // A. Disallowed Tools Check
       if (context.toolKey) {
-        const disallowed = rules.disallowedTools || rules.blacklistedTools || [];
+        const disallowed = rules.disallowedTools || rules.blacklistedTools || rules.blockedTools || [];
         if (Array.isArray(disallowed) && disallowed.includes(context.toolKey)) {
           matchedDenies.push({
             policyId: policy.id,
@@ -298,7 +306,7 @@ export class PolicyEvaluationEngine {
           });
         }
 
-        const approvalTools = rules.approvalRequiredTools || rules.requireApprovalTools || [];
+        const approvalTools = rules.approvalRequiredTools || rules.requireApprovalTools || (policy.enforcementAction === "require_approval" ? (rules.tools || rules.blockedTools || rules.targetTools) : []) || [];
         if (Array.isArray(approvalTools) && approvalTools.includes(context.toolKey)) {
           matchedApprovals.push({
             policyId: policy.id,
@@ -332,14 +340,39 @@ export class PolicyEvaluationEngine {
       if (context.action) {
         const disallowedActions = rules.disallowedActions || [];
         if (Array.isArray(disallowedActions) && disallowedActions.includes(context.action)) {
-          matchedDenies.push({
+          if (policy.enforcementAction === "require_approval") {
+            matchedApprovals.push({
+              policyId: policy.id,
+              policyKey: policy.policyKey,
+              version: policy.currentVersion,
+              severity: policy.severity,
+              enforcementAction: "require_approval",
+              ruleKey: "approvalRequiredActions",
+              reason: `Action '${context.action}' requires human approval per policy '${policy.name}'.`,
+            });
+          } else {
+            matchedDenies.push({
+              policyId: policy.id,
+              policyKey: policy.policyKey,
+              version: policy.currentVersion,
+              severity: policy.severity,
+              enforcementAction: "block",
+              ruleKey: "disallowedActions",
+              reason: `Action '${context.action}' is prohibited by policy '${policy.name}'.`,
+            });
+          }
+        }
+
+        const approvalActions = rules.approvalRequiredActions || rules.requireApprovalActions || [];
+        if (Array.isArray(approvalActions) && approvalActions.includes(context.action)) {
+          matchedApprovals.push({
             policyId: policy.id,
             policyKey: policy.policyKey,
             version: policy.currentVersion,
             severity: policy.severity,
-            enforcementAction: "block",
-            ruleKey: "disallowedActions",
-            reason: `Action '${context.action}' is prohibited by policy '${policy.name}'.`,
+            enforcementAction: "require_approval",
+            ruleKey: "approvalRequiredActions",
+            reason: `Action '${context.action}' requires human approval per policy '${policy.name}'.`,
           });
         }
       }
@@ -414,6 +447,29 @@ export class PolicyEvaluationEngine {
     // =========================================================================
     if (matchedApprovals.length > 0) {
       const topApproval = matchedApprovals[0];
+      let approvalRequestId: string | undefined;
+
+      if (enforcementMode === "ENFORCE" && !context.isSimulated && this.approvalService) {
+        try {
+          const appReq = await this.approvalService.createApprovalRequest({
+            organizationId: context.organizationId,
+            workspaceId: context.workspaceId,
+            agentId: context.agentId || "unknown-agent",
+            actionType: context.action || "tool_invocation",
+            actionTarget: context.toolKey || context.action || "unknown_target",
+            requestingActorId: context.actorId,
+            payload: (context.parameters as Record<string, unknown>) ?? {},
+            matchedPolicyId: topApproval.policyId,
+            matchedPolicyVersion: topApproval.version,
+            approvalReason: topApproval.reason,
+            riskClassification: (topApproval.severity as any) || "medium",
+          });
+          approvalRequestId = appReq.id;
+        } catch {
+          // ignore creation error
+        }
+      }
+
       return this.buildResult({
         decision: "REQUIRE_APPROVAL",
         effectiveDecision: enforcementMode === "ENFORCE" ? "REQUIRE_APPROVAL" : "ALLOW",
@@ -422,6 +478,7 @@ export class PolicyEvaluationEngine {
         reasonDetails: topApproval.reason,
         matches: matchedApprovals,
         requiredApprovalRoles: Array.from(requiredApprovalRoles),
+        approvalRequestId,
         correlationId,
         timestamp,
         context,
@@ -492,6 +549,7 @@ export class PolicyEvaluationEngine {
     matches?: PolicyRuleMatch[];
     mandatoryRestrictionViolated?: boolean;
     requiredApprovalRoles?: string[];
+    approvalRequestId?: string;
     correlationId: string;
     timestamp: string;
     context: PolicyEvaluationContext;
@@ -511,6 +569,7 @@ export class PolicyEvaluationEngine {
       matches,
       mandatoryRestrictionViolated: !!params.mandatoryRestrictionViolated,
       requiredApprovalRoles: params.requiredApprovalRoles || [],
+      approvalRequestId: params.approvalRequestId,
       correlationId: params.correlationId,
       timestamp: params.timestamp,
       simulated: !!params.context.isSimulated,

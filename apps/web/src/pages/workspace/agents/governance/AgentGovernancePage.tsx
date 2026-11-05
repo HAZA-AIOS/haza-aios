@@ -30,6 +30,8 @@ import {
   type GovernanceEnforcementMode,
   type WebPolicySimulationResult,
   type WebPolicyVersionComparisonResult,
+  type WebAgentApprovalRequest,
+  type WebApprovalDetailsResult,
 } from "../../../../agents/governance-service";
 
 type ActiveTab =
@@ -37,6 +39,7 @@ type ActiveTab =
   | "policies"
   | "simulation"
   | "decisions"
+  | "approvals"
   | "profiles"
   | "ownership"
   | "audit";
@@ -58,6 +61,17 @@ export function AgentGovernancePage() {
   const [ownershipList, setOwnershipList] = React.useState<WebAgentOwnershipAssignment[]>([]);
   const [auditLogs, setAuditLogs] = React.useState<WebAgentGovernanceAuditLog[]>([]);
   const [decisionHistory, setDecisionHistory] = React.useState<WebAgentGovernanceAuditLog[]>([]);
+
+  // Approvals State (Phase 22C)
+  const [approvals, setApprovals] = React.useState<WebAgentApprovalRequest[]>([]);
+  const [approvalFilter, setApprovalFilter] = React.useState<string>("all");
+  const [selectedApprovalDetails, setSelectedApprovalDetails] = React.useState<WebApprovalDetailsResult | null>(null);
+  const [approvalModal, setApprovalModal] = React.useState<{ type: "approve" | "reject" | "escalate"; request: WebAgentApprovalRequest } | null>(null);
+  const [modalJustification, setModalJustification] = React.useState("");
+  const [modalReason, setModalReason] = React.useState("");
+  const [modalEscalationContact, setModalEscalationContact] = React.useState("");
+  const [continuationLoading, setContinuationLoading] = React.useState<Record<string, boolean>>({});
+  const [continuationResult, setContinuationResult] = React.useState<Record<string, string>>({});
 
   // Dialog / Modal states
   const [showCreatePolicy, setShowCreatePolicy] = React.useState(false);
@@ -267,6 +281,73 @@ export function AgentGovernancePage() {
     }
   };
 
+  // Approval Handlers (Phase 22C)
+  const handleOpenApprovalModal = (type: "approve" | "reject" | "escalate", request: WebAgentApprovalRequest) => {
+    setApprovalModal({ type, request });
+    setModalJustification("");
+    setModalReason("");
+    setModalEscalationContact("");
+  };
+
+  const handleSubmitApprovalDecision = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!approvalModal) return;
+    try {
+      setError(null);
+      const { type, request } = approvalModal;
+      if (type === "approve") {
+        await agentGovernanceService.approveRequest(orgId, request.id, modalJustification, modalReason);
+        setActionSuccess(`Request '${request.id.slice(0, 8)}' approved successfully`);
+      } else if (type === "reject") {
+        await agentGovernanceService.rejectRequest(orgId, request.id, modalJustification, modalReason);
+        setActionSuccess(`Request '${request.id.slice(0, 8)}' rejected`);
+      } else if (type === "escalate") {
+        await agentGovernanceService.escalateRequest(orgId, request.id, modalReason || "Escalated for senior review", modalEscalationContact || undefined);
+        setActionSuccess(`Request '${request.id.slice(0, 8)}' escalated`);
+      }
+      setApprovalModal(null);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to submit approval decision");
+    }
+  };
+
+  const handleContinueExecution = async (request: WebAgentApprovalRequest) => {
+    try {
+      setError(null);
+      setContinuationLoading((prev) => ({ ...prev, [request.id]: true }));
+      const res = await agentGovernanceService.continueApprovedExecution(orgId, request.id);
+      setContinuationResult((prev) => ({ ...prev, [request.id]: JSON.stringify(res.continuation?.executionResult || res.continuation, null, 2) }));
+      setActionSuccess(`Approved execution resumed successfully for '${request.actionTarget}'`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to continue approved execution");
+    } finally {
+      setContinuationLoading((prev) => ({ ...prev, [request.id]: false }));
+    }
+  };
+
+  const handleSweepExpiredApprovals = async () => {
+    try {
+      setError(null);
+      const res = await agentGovernanceService.sweepExpiredApprovals(orgId);
+      setActionSuccess(`Expired ${res.expiredCount} pending approval request(s)`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to sweep expired requests");
+    }
+  };
+
+  const handleViewApprovalDetails = async (approvalId: string) => {
+    try {
+      setError(null);
+      const details = await agentGovernanceService.getApprovalDetails(orgId, approvalId);
+      setSelectedApprovalDetails(details);
+    } catch (err: any) {
+      setError(err?.message || "Failed to load approval details");
+    }
+  };
+
   // Save Ownership Handler
   const handleSaveOwnership = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -466,6 +547,21 @@ export function AgentGovernancePage() {
           }`}
         >
           Decision Stream ({decisionHistory.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("approvals")}
+          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${
+            activeTab === "approvals"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <span>Human Approvals</span>
+          {approvals.filter((a) => a.status === "pending").length > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              {approvals.filter((a) => a.status === "pending").length}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab("profiles")}
@@ -1323,6 +1419,218 @@ export function AgentGovernancePage() {
                 </Button>
               </div>
             </form>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Decision Confirm (Approve / Reject / Escalate) */}
+      {approvalModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <Card className="max-w-lg w-full p-6 bg-card border-border/80 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <div>
+                <h3 className="font-semibold text-lg text-foreground capitalize">
+                  {approvalModal.type} Governance Approval
+                </h3>
+                <span className="font-mono text-xs text-muted-foreground">
+                  Target: {approvalModal.request.actionTarget} ({approvalModal.request.riskClassification} risk)
+                </span>
+              </div>
+              <button
+                onClick={() => setApprovalModal(null)}
+                className="text-muted-foreground hover:text-foreground text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitApprovalDecision} className="space-y-4 text-xs">
+              <div className="p-3 rounded bg-muted/30 border border-border/40 space-y-1">
+                <p className="text-foreground/90 font-medium">{approvalModal.request.approvalReason}</p>
+                <div className="flex items-center gap-3 text-[11px] text-muted-foreground font-mono">
+                  <span>Agent: {approvalModal.request.agentId}</span>
+                  <span>Requester: {approvalModal.request.requestingActorId}</span>
+                </div>
+              </div>
+
+              {(approvalModal.type === "approve" || approvalModal.type === "reject") && (
+                <div>
+                  <label className="block font-medium text-foreground mb-1">
+                    Justification {(approvalModal.request.riskClassification === "high" || approvalModal.request.riskClassification === "critical") ? "*" : "(Optional)"}
+                  </label>
+                  <Input
+                    required={approvalModal.request.riskClassification === "high" || approvalModal.request.riskClassification === "critical"}
+                    placeholder="Provide mandatory audit justification for this decision"
+                    value={modalJustification}
+                    onChange={(e) => setModalJustification(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {approvalModal.type === "escalate" ? (
+                <>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Escalation Reason *</label>
+                    <Input
+                      required
+                      placeholder="Explain why this request requires higher authorization"
+                      value={modalReason}
+                      onChange={(e) => setModalReason(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Reassign to Reviewer (User ID / Optional)</label>
+                    <Input
+                      placeholder="e.g. user-senior-officer"
+                      value={modalEscalationContact}
+                      onChange={(e) => setModalEscalationContact(e.target.value)}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className="block font-medium text-foreground mb-1">Optional Notes / Context</label>
+                  <Input
+                    placeholder="Additional rationale or conditions"
+                    value={modalReason}
+                    onChange={(e) => setModalReason(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setApprovalModal(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  className={
+                    approvalModal.type === "approve"
+                      ? "bg-emerald-600 hover:bg-emerald-500 text-white font-semibold"
+                      : approvalModal.type === "reject"
+                      ? "bg-rose-600 hover:bg-rose-500 text-white font-semibold"
+                      : "bg-amber-600 hover:bg-amber-500 text-white font-semibold"
+                  }
+                >
+                  Confirm {approvalModal.type.toUpperCase()}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Approval Details & Audit History (70% width) */}
+      {selectedApprovalDetails && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <Card className="max-w-4xl w-[70vw] max-h-[85vh] overflow-y-auto p-6 bg-card border-border/80 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <div>
+                <h3 className="font-semibold text-lg text-foreground flex items-center gap-2">
+                  <span>Approval Request Details</span>
+                  <span className="font-mono text-xs px-2 py-0.5 rounded bg-muted/60 text-muted-foreground">
+                    {selectedApprovalDetails.request.id}
+                  </span>
+                </h3>
+                <span className="text-xs text-muted-foreground">
+                  Target: {selectedApprovalDetails.request.actionTarget} ({selectedApprovalDetails.request.actionType})
+                </span>
+              </div>
+              <button
+                onClick={() => setSelectedApprovalDetails(null)}
+                className="text-muted-foreground hover:text-foreground text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Core Info Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-muted/20 p-3 rounded-lg border border-border/40">
+              <div>
+                <span className="text-muted-foreground block text-[10px]">Status</span>
+                <span className="font-bold uppercase tracking-wider">{selectedApprovalDetails.request.status}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground block text-[10px]">Risk Tier</span>
+                <GovernanceRiskBadge riskTier={selectedApprovalDetails.request.riskClassification as any} />
+              </div>
+              <div>
+                <span className="text-muted-foreground block text-[10px]">Security Classification</span>
+                <SecurityClassificationBadge classification={selectedApprovalDetails.request.securityClassification as any} />
+              </div>
+              <div>
+                <span className="text-muted-foreground block text-[10px]">Expires At</span>
+                <span className="font-mono text-[11px]">{new Date(selectedApprovalDetails.request.expiresAt).toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* Payload & Canonical Fingerprint */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-semibold text-foreground">Approved Payload Parameters</span>
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  Fingerprint: {selectedApprovalDetails.request.canonicalPayloadFingerprint?.slice(0, 24)}...
+                </span>
+              </div>
+              <pre className="p-3 rounded-lg bg-zinc-950 font-mono text-[11px] text-zinc-300 overflow-x-auto max-h-48 border border-border/40">
+                {JSON.stringify(selectedApprovalDetails.request.payload, null, 2)}
+              </pre>
+            </div>
+
+            {/* Decision History */}
+            <div>
+              <span className="text-xs font-semibold text-foreground block mb-2">Immutable Decision History</span>
+              {selectedApprovalDetails.decisions.length > 0 ? (
+                <div className="space-y-2">
+                  {selectedApprovalDetails.decisions.map((dec) => (
+                    <div key={dec.id} className="p-3 rounded-lg bg-muted/20 border border-border/40 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold uppercase tracking-wider text-emerald-400">{dec.decision}</span>
+                        <span className="font-mono text-[10px] text-muted-foreground">{new Date(dec.createdAt).toLocaleString()}</span>
+                      </div>
+                      <p className="text-muted-foreground">Decided by: <span className="font-mono text-foreground">{dec.decidedByActorId}</span></p>
+                      {dec.justification && <p className="text-foreground/90"><span className="text-muted-foreground">Justification: </span>{dec.justification}</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">No decisions recorded yet.</p>
+              )}
+            </div>
+
+            {/* Escalation History */}
+            <div>
+              <span className="text-xs font-semibold text-foreground block mb-2">Escalation History</span>
+              {selectedApprovalDetails.escalations.length > 0 ? (
+                <div className="space-y-2">
+                  {selectedApprovalDetails.escalations.map((esc) => (
+                    <div key={esc.id} className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs space-y-1">
+                      <div className="flex items-center justify-between text-amber-400">
+                        <span className="font-semibold uppercase tracking-wider">Escalated</span>
+                        <span className="font-mono text-[10px]">{new Date(esc.createdAt).toLocaleString()}</span>
+                      </div>
+                      <p className="text-muted-foreground">Escalated by: <span className="font-mono text-foreground">{esc.escalatedByActorId}</span></p>
+                      {esc.escalationContact && <p className="text-muted-foreground">Contact: <span className="font-mono text-foreground">{esc.escalationContact}</span></p>}
+                      <p className="text-foreground/90"><span className="text-muted-foreground">Reason: </span>{esc.reason}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">No escalations recorded.</p>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-border/40">
+              <Button size="sm" variant="outline" onClick={() => setSelectedApprovalDetails(null)}>
+                Close
+              </Button>
+            </div>
           </Card>
         </div>
       )}

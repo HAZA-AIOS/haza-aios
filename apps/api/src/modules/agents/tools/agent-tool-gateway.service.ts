@@ -177,9 +177,9 @@ export class AgentToolGatewayService {
       };
     }
 
-    // 1.1 Enterprise Governance Policy Engine Evaluation (Phase 22B)
+    // 1.1 Enterprise Governance Policy Engine Evaluation (Phase 22B/22C)
     const effectiveEngine = callerContext?.policyEngine || this.policyEngine;
-    if (effectiveEngine && typeof effectiveEngine.evaluate === "function") {
+    if (!callerContext?.bypassGovernanceApprovalCheck && effectiveEngine && typeof effectiveEngine.evaluate === "function") {
       const govDecision = await effectiveEngine.evaluate({
         organizationId,
         workspaceId,
@@ -190,6 +190,7 @@ export class AgentToolGatewayService {
         resourceClassification: callerContext?.resourceClassification || null,
         riskTier: callerContext?.riskTier || null,
         correlationId: runId,
+        parameters: request.input || {},
       });
 
       if (govDecision.effectiveDecision === "DENY") {
@@ -213,6 +214,9 @@ export class AgentToolGatewayService {
           error: {
             category: "APPROVAL_REQUIRED",
             message: `Tool '${request.toolKey}' requires human approval before execution: ${govDecision.reasonDetails}`,
+            details: {
+              approvalRequestId: govDecision.approvalRequestId,
+            },
           },
           durationMs: Date.now() - startTime,
         };

@@ -47,6 +47,7 @@ export interface PolicyDecisionResult {
   matches: PolicyRuleMatch[];
   mandatoryRestrictionViolated: boolean;
   requiredApprovalRoles?: string[];
+  approvalRequestId?: string;
   correlationId: string;
   timestamp: string;
   simulated: boolean;

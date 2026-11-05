@@ -1,3 +1,37 @@
+## [Unreleased - Epic 22C] - 2026-11-05
+
+### Added
+- **Epic 22C — Enterprise Human-in-the-Loop Approval Workflows:**
+  - **Approval Domain Persistence & Database Migration 0033 (`0033_agent_human_approval_workflows.sql`):**
+    - Added 3 relational tables: `agent_approval_requests`, `agent_approval_decisions`, and `agent_approval_escalations`.
+    - Captures canonical SHA-256 payload fingerprints, matched policy and version, expiration timestamps, and single-use consumption state.
+  - **Deterministic State Machine & Lifecycle Transitions (`agent-approval.service.ts`):**
+    - Validates transitions: `PENDING` -> `APPROVED`, `REJECTED`, `EXPIRED`, `REVOKED`, and `APPROVED` -> `CONSUMED`.
+    - Implemented atomic compare-and-set updates preventing concurrent reviewer modifications or replay attacks.
+  - **Reviewer Authorization Guards:**
+    - Enforced organization scoping and permissions (`agent.manage`, assigned reviewer, or agent ownership).
+    - Hard guards prohibiting agent self-approval and requester self-approval on high/critical risk operations.
+    - Mandatory audit justification enforcement on sensitive actions.
+  - **Secure Execution Continuation (`agent-approval-continuation.service.ts`):**
+    - Re-evaluates live active policies and mandatory restrictions prior to resuming execution.
+    - Matches payload parameters against approved canonical SHA-256 fingerprints to prevent parameter tampering.
+    - Atomically claims approvals for single-use consumption, preventing duplicate side-effects.
+  - **Runtime & Tool Gateway Integration:**
+    - Tool Gateway Gate 1.1 intercepts unapproved operations with `APPROVAL_REQUIRED` and generates persistent approval requests in `ENFORCE` mode.
+    - Bypasses approval checks cleanly when resumed by authorized continuation service with `bypassGovernanceApprovalCheck: true`.
+  - **Governance Center UI — Human Approvals Console (`AgentGovernancePage.tsx`):**
+    - New Human Approvals tab with pending queue count badge, risk distribution cards, and status filter bar.
+    - Interactive 70%-width detail modal displaying request parameters, canonical fingerprints, and immutable decision/escalation history.
+    - Modal dialogs for Approval with justification, Rejection, and Escalation to ownership contacts.
+    - One-click "Execute Approved Action" continuation trigger with inline execution outcome visualization.
+  - **10 REST API Endpoints:** Mounted under `/api/v1/organizations/:organizationId/agent-governance/approvals`.
+
+### Verification
+- 20/20 passing unit and integration tests in `apps/api/tests/epic22c-approval-workflows.test.ts`.
+- 99/99 passing tests across all test suites (Epics 16, 19, 20, 21, 22A, 22B, 22C).
+- 0 TypeScript compiler errors across `apps/api` and `apps/web`.
+- Database schema verified via `drizzle-kit check` ("Everything's fine 🐶🔥").
+
 ## [Unreleased - Epic 22B] - 2026-11-05
 
 ### Added

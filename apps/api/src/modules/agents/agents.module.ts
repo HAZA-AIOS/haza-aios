@@ -8,6 +8,9 @@ import { AgentGovernanceRepository } from "./repositories/agent-governance.repos
 import { AgentGovernanceService } from "./services/agent-governance.service.js";
 import { PolicyEvaluationEngine } from "./services/policy-evaluation-engine.service.js";
 import { PolicySimulationService } from "./services/policy-simulation.service.js";
+import { AgentApprovalRepository } from "./repositories/agent-approval.repository.js";
+import { AgentApprovalService } from "./services/agent-approval.service.js";
+import { AgentApprovalContinuationService } from "./services/agent-approval-continuation.service.js";
 import { AgentTeamService } from "./services/agent-team.service.js";
 import { AgentOrchestrationService } from "./services/agent-orchestration.service.js";
 import {
@@ -3631,6 +3634,308 @@ export const agentsModule: BackendModule = {
           v2,
         );
         sendJson(response, 200, { comparison });
+      },
+    });
+
+    // 21. List Governance Approval Requests
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const status = url.searchParams.get("status") as any;
+        const agentId = url.searchParams.get("agentId") || undefined;
+        const riskClassification = url.searchParams.get("riskClassification") as any;
+        const assignedReviewerId = url.searchParams.get("assignedReviewerId") || undefined;
+        const limit = Number(url.searchParams.get("limit") || "50");
+        const offset = Number(url.searchParams.get("offset") || "0");
+
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const approvals = await service.listApprovals(tenant.organizationId, {
+          status,
+          agentId,
+          riskClassification,
+          assignedReviewerId,
+          limit,
+          offset,
+        });
+
+        sendJson(response, 200, { approvals });
+      },
+    });
+
+    // 22. Get Governance Approval Details
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const details = await service.getApprovalDetails(
+          tenant.organizationId,
+          routeParams.approvalId,
+        );
+        sendJson(response, 200, { details });
+      },
+    });
+
+    // 23. Create Governance Approval Request
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const approvalRequest = await service.createApprovalRequest({
+          ...body,
+          organizationId: tenant.organizationId,
+          requestingActorId: body.requestingActorId || authResult.user.id,
+        });
+
+        sendJson(response, 201, { approvalRequest });
+      },
+    });
+
+    // 24. Approve Governance Approval Request
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId/approve",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const result = await service.decideApprovalRequest({
+          approvalRequestId: routeParams.approvalId,
+          organizationId: tenant.organizationId,
+          decision: "approved",
+          actorId: authResult.user.id,
+          actorType: "user",
+          userRoles: authResult.memberships?.filter(m => m.organizationId === tenant.organizationId).map(m => m.role) || [],
+          userPermissions: authResult.memberships?.find(m => m.organizationId === tenant.organizationId)?.permissions || [],
+          justification: body.justification,
+          reason: body.reason,
+        });
+
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 25. Reject Governance Approval Request
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId/reject",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const result = await service.decideApprovalRequest({
+          approvalRequestId: routeParams.approvalId,
+          organizationId: tenant.organizationId,
+          decision: "rejected",
+          actorId: authResult.user.id,
+          actorType: "user",
+          userRoles: authResult.memberships?.filter(m => m.organizationId === tenant.organizationId).map(m => m.role) || [],
+          userPermissions: authResult.memberships?.find(m => m.organizationId === tenant.organizationId)?.permissions || [],
+          justification: body.justification,
+          reason: body.reason,
+        });
+
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 26. Revoke Governance Approval Request
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId/revoke",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const result = await service.decideApprovalRequest({
+          approvalRequestId: routeParams.approvalId,
+          organizationId: tenant.organizationId,
+          decision: "revoked",
+          actorId: authResult.user.id,
+          actorType: "user",
+          userRoles: authResult.memberships?.filter(m => m.organizationId === tenant.organizationId).map(m => m.role) || [],
+          userPermissions: authResult.memberships?.find(m => m.organizationId === tenant.organizationId)?.permissions || [],
+          reason: body.reason,
+        });
+
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 27. Escalate Governance Approval Request
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId/escalate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body.reason) {
+          throw new ApiError(400, "VALIDATION_FAILED", "Escalation reason is required");
+        }
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const result = await service.escalateApprovalRequest({
+          approvalRequestId: routeParams.approvalId,
+          organizationId: tenant.organizationId,
+          actorId: authResult.user.id,
+          escalatedToReviewerId: body.escalatedToReviewerId,
+          reason: body.reason,
+        });
+
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 28. Get Approval Status
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId/status",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const requestEntity = await approvalRepo.getRequestById(
+          tenant.organizationId,
+          routeParams.approvalId,
+        );
+        if (!requestEntity) {
+          throw new ApiError(404, "NOT_FOUND", "Approval request not found");
+        }
+        sendJson(response, 200, {
+          id: requestEntity.id,
+          status: requestEntity.status,
+          expiresAt: requestEntity.expiresAt,
+          consumedAt: requestEntity.consumedAt,
+          consumedBy: requestEntity.consumedBy,
+          decisionId: requestEntity.decisionId,
+        });
+      },
+    });
+
+    // 29. Continue Approved Execution
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId/continue",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const policyEngine = new PolicyEvaluationEngine(govRepo);
+        const continuationService = new AgentApprovalContinuationService(
+          approvalRepo,
+          policyEngine,
+          undefined,
+          govRepo,
+        );
+
+        const result = await continuationService.continueApprovedExecution({
+          approvalRequestId: routeParams.approvalId,
+          organizationId: tenant.organizationId,
+          actorId: authResult.user.id,
+          providedPayload: body.providedPayload,
+          idempotencyKey: body.idempotencyKey,
+        });
+
+        sendJson(response, 200, { continuation: result });
+      },
+    });
+
+    // 30. Expire Sweep
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/expire-sweep",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo);
+        const expired = await service.sweepExpiredApprovals(tenant.organizationId);
+        sendJson(response, 200, { expiredCount: expired.length, expired });
       },
     });
 

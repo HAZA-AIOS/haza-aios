@@ -292,6 +292,12 @@ export class AgentRuntimeService {
               "FORBIDDEN",
               `Agent execution blocked by governance policy: ${govDecision.reasonDetails}`,
             );
+          } else if (govDecision.effectiveDecision === "REQUIRE_APPROVAL") {
+            throw new ApiError(
+              403,
+              "FORBIDDEN",
+              `Agent execution requires human approval: ${govDecision.reasonDetails}`,
+            );
           }
         } catch (err: any) {
           if (err instanceof ApiError) throw err;

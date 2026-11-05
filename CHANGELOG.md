@@ -1,3 +1,36 @@
+## [Unreleased - Epic 22A] - 2026-11-05
+
+### Added
+- **Epic 22A — Enterprise Agent Governance Foundation:**
+  - **Agent Governance Profiles (`agent-governance.service.ts` & `governance.types.ts`):**
+    - Multi-tenant, organization-scoped governance profiles (`agent_governance_profiles`) capturing security classification (`public`, `internal`, `confidential`, `restricted`) and operational risk tiering (`low`, `medium`, `high`, `critical`).
+    - Compliance framework tags (`SOC2`, `HIPAA`, `GDPR`, `ISO27001`), maximum autonomy level caps (1–4), tool approval flags, and configurable review cadences (in days).
+    - Periodic compliance review scheduling and review recording with automated recalculation of next review due dates and status tracking (`compliant`, `pending_review`, `non_compliant`, `exempt`).
+  - **Ownership & Accountability Console (`agent_ownership_assignments`):**
+    - Mandatory primary owner assignment and escalation contact (email/pager/slack) for every governed agent.
+    - Optional technical owner and business owner role assignments to support cross-functional accountability.
+    - Accountability status tracking (`active`, `orphaned`, `transferred`) with automated detection of orphaned agents lacking owners.
+  - **Governance Policy Registry & Versioning (`agent_governance_policies` & `agent_governance_policy_versions`):**
+    - Centralized policy registry with organization-unique policy keys, covering `security`, `compliance`, `behavioral`, `data_access`, `model_restriction`, and `tool_restriction`.
+    - Four severity tiers (`low`, `medium`, `high`, `critical`) and enforcement actions (`audit`, `warn`, `require_approval`, `block`).
+    - Explicit lifecycle state machine (`draft` -> `review` -> `active` -> `deprecated` -> `archived`) with strict transition validation.
+    - Immutable policy versions table (`agent_governance_policy_versions`) capturing rule snapshots and change summaries on every revision.
+  - **Immutable Governance Audit Ledger (`agent_governance_audit_logs`):**
+    - Append-only audit trail recording actor ID, action name, target type and ID, before/after states, and metadata for all governance profile, policy, review, and ownership operations.
+  - **Database Migration 0032 (`0032_agent_governance_foundation.sql`):**
+    - Added 5 relational tables: `agent_governance_profiles`, `agent_ownership_assignments`, `agent_governance_policies`, `agent_governance_policy_versions`, and `agent_governance_audit_logs`.
+  - **Governance Center UI Console (`apps/web` & `@haza-aios/ui`):**
+    - 5-tab dark premium management console at `/workspace/agents/governance` covering Overview & Risk Posture, Policy Registry, Agent Profiles, Ownership & Accountability, and Audit Ledger.
+    - UI primitives in `@haza-aios/ui`: `GovernanceRiskBadge`, `SecurityClassificationBadge`, `PolicyLifecycleBadge`, `ComplianceStatusBadge`, `GovernanceOverviewMetricCard`, `PolicyInventoryCard`, `AgentGovernanceProfileCard`, and `GovernanceAuditLogTable`.
+  - **14 REST API Endpoints:** Mounted under `/api/v1/organizations/:organizationId/agent-governance/` with tenant RBAC protection.
+
+### Verification
+- 13/13 passing automated unit and integration tests in `apps/api/tests/epic22a-governance-foundation.test.ts`.
+- 12/12 passing regression tests in `apps/api/tests/epic21-observability-reliability.test.ts`.
+- Database schema verified via `npm run db:check -w apps/api` ("Everything's fine 🐶🔥").
+- 0 TypeScript compiler errors across `apps/api`, `apps/web`, and `packages/ui`.
+- Passive policy foundation; zero interference with existing agent executions.
+
 ## [0.21.0-epic21] - 2026-11-04
 
 ### Added

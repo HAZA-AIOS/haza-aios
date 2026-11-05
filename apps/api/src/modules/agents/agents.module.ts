@@ -4,6 +4,8 @@ import { AgentObservabilityService } from "./services/agent-observability.servic
 import { AgentEvaluationService } from "./services/agent-evaluation.service.js";
 import { AgentReliabilityService } from "./services/agent-reliability.service.js";
 import { AgentCostService } from "./services/agent-cost.service.js";
+import { AgentGovernanceRepository } from "./repositories/agent-governance.repository.js";
+import { AgentGovernanceService } from "./services/agent-governance.service.js";
 import { AgentTeamService } from "./services/agent-team.service.js";
 import { AgentOrchestrationService } from "./services/agent-orchestration.service.js";
 import {
@@ -3184,6 +3186,322 @@ export const agentsModule: BackendModule = {
         sendJson(response, 200, { costAttribution });
       },
     });
+
+    // =========================================================================
+    // EPIC 22A: ENTERPRISE AGENT GOVERNANCE FOUNDATION
+    // =========================================================================
+
+    // 1. Get Governance Overview Stats
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/overview",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const overview = await service.getGovernanceOverview(tenant.organizationId);
+        sendJson(response, 200, { overview });
+      },
+    });
+
+    // 2. List Agent Governance Profiles
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/profiles",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const riskTier = url.searchParams.get("riskTier") || undefined;
+        const complianceStatus = url.searchParams.get("complianceStatus") || undefined;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const profiles = await service.listProfiles(tenant.organizationId, {
+          riskTier,
+          complianceStatus,
+        });
+        sendJson(response, 200, { profiles });
+      },
+    });
+
+    // 3. Get Single Agent Governance Profile
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/profiles/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const data = await service.getAgentProfile(tenant.organizationId, routeParams.agentId);
+        sendJson(response, 200, data);
+      },
+    });
+
+    // 4. Upsert Agent Governance Profile
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/profiles/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const profile = await service.upsertProfile({
+          ...body,
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          userId: auth.user.id,
+        });
+        sendJson(response, 200, { profile });
+      },
+    });
+
+    // 5. Record Compliance Review for Agent
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/profiles/:agentId/review",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const profile = await service.recordAgentReview({
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          reviewedBy: auth.user.id,
+          complianceStatus: body.complianceStatus || "compliant",
+          notes: body.notes,
+        });
+        sendJson(response, 200, { profile });
+      },
+    });
+
+    // 6. List Ownership Assignments
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/ownership",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const ownerships = await service.listOwnership(tenant.organizationId);
+        sendJson(response, 200, { ownerships });
+      },
+    });
+
+    // 7. Get Agent Ownership Assignment
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/ownership/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const ownership = await service.getAgentOwnership(tenant.organizationId, routeParams.agentId);
+        sendJson(response, 200, { ownership });
+      },
+    });
+
+    // 8. Assign Agent Ownership
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/ownership/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const ownership = await service.assignOwnership({
+          ...body,
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          assignedBy: auth.user.id,
+        });
+        sendJson(response, 200, { ownership });
+      },
+    });
+
+    // 9. List Governance Policies
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/policies",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const policyType = url.searchParams.get("policyType") || undefined;
+        const lifecycleState = url.searchParams.get("lifecycleState") || undefined;
+        const severity = url.searchParams.get("severity") || undefined;
+        const scopeType = url.searchParams.get("scopeType") || undefined;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const policies = await service.listPolicies(tenant.organizationId, {
+          policyType,
+          lifecycleState,
+          severity,
+          scopeType,
+        });
+        sendJson(response, 200, { policies });
+      },
+    });
+
+    // 10. Register / Create Governance Policy
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/policies",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const policy = await service.createPolicy({
+          ...body,
+          organizationId: tenant.organizationId,
+          createdBy: auth.user.id,
+        });
+        sendJson(response, 201, { policy });
+      },
+    });
+
+    // 11. Get Governance Policy & Version History
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/policies/:policyId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const data = await service.getPolicy(tenant.organizationId, routeParams.policyId);
+        sendJson(response, 200, data);
+      },
+    });
+
+    // 12. Update Governance Policy Definition
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/policies/:policyId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const policy = await service.updatePolicy(
+          tenant.organizationId,
+          routeParams.policyId,
+          {
+            ...body,
+            updatedBy: auth.user.id,
+          },
+        );
+        sendJson(response, 200, { policy });
+      },
+    });
+
+    // 13. Transition Policy Lifecycle State
+    router.register({
+      method: "PATCH",
+      path: "/api/v1/organizations/:organizationId/agent-governance/policies/:policyId/lifecycle",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const policy = await service.transitionPolicyLifecycle(
+          tenant.organizationId,
+          routeParams.policyId,
+          body.lifecycleState,
+          auth.user.id,
+        );
+        sendJson(response, 200, { policy });
+      },
+    });
+
+    // 14. List Governance Audit Logs
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/audit-logs",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const targetType = url.searchParams.get("targetType") || undefined;
+        const targetId = url.searchParams.get("targetId") || undefined;
+        const limit = Number(url.searchParams.get("limit") || "50");
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const auditLogs = await service.listAuditLogs(tenant.organizationId, {
+          targetType,
+          targetId,
+          limit,
+        });
+        sendJson(response, 200, { auditLogs });
+      },
+    });
+
   },
 };
 

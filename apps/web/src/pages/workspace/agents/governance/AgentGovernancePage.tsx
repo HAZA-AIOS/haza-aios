@@ -36,6 +36,17 @@ import {
   type WebAgentSecretReference,
   type WebAgentSecurityEvent,
   type WebSecurityPostureSummary,
+  type WebComplianceOverview,
+  type WebComplianceFramework,
+  type WebComplianceControl,
+  type WebComplianceAuditEvent,
+  type WebAuditChainVerification,
+  type WebComplianceEvidence,
+  type WebEvidencePackage,
+  type WebRetentionPolicy,
+  type WebLegalHold,
+  type WebComplianceInvestigation,
+  type WebInvestigationTimeline,
 } from "../../../../agents/governance-service";
 
 type ActiveTab =
@@ -45,6 +56,7 @@ type ActiveTab =
   | "decisions"
   | "approvals"
   | "security"
+  | "compliance"
   | "profiles"
   | "ownership"
   | "audit";
@@ -95,6 +107,46 @@ export function AgentGovernancePage() {
   const [newSecretAgents, setNewSecretAgents] = React.useState("");
   const [newSecretTools, setNewSecretTools] = React.useState("");
   const [newSecretVal, setNewSecretVal] = React.useState("");
+
+  // Compliance & Evidence State (Phase 22E)
+  const [complianceOverview, setComplianceOverview] = React.useState<WebComplianceOverview | null>(null);
+  const [complianceFrameworks, setComplianceFrameworks] = React.useState<WebComplianceFramework[]>([]);
+  const [complianceControls, setComplianceControls] = React.useState<WebComplianceControl[]>([]);
+  const [complianceAuditEvents, setComplianceAuditEvents] = React.useState<WebComplianceAuditEvent[]>([]);
+  const [auditChainVerification, setAuditChainVerification] = React.useState<WebAuditChainVerification | null>(null);
+  const [verifyingChain, setVerifyingChain] = React.useState(false);
+  const [complianceEvidenceList, setComplianceEvidenceList] = React.useState<WebComplianceEvidence[]>([]);
+  const [evidencePackages, setEvidencePackages] = React.useState<WebEvidencePackage[]>([]);
+  const [retentionPolicies, setRetentionPolicies] = React.useState<WebRetentionPolicy[]>([]);
+  const [legalHolds, setLegalHolds] = React.useState<WebLegalHold[]>([]);
+  const [investigations, setInvestigations] = React.useState<WebComplianceInvestigation[]>([]);
+  const [complianceSubTab, setComplianceSubTab] = React.useState<"overview" | "controls" | "audit" | "evidence" | "holds" | "investigations">("overview");
+  const [disposalPreviewData, setDisposalPreviewData] = React.useState<any | null>(null);
+  const [investigationTimelineData, setInvestigationTimelineData] = React.useState<{ caseNumber: string; timeline: WebInvestigationTimeline[] } | null>(null);
+
+  // Compliance Modals
+  const [verifyControlModal, setVerifyControlModal] = React.useState<WebComplianceControl | null>(null);
+  const [verifyControlStatus, setVerifyControlStatus] = React.useState("VERIFIED");
+  const [verifyControlExceptions, setVerifyControlExceptions] = React.useState("");
+
+  const [showCollectEvidenceModal, setShowCollectEvidenceModal] = React.useState(false);
+  const [newEvidenceTitle, setNewEvidenceTitle] = React.useState("");
+  const [newEvidenceType, setNewEvidenceType] = React.useState("test_report");
+  const [newEvidenceSource, setNewEvidenceSource] = React.useState("automated_verifier");
+  const [newEvidenceClass, setNewEvidenceClass] = React.useState("INTERNAL");
+  const [newEvidencePayload, setNewEvidencePayload] = React.useState("{\n  \"status\": \"passed\"\n}");
+
+  const [showCreateHoldModal, setShowCreateHoldModal] = React.useState(false);
+  const [newHoldName, setNewHoldName] = React.useState("");
+  const [newHoldReason, setNewHoldReason] = React.useState("");
+  const [newHoldScope, setNewHoldScope] = React.useState("ALL");
+
+  const [showCreateInvModal, setShowCreateInvModal] = React.useState(false);
+  const [newInvTitle, setNewInvTitle] = React.useState("");
+  const [newInvDesc, setNewInvDesc] = React.useState("");
+
+  const [showExportPackageModal, setShowExportPackageModal] = React.useState(false);
+  const [selectedEvidenceForExport, setSelectedEvidenceForExport] = React.useState<string[]>([]);
 
   // Dialog / Modal states
   const [showCreatePolicy, setShowCreatePolicy] = React.useState(false);
@@ -158,6 +210,14 @@ export function AgentGovernancePage() {
         secProfilesData,
         secretsData,
         secEventsData,
+        compOverviewData,
+        compFrameworksData,
+        compControlsData,
+        compEvidenceData,
+        compHoldsData,
+        compPackagesData,
+        compRetentionData,
+        compInvestigationsData,
       ] = await Promise.allSettled([
         agentGovernanceService.getOverview(orgId),
         agentGovernanceService.listPolicies(orgId),
@@ -171,6 +231,14 @@ export function AgentGovernancePage() {
         agentGovernanceService.listSecurityProfiles(orgId),
         agentGovernanceService.listSecretReferences(orgId),
         agentGovernanceService.listSecurityEvents(orgId, { limit: 50 }),
+        agentGovernanceService.getComplianceOverview(orgId),
+        agentGovernanceService.listComplianceFrameworks(orgId),
+        agentGovernanceService.listComplianceControls(orgId),
+        agentGovernanceService.listEvidence(orgId, { limit: 50 }),
+        agentGovernanceService.listLegalHolds(orgId),
+        agentGovernanceService.listEvidencePackages(orgId),
+        agentGovernanceService.listRetentionPolicies(orgId),
+        agentGovernanceService.listInvestigations(orgId),
       ]);
 
       if (overviewData.status === "fulfilled") setOverview(overviewData.value);
@@ -185,6 +253,14 @@ export function AgentGovernancePage() {
       if (secProfilesData.status === "fulfilled") setSecurityProfiles(secProfilesData.value.items);
       if (secretsData.status === "fulfilled") setSecretReferences(secretsData.value.items);
       if (secEventsData.status === "fulfilled") setSecurityEvents(secEventsData.value.items);
+      if (compOverviewData.status === "fulfilled") setComplianceOverview(compOverviewData.value);
+      if (compFrameworksData.status === "fulfilled") setComplianceFrameworks(compFrameworksData.value.items);
+      if (compControlsData.status === "fulfilled") setComplianceControls(compControlsData.value.items);
+      if (compEvidenceData.status === "fulfilled") setComplianceEvidenceList(compEvidenceData.value.items);
+      if (compHoldsData.status === "fulfilled") setLegalHolds(compHoldsData.value.items);
+      if (compPackagesData.status === "fulfilled") setEvidencePackages(compPackagesData.value.items);
+      if (compRetentionData.status === "fulfilled") setRetentionPolicies(compRetentionData.value.items);
+      if (compInvestigationsData.status === "fulfilled") setInvestigations(compInvestigationsData.value.items);
     } catch (err: any) {
       setError(err?.message || "Failed to load governance telemetry");
     } finally {
@@ -517,6 +593,157 @@ export function AgentGovernancePage() {
     }
   };
 
+  // Compliance Handlers (Phase 22E)
+  const handleVerifyChain = async () => {
+    try {
+      setVerifyingChain(true);
+      setError(null);
+      const res = await agentGovernanceService.verifyAuditIntegrity(orgId);
+      setAuditChainVerification(res);
+      setActionSuccess("Cryptographic audit integrity verification completed");
+    } catch (err: any) {
+      setError(err?.message || "Audit verification failed");
+    } finally {
+      setVerifyingChain(false);
+    }
+  };
+
+  const handleVerifyControlSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!verifyControlModal) return;
+    try {
+      setError(null);
+      await agentGovernanceService.verifyComplianceControl(orgId, verifyControlModal.id, {
+        status: verifyControlStatus,
+        exceptions: verifyControlExceptions || undefined,
+      });
+      setVerifyControlModal(null);
+      setActionSuccess(`Control '${verifyControlModal.controlKey}' updated to ${verifyControlStatus}`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to update control verification");
+    }
+  };
+
+  const handleCollectEvidenceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEvidenceTitle || !newEvidenceSource) return;
+    try {
+      setError(null);
+      let payload = {};
+      try {
+        payload = JSON.parse(newEvidencePayload);
+      } catch {
+        payload = { text: newEvidencePayload };
+      }
+      await agentGovernanceService.collectEvidence(orgId, {
+        title: newEvidenceTitle,
+        evidenceType: newEvidenceType,
+        source: newEvidenceSource,
+        classification: newEvidenceClass,
+        structuredPayload: payload,
+      });
+      setShowCollectEvidenceModal(false);
+      setNewEvidenceTitle("");
+      setActionSuccess("Compliance evidence collected and cryptographically hashed");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to collect evidence");
+    }
+  };
+
+  const handleCreateHoldSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newHoldName || !newHoldReason) return;
+    try {
+      setError(null);
+      await agentGovernanceService.createLegalHold(orgId, {
+        name: newHoldName,
+        reason: newHoldReason,
+        scopeType: newHoldScope,
+      });
+      setShowCreateHoldModal(false);
+      setNewHoldName("");
+      setNewHoldReason("");
+      setActionSuccess("Legal hold activated. Affected records are now protected from retention disposal.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to create legal hold");
+    }
+  };
+
+  const handleReleaseHold = async (holdIdentifier: string) => {
+    const just = prompt("Enter mandatory justification for releasing this legal hold:");
+    if (!just) return;
+    try {
+      setError(null);
+      await agentGovernanceService.releaseLegalHold(orgId, holdIdentifier, just);
+      setActionSuccess(`Legal hold '${holdIdentifier}' released`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to release legal hold");
+    }
+  };
+
+  const handleCreateInvSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newInvTitle) return;
+    try {
+      setError(null);
+      await agentGovernanceService.createInvestigation(orgId, {
+        title: newInvTitle,
+        description: newInvDesc || undefined,
+      });
+      setShowCreateInvModal(false);
+      setNewInvTitle("");
+      setNewInvDesc("");
+      setActionSuccess("Investigation case opened");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to create investigation case");
+    }
+  };
+
+  const handlePreviewDisposal = async () => {
+    try {
+      setError(null);
+      const res = await agentGovernanceService.previewDisposal(orgId);
+      setDisposalPreviewData(res);
+      setActionSuccess("Dry-run disposal preview generated");
+    } catch (err: any) {
+      setError(err?.message || "Failed to preview disposal");
+    }
+  };
+
+  const handleViewTimeline = async (inv: WebComplianceInvestigation) => {
+    try {
+      setError(null);
+      const res = await agentGovernanceService.getInvestigationTimeline(orgId, {});
+      setInvestigationTimelineData({ caseNumber: inv.caseNumber, timeline: res.timeline });
+    } catch (err: any) {
+      setError(err?.message || "Failed to load timeline");
+    }
+  };
+
+  const handleExportPackageSubmit = async () => {
+    if (complianceEvidenceList.length === 0) {
+      setError("No evidence items available to export");
+      return;
+    }
+    try {
+      setError(null);
+      const evidenceIds = complianceEvidenceList.slice(0, 10).map((e) => e.id);
+      await agentGovernanceService.generateEvidencePackage(orgId, {
+        evidenceIds,
+      });
+      setShowExportPackageModal(false);
+      setActionSuccess("Evidence package generated with SHA-256 manifest");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to export package");
+    }
+  };
+
   return (
     <div className="flex-1 space-y-6 p-8 pt-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -726,6 +953,21 @@ export function AgentGovernancePage() {
               {securityPosture?.suspendedAgentsCount} Suspended
             </span>
           ) : null}
+        </button>
+        <button
+          onClick={() => setActiveTab("compliance")}
+          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${
+            activeTab === "compliance"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <span>Compliance & Audit</span>
+          {complianceOverview && (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-primary/20 text-primary border border-primary/30">
+              {complianceOverview.frameworkCoveragePercent}%
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveTab("profiles")}
@@ -1565,6 +1807,961 @@ export function AgentGovernancePage() {
               )}
             </div>
           </Card>
+        </div>
+      )}
+
+      {/* Tab: Compliance & Audit (Phase 22E) */}
+      {activeTab === "compliance" && (
+        <div className="space-y-6">
+          {/* Sub-Navigation Pills */}
+          <div className="flex items-center gap-2 border-b border-border/40 pb-3 overflow-x-auto">
+            {[
+              { id: "overview", label: "Overview & Frameworks" },
+              { id: "controls", label: `Controls & Mapping (${complianceControls.length})` },
+              { id: "audit", label: "Audit Ledger & Integrity" },
+              { id: "evidence", label: `Evidence & Packages (${complianceEvidenceList.length})` },
+              { id: "holds", label: `Legal Holds & Retention (${legalHolds.length})` },
+              { id: "investigations", label: `Investigations (${investigations.length})` },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setComplianceSubTab(tab.id as any)}
+                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap ${
+                  complianceSubTab === tab.id
+                    ? "bg-primary text-primary-foreground font-semibold shadow-sm"
+                    : "bg-card/60 text-muted-foreground hover:text-foreground border border-border/40"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Sub-Tab 1: Overview & Frameworks */}
+          {complianceSubTab === "overview" && (
+            <div className="space-y-6">
+              {/* Compliance Posture Metrics */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <GovernanceOverviewMetricCard
+                  title="Framework Coverage"
+                  value={`${complianceOverview?.frameworkCoveragePercent ?? 0}%`}
+                  subtitle="Implemented controls"
+                  badge={<span className="text-[10px] font-mono text-emerald-400">Target: 100%</span>}
+                />
+                <GovernanceOverviewMetricCard
+                  title="Total Controls"
+                  value={complianceOverview?.totalControls ?? complianceControls.length}
+                  subtitle={`${complianceOverview?.verifiedControls ?? 0} verified`}
+                  badge={<span className="text-[10px] font-mono text-muted-foreground">Across Frameworks</span>}
+                />
+                <GovernanceOverviewMetricCard
+                  title="Evidence Items"
+                  value={complianceOverview?.totalEvidenceCount ?? complianceEvidenceList.length}
+                  subtitle={`${complianceOverview?.totalPackagesCount ?? evidencePackages.length} packages`}
+                  badge={<span className="text-[10px] font-mono text-blue-400">Hashed</span>}
+                />
+                <GovernanceOverviewMetricCard
+                  title="Active Legal Holds"
+                  value={complianceOverview?.activeHoldsCount ?? legalHolds.filter((h) => h.status === "ACTIVE").length}
+                  subtitle="Retention override"
+                  badge={
+                    (complianceOverview?.activeHoldsCount ?? 0) > 0 ? (
+                      <span className="text-[10px] font-mono text-amber-400">Protected</span>
+                    ) : (
+                      <span className="text-[10px] font-mono text-muted-foreground">Standard</span>
+                    )
+                  }
+                />
+                <GovernanceOverviewMetricCard
+                  title="Audit Chain Status"
+                  value={complianceOverview?.auditIntegrityStatus.isValid ? "VERIFIED" : "VERIFY NOW"}
+                  subtitle={`${complianceOverview?.auditIntegrityStatus.totalEvents ?? 0} events`}
+                  badge={
+                    complianceOverview?.auditIntegrityStatus.isValid ? (
+                      <span className="text-[10px] font-mono text-emerald-400">SHA-256 Valid</span>
+                    ) : (
+                      <span className="text-[10px] font-mono text-amber-400">Pending</span>
+                    )
+                  }
+                />
+              </div>
+
+              {/* Disclaimer Banner */}
+              <div className="p-4 rounded-xl border border-border/70 bg-card/60 text-xs text-muted-foreground space-y-1">
+                <span className="font-semibold text-foreground flex items-center gap-1.5">
+                  <span className="text-primary font-bold">ℹ</span> Compliance & Governance Disclaimer
+                </span>
+                <p>
+                  HAZA-AIOS compliance frameworks and control mappings provide continuous internal governance, tamper-evident audit trails, and evidence management. They do not constitute formal legal certification or external audit attestation. Verification requires explicit authorized human review.
+                </p>
+              </div>
+
+              {/* Frameworks Grid */}
+              <div className="space-y-3">
+                <h3 className="font-semibold text-base text-foreground">Standard Compliance Frameworks</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {complianceFrameworks.map((fw) => {
+                    const fwControls = complianceControls.filter((c) => c.frameworkId === fw.id);
+                    const implementedCount = fwControls.filter(
+                      (c) => c.implementationStatus === "IMPLEMENTED" || c.implementationStatus === "VERIFIED",
+                    ).length;
+                    const coverage = fwControls.length > 0 ? Math.round((implementedCount / fwControls.length) * 100) : 0;
+
+                    return (
+                      <Card key={fw.id} className="p-5 bg-card border-border/80 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-primary px-2 py-0.5 rounded bg-primary/10 border border-primary/20">
+                              {fw.frameworkKey.toUpperCase()}
+                            </span>
+                            <h4 className="font-semibold text-sm text-foreground">{fw.name}</h4>
+                          </div>
+                          <span className="text-[11px] font-mono text-muted-foreground">v{fw.version}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{fw.description}</p>
+                        <div className="space-y-1.5 pt-2 border-t border-border/40">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Control Implementation</span>
+                            <span className="font-mono font-bold text-foreground">
+                              {implementedCount}/{fwControls.length} ({coverage}%)
+                            </span>
+                          </div>
+                          <div className="w-full bg-muted/40 h-2 rounded-full overflow-hidden">
+                            <div
+                              className="bg-primary h-full transition-all duration-300"
+                              style={{ width: `${coverage}%` }}
+                            />
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sub-Tab 2: Controls & Mapping */}
+          {complianceSubTab === "controls" && (
+            <Card className="p-5 bg-card border-border/80 space-y-4">
+              <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                <div>
+                  <h3 className="font-semibold text-base text-foreground">Compliance Control Registry</h3>
+                  <span className="text-xs text-muted-foreground">
+                    Mapped platform controls with review cadence, verification records, and exceptions.
+                  </span>
+                </div>
+                <Button size="sm" variant="outline" onClick={loadData}>
+                  Refresh Controls
+                </Button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-muted/40 text-muted-foreground uppercase text-[10px] tracking-wider font-mono">
+                    <tr>
+                      <th className="py-2.5 px-3">Control Key</th>
+                      <th className="py-2.5 px-3">Title & Category</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3">Review Frequency</th>
+                      <th className="py-2.5 px-3">Verification</th>
+                      <th className="py-2.5 px-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40 font-mono">
+                    {complianceControls.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-6 text-muted-foreground">
+                          No controls mapped yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      complianceControls.map((c) => (
+                        <tr key={c.id} className="hover:bg-muted/10 transition-colors">
+                          <td className="py-3 px-3 font-bold text-foreground">{c.controlKey}</td>
+                          <td className="py-3 px-3 font-sans">
+                            <div className="font-semibold text-foreground">{c.title}</div>
+                            <span className="text-[11px] text-muted-foreground">{c.category}</span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                c.implementationStatus === "VERIFIED"
+                                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                  : c.implementationStatus === "IMPLEMENTED"
+                                  ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                                  : c.implementationStatus === "EVIDENCE_PENDING"
+                                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                  : "bg-zinc-500/20 text-zinc-300 border border-zinc-500/30"
+                              }`}
+                            >
+                              {c.implementationStatus}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-muted-foreground">Every {c.reviewFrequencyDays}d</td>
+                          <td className="py-3 px-3 text-muted-foreground">
+                            {c.verifiedAt ? (
+                              <span>{new Date(c.verifiedAt).toLocaleDateString()}</span>
+                            ) : (
+                              <span className="italic">Unverified</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setVerifyControlModal(c);
+                                setVerifyControlStatus(c.implementationStatus);
+                                setVerifyControlExceptions(c.exceptions || "");
+                              }}
+                            >
+                              Verify / Review
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Sub-Tab 3: Unified Audit Ledger & Verification */}
+          {complianceSubTab === "audit" && (
+            <div className="space-y-6">
+              {/* Audit Integrity Engine Verification Card */}
+              <Card className="p-5 bg-card border-border/80 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/40 pb-3">
+                  <div>
+                    <h3 className="font-semibold text-base text-foreground">Tamper-Evident Audit Ledger</h3>
+                    <span className="text-xs text-muted-foreground">
+                      Cryptographically linked SHA-256 hash chain verifying event continuity, payload authenticity, and sequence monotonically.
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={handleVerifyChain}
+                    disabled={verifyingChain}
+                    className="bg-primary text-primary-foreground font-semibold"
+                  >
+                    {verifyingChain ? "Verifying Hash Chain..." : "Run Cryptographic Verification"}
+                  </Button>
+                </div>
+
+                {auditChainVerification && (
+                  <div
+                    className={`p-4 rounded-xl border text-xs space-y-2 ${
+                      auditChainVerification.isValid
+                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                        : "border-rose-500/40 bg-rose-500/10 text-rose-300"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="font-mono uppercase text-sm">
+                        {auditChainVerification.isValid ? "✓ INTEGRITY VERIFIED (PASS)" : "✗ INTEGRITY VIOLATION DETECTED"}
+                      </span>
+                      <span className="font-mono text-[11px] opacity-80">
+                        {auditChainVerification.verifiedAt}
+                      </span>
+                    </div>
+                    <p className="font-mono">{auditChainVerification.details}</p>
+                    <div className="flex items-center gap-4 text-[11px] font-mono pt-1">
+                      <span>Total Events: {auditChainVerification.totalEventsVerified}</span>
+                      {auditChainVerification.sequenceRange && (
+                        <span>
+                          Range: Seq {auditChainVerification.sequenceRange.from} → {auditChainVerification.sequenceRange.to}
+                        </span>
+                      )}
+                      <span>Algorithm: SHA-256</span>
+                    </div>
+                  </div>
+                )}
+              </Card>
+
+              {/* Audit Events Stream */}
+              <Card className="p-5 bg-card border-border/80 space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <div>
+                    <h3 className="font-semibold text-base text-foreground">Audit Ledger Stream</h3>
+                    <span className="text-xs text-muted-foreground">
+                      Normalized compliance events from runtime execution, policy decisions, approvals, and security controls.
+                    </span>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={loadData}>
+                    Refresh Stream
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {complianceAuditEvents.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground text-xs">
+                      No audit events loaded. Events are recorded continuously upon agent and policy actions.
+                    </div>
+                  ) : (
+                    complianceAuditEvents.map((evt) => (
+                      <div
+                        key={evt.id}
+                        className="p-3 rounded-lg bg-muted/20 border border-border/40 flex items-center justify-between text-xs"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-primary/20 text-primary border border-primary/30">
+                              {evt.eventCategory}
+                            </span>
+                            <span className="font-bold text-foreground font-mono">{evt.eventType}</span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="text-muted-foreground font-mono">Actor: {evt.actorId || "system"}</span>
+                          </div>
+                          <p className="text-muted-foreground text-[11px] font-mono">
+                            {JSON.stringify(evt.redactedMetadata)}
+                          </p>
+                        </div>
+                        <div className="text-right space-y-1">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              evt.eventOutcome === "SUCCESS"
+                                ? "bg-emerald-500/20 text-emerald-300"
+                                : "bg-rose-500/20 text-rose-300"
+                            }`}
+                          >
+                            {evt.eventOutcome}
+                          </span>
+                          <div className="text-[10px] text-muted-foreground font-mono">
+                            {new Date(evt.eventTimestamp).toLocaleTimeString()}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* Sub-Tab 4: Evidence & Packages */}
+          {complianceSubTab === "evidence" && (
+            <div className="space-y-6">
+              {/* Evidence Registry */}
+              <Card className="p-5 bg-card border-border/80 space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <div>
+                    <h3 className="font-semibold text-base text-foreground">Compliance Evidence Registry</h3>
+                    <span className="text-xs text-muted-foreground">
+                      Cryptographically hashed execution logs, test outputs, and review records.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setShowCollectEvidenceModal(true)}>
+                      + Collect Evidence
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => setShowExportPackageModal(true)}
+                      className="bg-primary text-primary-foreground font-semibold"
+                    >
+                      Export Evidence Package
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-muted/40 text-muted-foreground uppercase text-[10px] tracking-wider font-mono">
+                      <tr>
+                        <th className="py-2.5 px-3">Title & Source</th>
+                        <th className="py-2.5 px-3">Type</th>
+                        <th className="py-2.5 px-3">Classification</th>
+                        <th className="py-2.5 px-3">Content Checksum (SHA-256)</th>
+                        <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3 text-right">Collected</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40 font-mono">
+                      {complianceEvidenceList.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="text-center py-6 text-muted-foreground">
+                            No evidence items collected yet. Click &quot;+ Collect Evidence&quot; to register a record.
+                          </td>
+                        </tr>
+                      ) : (
+                        complianceEvidenceList.map((ev) => (
+                          <tr key={ev.id} className="hover:bg-muted/10 transition-colors">
+                            <td className="py-3 px-3 font-sans">
+                              <div className="font-semibold text-foreground">{ev.title}</div>
+                              <span className="text-[11px] text-muted-foreground font-mono">{ev.source}</span>
+                            </td>
+                            <td className="py-3 px-3 text-muted-foreground uppercase">{ev.evidenceType}</td>
+                            <td className="py-3 px-3">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] bg-muted/60 text-muted-foreground">
+                                {ev.classification}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 font-mono text-[11px] text-muted-foreground">
+                              {ev.contentHash.slice(0, 16)}...
+                            </td>
+                            <td className="py-3 px-3">
+                              {ev.isUnderLegalHold ? (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                  LEGAL HOLD
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300">
+                                  VALID
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right text-muted-foreground">
+                              {new Date(ev.collectedAt).toLocaleDateString()}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+
+              {/* Exported Packages Table */}
+              <Card className="p-5 bg-card border-border/80 space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <div>
+                    <h3 className="font-semibold text-base text-foreground">Authorized Evidence Packages</h3>
+                    <span className="text-xs text-muted-foreground">
+                      Self-contained, independently verifiable export manifests with individual checksums and redaction.
+                    </span>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={loadData}>
+                    Refresh Packages
+                  </Button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-muted/40 text-muted-foreground uppercase text-[10px] tracking-wider font-mono">
+                      <tr>
+                        <th className="py-2.5 px-3">Package Identifier</th>
+                        <th className="py-2.5 px-3">Manifest Checksum</th>
+                        <th className="py-2.5 px-3">Evidence Count</th>
+                        <th className="py-2.5 px-3">Redaction</th>
+                        <th className="py-2.5 px-3 text-right">Exported At</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40 font-mono">
+                      {evidencePackages.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="text-center py-6 text-muted-foreground">
+                            No evidence packages exported yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        evidencePackages.map((pkg) => (
+                          <tr key={pkg.id} className="hover:bg-muted/10 transition-colors">
+                            <td className="py-3 px-3 font-bold text-foreground">{pkg.packageIdentifier}</td>
+                            <td className="py-3 px-3 text-[11px] text-muted-foreground">
+                              {pkg.manifestChecksum.slice(0, 16)}...
+                            </td>
+                            <td className="py-3 px-3 text-muted-foreground">{pkg.evidenceIds.length} items</td>
+                            <td className="py-3 px-3 text-muted-foreground">{pkg.redactionLevel}</td>
+                            <td className="py-3 px-3 text-right text-muted-foreground">
+                              {new Date(pkg.exportedAt).toLocaleDateString()}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* Sub-Tab 5: Legal Holds & Retention */}
+          {complianceSubTab === "holds" && (
+            <div className="space-y-6">
+              {/* Active Legal Holds */}
+              <Card className="p-5 bg-card border-border/80 space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <div>
+                    <h3 className="font-semibold text-base text-foreground">Active Legal Holds</h3>
+                    <span className="text-xs text-muted-foreground">
+                      Mandatory preservation holds overriding retention disposal policies for litigation and audit readiness.
+                    </span>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setShowCreateHoldModal(true)}>
+                    + Create Legal Hold
+                  </Button>
+                </div>
+
+                <div className="space-y-3">
+                  {legalHolds.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground text-xs">
+                      No active legal holds. Records follow standard retention policies.
+                    </div>
+                  ) : (
+                    legalHolds.map((h) => (
+                      <div
+                        key={h.id}
+                        className="p-4 rounded-xl border border-border/60 bg-muted/10 flex items-center justify-between text-xs"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono ${
+                                h.status === "ACTIVE"
+                                  ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                  : "bg-muted/60 text-muted-foreground"
+                              }`}
+                            >
+                              {h.status}
+                            </span>
+                            <span className="font-bold text-foreground font-mono">{h.holdIdentifier}</span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="font-semibold text-foreground">{h.name}</span>
+                          </div>
+                          <p className="text-muted-foreground text-xs">{h.reason}</p>
+                          <div className="text-[11px] text-muted-foreground font-mono">
+                            Scope: {h.scopeType} · Created: {new Date(h.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                        {h.status === "ACTIVE" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleReleaseHold(h.holdIdentifier)}
+                            className="border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                          >
+                            Release Hold
+                          </Button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+
+              {/* Retention Policies & Dry-Run Disposal Preview */}
+              <Card className="p-5 bg-card border-border/80 space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <div>
+                    <h3 className="font-semibold text-base text-foreground">Record Retention Policies</h3>
+                    <span className="text-xs text-muted-foreground">
+                      Category-based retention rules with dry-run disposal simulation (zero destructive purge in Phase 22E).
+                    </span>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={handlePreviewDisposal}>
+                    Run Dry-Run Disposal Preview
+                  </Button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-muted/40 text-muted-foreground uppercase text-[10px] tracking-wider font-mono">
+                      <tr>
+                        <th className="py-2.5 px-3">Record Category</th>
+                        <th className="py-2.5 px-3">Retention Duration</th>
+                        <th className="py-2.5 px-3">Disposal Action</th>
+                        <th className="py-2.5 px-3 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40 font-mono">
+                      {retentionPolicies.map((p) => (
+                        <tr key={p.id} className="hover:bg-muted/10 transition-colors">
+                          <td className="py-3 px-3 font-bold text-foreground">{p.recordCategory}</td>
+                          <td className="py-3 px-3 text-muted-foreground">{p.retentionDurationDays} days</td>
+                          <td className="py-3 px-3 text-muted-foreground uppercase">{p.disposalAction}</td>
+                          <td className="py-3 px-3 text-right">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300">
+                              {p.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {disposalPreviewData && (
+                  <div className="p-4 rounded-xl border border-border/70 bg-card text-xs space-y-2 mt-4 font-mono">
+                    <div className="flex items-center justify-between font-bold text-foreground">
+                      <span>DRY-RUN DISPOSAL PREVIEW PLAN</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {disposalPreviewData.candidateCount} Candidates · {disposalPreviewData.protectedCount} Protected
+                      </span>
+                    </div>
+                    <p className="text-muted-foreground">
+                      Evaluated {disposalPreviewData.policiesEvaluated} retention policies against {disposalPreviewData.activeHoldsCount} active legal holds. Zero database deletion executed.
+                    </p>
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
+
+          {/* Sub-Tab 6: Investigations & Timeline */}
+          {complianceSubTab === "investigations" && (
+            <div className="space-y-6">
+              <Card className="p-5 bg-card border-border/80 space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <div>
+                    <h3 className="font-semibold text-base text-foreground">Audit Investigations & Incident Cases</h3>
+                    <span className="text-xs text-muted-foreground">
+                      Chronological activity reconstruction linking requests, policy evaluation, approvals, security gates, and tool executions.
+                    </span>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setShowCreateInvModal(true)}>
+                    + Open Investigation Case
+                  </Button>
+                </div>
+
+                <div className="space-y-3">
+                  {investigations.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground text-xs">
+                      No investigation cases open. Click &quot;+ Open Investigation Case&quot; to begin.
+                    </div>
+                  ) : (
+                    investigations.map((inv) => (
+                      <div
+                        key={inv.id}
+                        className="p-4 rounded-xl border border-border/60 bg-muted/10 flex items-center justify-between text-xs"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-primary/20 text-primary border border-primary/30">
+                              {inv.status}
+                            </span>
+                            <span className="font-bold text-foreground font-mono">{inv.caseNumber}</span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="font-semibold text-foreground">{inv.title}</span>
+                          </div>
+                          {inv.description && <p className="text-muted-foreground text-xs">{inv.description}</p>}
+                          <div className="text-[11px] text-muted-foreground font-mono">
+                            Notes: {inv.notes.length} · Opened: {new Date(inv.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" variant="outline" onClick={() => handleViewTimeline(inv)}>
+                            View Timeline
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const note = prompt("Enter investigator note for " + inv.caseNumber + ":");
+                              if (note) agentGovernanceService.addInvestigationNote(orgId, inv.caseNumber, note).then(loadData);
+                            }}
+                          >
+                            + Note
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+
+              {/* Investigation Timeline Reconstructor */}
+              {investigationTimelineData && (
+                <Card className="p-5 bg-card border-border/80 space-y-4">
+                  <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                    <div>
+                      <h3 className="font-semibold text-base text-foreground">
+                        Chronological Reconstruction: {investigationTimelineData.caseNumber}
+                      </h3>
+                      <span className="text-xs text-muted-foreground">
+                        Agent Request → Policy Evaluation → Human Approval → Security Validation → Tool Execution → Execution Outcome
+                      </span>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => setInvestigationTimelineData(null)}>
+                      Close Timeline
+                    </Button>
+                  </div>
+
+                  <div className="relative border-l-2 border-primary/30 ml-4 pl-4 space-y-4 text-xs">
+                    {investigationTimelineData.timeline.length === 0 ? (
+                      <div className="text-muted-foreground py-3">No activity steps found in correlation window.</div>
+                    ) : (
+                      investigationTimelineData.timeline.map((item, idx) => (
+                        <div key={idx} className="relative">
+                          <div className="absolute -left-[23px] top-1 w-3 h-3 rounded-full bg-primary border-2 border-background" />
+                          <div className="p-3 rounded-lg bg-muted/20 border border-border/40 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-primary/20 text-primary">
+                                {item.stage}
+                              </span>
+                              <span className="font-bold text-foreground font-mono">{item.eventType}</span>
+                              <span className="text-muted-foreground">·</span>
+                              <span className="text-muted-foreground font-mono">
+                                {new Date(item.eventTimestamp).toLocaleTimeString()}
+                              </span>
+                            </div>
+                            <div className="text-[11px] font-mono text-muted-foreground">
+                              Outcome: {item.outcome} · Agent: {item.agentId || "n/a"} · Actor: {item.actorId || "system"}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* Modal: Verify Control */}
+          {verifyControlModal && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <Card className="max-w-lg w-full p-6 bg-card border-border/80 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <h3 className="font-semibold text-base text-foreground">
+                    Verify Compliance Control: {verifyControlModal.controlKey}
+                  </h3>
+                  <button onClick={() => setVerifyControlModal(null)} className="text-muted-foreground hover:text-foreground">
+                    ✕
+                  </button>
+                </div>
+                <form onSubmit={handleVerifyControlSubmit} className="space-y-4 text-xs">
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Target Verification Status</label>
+                    <select
+                      value={verifyControlStatus}
+                      onChange={(e) => setVerifyControlStatus(e.target.value)}
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground"
+                    >
+                      <option value="VERIFIED">VERIFIED (Evidence confirmed)</option>
+                      <option value="IMPLEMENTED">IMPLEMENTED (Feature active)</option>
+                      <option value="EVIDENCE_PENDING">EVIDENCE_PENDING (Awaiting artifacts)</option>
+                      <option value="NONCOMPLIANT">NONCOMPLIANT (Identified gaps)</option>
+                      <option value="NOT_APPLICABLE">NOT_APPLICABLE</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Exceptions & Remediation Notes (Optional)</label>
+                    <textarea
+                      rows={3}
+                      placeholder="Specify any operational exceptions or justification..."
+                      value={verifyControlExceptions}
+                      onChange={(e) => setVerifyControlExceptions(e.target.value)}
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground font-mono text-xs"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setVerifyControlModal(null)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" size="sm" className="bg-primary text-primary-foreground font-semibold">
+                      Save Decision
+                    </Button>
+                  </div>
+                </form>
+              </Card>
+            </div>
+          )}
+
+          {/* Modal: Collect Evidence */}
+          {showCollectEvidenceModal && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <Card className="max-w-lg w-full p-6 bg-card border-border/80 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <h3 className="font-semibold text-base text-foreground">Collect Compliance Evidence</h3>
+                  <button onClick={() => setShowCollectEvidenceModal(false)} className="text-muted-foreground hover:text-foreground">
+                    ✕
+                  </button>
+                </div>
+                <form onSubmit={handleCollectEvidenceSubmit} className="space-y-4 text-xs">
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Evidence Title *</label>
+                    <Input
+                      required
+                      placeholder="e.g. Q4 Agent Security Test Report"
+                      value={newEvidenceTitle}
+                      onChange={(e) => setNewEvidenceTitle(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-medium text-foreground mb-1">Type</label>
+                      <select
+                        value={newEvidenceType}
+                        onChange={(e) => setNewEvidenceType(e.target.value)}
+                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground"
+                      >
+                        <option value="test_report">Test Report</option>
+                        <option value="execution_log">Execution Log</option>
+                        <option value="security_event">Security Event</option>
+                        <option value="approval_decision">Approval Decision</option>
+                        <option value="governance_snapshot">Governance Snapshot</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-medium text-foreground mb-1">Classification</label>
+                      <select
+                        value={newEvidenceClass}
+                        onChange={(e) => setNewEvidenceClass(e.target.value)}
+                        className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground"
+                      >
+                        <option value="INTERNAL">INTERNAL</option>
+                        <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+                        <option value="RESTRICTED">RESTRICTED</option>
+                        <option value="PUBLIC">PUBLIC</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Source Identifier *</label>
+                    <Input
+                      required
+                      placeholder="e.g. vitest-security-suite-run"
+                      value={newEvidenceSource}
+                      onChange={(e) => setNewEvidenceSource(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Structured Payload (JSON)</label>
+                    <textarea
+                      rows={4}
+                      value={newEvidencePayload}
+                      onChange={(e) => setNewEvidencePayload(e.target.value)}
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground font-mono text-xs"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowCollectEvidenceModal(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" size="sm" className="bg-primary text-primary-foreground font-semibold">
+                      Record Evidence
+                    </Button>
+                  </div>
+                </form>
+              </Card>
+            </div>
+          )}
+
+          {/* Modal: Create Legal Hold */}
+          {showCreateHoldModal && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <Card className="max-w-lg w-full p-6 bg-card border-border/80 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <h3 className="font-semibold text-base text-foreground">Activate Legal Hold</h3>
+                  <button onClick={() => setShowCreateHoldModal(false)} className="text-muted-foreground hover:text-foreground">
+                    ✕
+                  </button>
+                </div>
+                <form onSubmit={handleCreateHoldSubmit} className="space-y-4 text-xs">
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Hold Title / Name *</label>
+                    <Input
+                      required
+                      placeholder="e.g. Q4 Regulatory Audit Hold"
+                      value={newHoldName}
+                      onChange={(e) => setNewHoldName(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Reason & Justification *</label>
+                    <textarea
+                      rows={3}
+                      required
+                      placeholder="Explain legal or regulatory grounds for holding records..."
+                      value={newHoldReason}
+                      onChange={(e) => setNewHoldReason(e.target.value)}
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground text-xs"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowCreateHoldModal(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" size="sm" className="bg-amber-600 hover:bg-amber-500 text-white font-semibold">
+                      Activate Hold
+                    </Button>
+                  </div>
+                </form>
+              </Card>
+            </div>
+          )}
+
+          {/* Modal: Create Investigation */}
+          {showCreateInvModal && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <Card className="max-w-lg w-full p-6 bg-card border-border/80 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <h3 className="font-semibold text-base text-foreground">Open Audit Investigation Case</h3>
+                  <button onClick={() => setShowCreateInvModal(false)} className="text-muted-foreground hover:text-foreground">
+                    ✕
+                  </button>
+                </div>
+                <form onSubmit={handleCreateInvSubmit} className="space-y-4 text-xs">
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Case Title *</label>
+                    <Input
+                      required
+                      placeholder="e.g. Investigation: Unapproved Tool Invocation Probe"
+                      value={newInvTitle}
+                      onChange={(e) => setNewInvTitle(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Description & Scope</label>
+                    <textarea
+                      rows={3}
+                      placeholder="Specify investigation scope or target agent/timeframe..."
+                      value={newInvDesc}
+                      onChange={(e) => setNewInvDesc(e.target.value)}
+                      className="w-full bg-background border border-input rounded-md px-3 py-2 text-foreground text-xs"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowCreateInvModal(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" size="sm" className="bg-primary text-primary-foreground font-semibold">
+                      Open Case
+                    </Button>
+                  </div>
+                </form>
+              </Card>
+            </div>
+          )}
+
+          {/* Modal: Export Evidence Package */}
+          {showExportPackageModal && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <Card className="max-w-lg w-full p-6 bg-card border-border/80 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <h3 className="font-semibold text-base text-foreground">Export Evidence Package</h3>
+                  <button onClick={() => setShowExportPackageModal(false)} className="text-muted-foreground hover:text-foreground">
+                    ✕
+                  </button>
+                </div>
+                <div className="space-y-3 text-xs">
+                  <p className="text-muted-foreground">
+                    Generate an authorized, self-contained evidence package with SHA-256 manifest checksums, individual file hashes, and deep secret redaction.
+                  </p>
+                  <div className="p-3 rounded-lg bg-muted/20 border border-border/40 font-mono text-[11px] space-y-1">
+                    <div>Selected Evidence: {complianceEvidenceList.length} items</div>
+                    <div>Redaction: DEEP_SECRET_SCRUBBED</div>
+                    <div>Algorithm: SHA-256</div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowExportPackageModal(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleExportPackageSubmit}
+                      className="bg-primary text-primary-foreground font-semibold"
+                    >
+                      Generate & Export
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
         </div>
       )}
 

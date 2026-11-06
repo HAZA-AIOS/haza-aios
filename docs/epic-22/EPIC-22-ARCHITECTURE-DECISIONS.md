@@ -235,3 +235,68 @@ Eliminate the boolean bypass flag:
 - Provides anti-replay protection and crash recovery reconciliation for interrupted approvals.
 - Guarantees end-to-end cryptographic integrity.
 
+---
+
+### ADR-022-13: Normalized Compliance Event Model & Idempotent Ingestion
+
+**Status:** Approved  
+**Date:** 2026-11-06  
+**Context:**  
+Enterprise auditability requires collecting events across distinct phases of the agent lifecycle (execution runs, tool invocations, policy evaluations, approval requests, security events, secret accesses, governance mutations, and retention actions). Heterogeneous event shapes prevent uniform compliance querying, cross-stage timeline reconstruction, and deterministic tamper-evident chaining.
+
+**Decision:**  
+Implement a normalized compliance event schema (`agent_compliance_events`):
+1. **Normalized Event Envelope:** Captures organization ID, workspace ID, unique event ID, category (10 supported categories), event type, event/ingestion timestamps, actor ID/type, agent ID, execution ID, policy ID/version, approval request ID, security event reference, correlation ID, trace ID, outcome, risk severity, data classification, and scrubbed metadata.
+2. **Idempotent Ingestion:** Duplicate event IDs are identified at the database boundary and returned without mutating existing records or generating duplicate hash chain links.
+3. **Deep Telemetry Redaction:** All incoming metadata passes through recursive credential scrubbing (`redactObject`), masking API keys and bearer tokens prior to persistence.
+
+**Consequences:**  
+- Unified querying across runtime, policy, security, and approval dimensions.
+- Eliminates duplicate entries caused by network retries or distributed workers.
+- Guarantees zero credential leakage into permanent compliance records.
+
+---
+
+### ADR-022-14: Tenant-Isolated Cryptographic Audit Ledger & Tamper Evidence
+
+**Status:** Approved  
+**Date:** 2026-11-06  
+**Context:**  
+Traditional database audit tables are vulnerable to undetected retroactive alteration, sequence truncation, or record omission by malicious actors or compromised application accounts. Compliance frameworks (SOC 2, ISO 27001, ISO 42001) require verifiable assurance that audit records have not been tampered with or modified.
+
+**Decision:**  
+Implement a tenant-isolated cryptographic hash chain (`agent_audit_integrity_chains`):
+1. **Monotonic Sequences:** Every organization maintains an independent, strictly monotonic sequence number ($1, 2, 3, \dots$).
+2. **Deterministic Payload Hashing:** Event fields are deterministically sorted via canonical JSON serialization (`canonicalStringify`) and hashed via SHA-256 (`payloadHash`).
+3. **Cryptographic Linkage:** Each record computes `currentEventHash = sha256(previousEventHash + ":" + sequenceNumber + ":" + payloadHash)`. Sequence 1 begins with a known 64-character zero genesis hash.
+4. **Range Verification Engine:** `verifyAuditIntegrity()` scans chain records, verifies sequence continuity, compares stored payload hashes against live event records, and validates previous-hash references.
+5. **Architectural Disclaimer & External Anchoring:** System distinguishes cryptographic tamper-evidence from true WORM / hardware anchoring. Ledger schema includes `hashAlgorithm` and `schemaVersion` to support future external RFC 6962 transparency log or ledger anchoring without requiring paid external infrastructure now.
+
+**Consequences:**  
+- Mathematical proof of event sequence continuity and payload immutability.
+- Immediate detection of modified payloads, deleted records, or broken links.
+- Fully tenant-isolated chains preventing cross-tenant leakage.
+
+---
+
+### ADR-022-15: Controlled Evidence Packaging, Independent Offline Verification & Legal Holds
+
+**Status:** Approved  
+**Date:** 2026-11-06  
+**Context:**  
+External compliance auditors and legal investigators require verifiable proof of agent governance without direct access to live multi-tenant production databases. Furthermore, standard data retention policies risk disposing of critical audit evidence during pending regulatory reviews or active litigation.
+
+**Decision:**  
+Implement a controlled evidence registry, packaging engine, and legal hold system:
+1. **Hashed Evidence Registry (`agent_compliance_evidence`):** Stores structured payloads with canonical SHA-256 content hashes, classifications, and mapped compliance control IDs.
+2. **Self-Contained Export Packages (`agent_compliance_evidence_packages`):** Generates JSON manifests containing individual evidence checksums, audit event hashes, export authorization records, and overall manifest checksums.
+3. **Offline Independent Verification:** Standalone verification (`verifyEvidencePackageOffline`) validates package integrity without requiring network or database connectivity.
+4. **Legal Holds Override Disposal:** Active legal holds (`agent_compliance_legal_holds`) mark matching records as protected, causing retention previews to mark candidates as `RETAIN_UNDER_LEGAL_HOLD` and preventing disposal.
+5. **Dry-Run Disposal Safety:** Retention disposal operations are strictly dry-run simulations in Phase 22E; zero destructive purge queries are executed.
+
+**Consequences:**  
+- Auditors can independently verify exported evidence offline.
+- Total immunity of litigation-critical evidence against premature retention expiration.
+- Zero risk of unintended data destruction during compliance evaluations.
+
+

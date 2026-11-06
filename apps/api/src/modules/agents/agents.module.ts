@@ -14,6 +14,8 @@ import { AgentApprovalContinuationService } from "./services/agent-approval-cont
 import { AgentSecurityRepository } from "./repositories/agent-security.repository.js";
 import { AgentSecurityGatewayService } from "./services/agent-security-gateway.service.js";
 import { AgentSecretVaultService } from "./services/agent-secret-vault.service.js";
+import { AgentComplianceService } from "./services/agent-compliance.service.js";
+import { AgentComplianceRepository } from "./repositories/agent-compliance.repository.js";
 import { AgentTeamService } from "./services/agent-team.service.js";
 import { AgentOrchestrationService } from "./services/agent-orchestration.service.js";
 import {
@@ -4277,6 +4279,568 @@ export const agentsModule: BackendModule = {
           limit,
         });
         sendJson(response, 200, { items: events, total: events.length });
+      },
+    });
+
+    // =========================================================================
+    // EPIC 22E: Compliance, Audit Integrity & Evidence Management Endpoints
+    // =========================================================================
+
+    // 1. Compliance Overview
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/overview",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const overview = await service.getComplianceOverview(tenant.organizationId);
+        sendJson(response, 200, overview);
+      },
+    });
+
+    // 2. Framework Listing
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/frameworks",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const frameworks = await service.listFrameworks(tenant.organizationId);
+        sendJson(response, 200, { items: frameworks, total: frameworks.length });
+      },
+    });
+
+    // 3. Control Listing
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/controls",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const frameworkId = url.searchParams.get("frameworkId") || undefined;
+        const category = url.searchParams.get("category") || undefined;
+        const status = (url.searchParams.get("status") as any) || undefined;
+
+        const service = new AgentComplianceService(database.db);
+        const controls = await service.listControls(tenant.organizationId, {
+          frameworkId,
+          category,
+          status,
+        });
+        sendJson(response, 200, { items: controls, total: controls.length });
+      },
+    });
+
+    // 4. Get Control by ID
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/controls/:controlId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const control = await service.getControl(tenant.organizationId, routeParams.controlId);
+        if (!control) {
+          throw new ApiError(404, "NOT_FOUND", "Compliance control not found");
+        }
+        sendJson(response, 200, control);
+      },
+    });
+
+    // 5. Update Control Verification
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/controls/:controlId/verify",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.status) {
+          throw new ApiError(400, "VALIDATION_FAILED", "Status is required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const updated = await service.verifyControl(tenant.organizationId, routeParams.controlId, {
+          status: body.status,
+          verifiedBy: authResult.user.id,
+          exceptions: body.exceptions,
+        });
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 6. Unified Audit Events Listing
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/audit/events",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const category = (url.searchParams.get("category") as any) || undefined;
+        const eventType = url.searchParams.get("eventType") || undefined;
+        const agentId = url.searchParams.get("agentId") || undefined;
+        const correlationId = url.searchParams.get("correlationId") || undefined;
+        const limitParam = url.searchParams.get("limit");
+        const limit = limitParam ? parseInt(limitParam, 10) : 50;
+
+        const repo = new AgentComplianceRepository(database.db);
+        const { events, total } = await repo.listEvents(tenant.organizationId, {
+          category,
+          eventType,
+          agentId,
+          correlationId,
+          limit,
+        });
+        sendJson(response, 200, { items: events, total });
+      },
+    });
+
+    // 7. Verify Audit Integrity Chain
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/audit/verify",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const fromSeqParam = url.searchParams.get("fromSeq");
+        const toSeqParam = url.searchParams.get("toSeq");
+        const range =
+          fromSeqParam || toSeqParam
+            ? {
+                fromSeq: fromSeqParam ? parseInt(fromSeqParam, 10) : undefined,
+                toSeq: toSeqParam ? parseInt(toSeqParam, 10) : undefined,
+              }
+            : undefined;
+
+        const service = new AgentComplianceService(database.db);
+        const verification = await service.verifyAuditIntegrity(tenant.organizationId, range);
+        sendJson(response, 200, verification);
+      },
+    });
+
+    // 8. List Evidence
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/evidence",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const evidenceType = (url.searchParams.get("evidenceType") as any) || undefined;
+        const classification = (url.searchParams.get("classification") as any) || undefined;
+        const isUnderLegalHold = url.searchParams.has("isUnderLegalHold")
+          ? url.searchParams.get("isUnderLegalHold") === "true"
+          : undefined;
+        const limitParam = url.searchParams.get("limit");
+        const limit = limitParam ? parseInt(limitParam, 10) : 50;
+
+        const service = new AgentComplianceService(database.db);
+        const { evidence, total } = await service.listEvidence(tenant.organizationId, {
+          evidenceType,
+          classification,
+          isUnderLegalHold,
+          limit,
+        });
+        sendJson(response, 200, { items: evidence, total });
+      },
+    });
+
+    // 9. Collect Evidence
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/evidence",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.title || !body?.evidenceType || !body?.source) {
+          throw new ApiError(400, "VALIDATION_FAILED", "title, evidenceType, and source are required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const evidence = await service.collectEvidence(tenant.organizationId, {
+          workspaceId: body.workspaceId,
+          title: body.title,
+          evidenceType: body.evidenceType,
+          source: body.source,
+          classification: body.classification,
+          relatedControlIds: body.relatedControlIds,
+          structuredPayload: body.structuredPayload,
+          collectedBy: authResult.user.id,
+        });
+        sendJson(response, 201, evidence);
+      },
+    });
+
+    // 10. Get Evidence Detail
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/evidence/:evidenceId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const evidence = await service.getEvidence(tenant.organizationId, routeParams.evidenceId);
+        if (!evidence) {
+          throw new ApiError(404, "NOT_FOUND", "Evidence item not found");
+        }
+        sendJson(response, 200, evidence);
+      },
+    });
+
+    // 11. List Evidence Packages
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/packages",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const packages = await service.listEvidencePackages(tenant.organizationId);
+        sendJson(response, 200, { items: packages, total: packages.length });
+      },
+    });
+
+    // 12. Generate Evidence Package
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/packages",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!Array.isArray(body?.evidenceIds) || body.evidenceIds.length === 0) {
+          throw new ApiError(400, "VALIDATION_FAILED", "evidenceIds array is required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const result = await service.generateEvidencePackage(tenant.organizationId, {
+          workspaceId: body.workspaceId,
+          packageIdentifier: body.packageIdentifier,
+          evidenceIds: body.evidenceIds,
+          auditEventIds: body.auditEventIds,
+          exportedBy: authResult.user.id,
+          redactionLevel: body.redactionLevel,
+        });
+        sendJson(response, 201, result);
+      },
+    });
+
+    // 13. Get Evidence Package Detail
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/packages/:packageId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const pkg = await service.getEvidencePackage(tenant.organizationId, routeParams.packageId);
+        if (!pkg) {
+          throw new ApiError(404, "NOT_FOUND", "Evidence package not found");
+        }
+        sendJson(response, 200, pkg);
+      },
+    });
+
+    // 14. Verify Package Offline
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/packages/verify",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.manifest) {
+          throw new ApiError(400, "VALIDATION_FAILED", "manifest payload is required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const verification = service.verifyPackageOffline(body.manifest, body.expectedChecksum);
+        sendJson(response, 200, verification);
+      },
+    });
+
+    // 15. List Retention Policies
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/retention/policies",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const policies = await service.listRetentionPolicies(tenant.organizationId);
+        sendJson(response, 200, { items: policies, total: policies.length });
+      },
+    });
+
+    // 16. Upsert Retention Policy
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/retention/policies",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.recordCategory || typeof body?.retentionDurationDays !== "number") {
+          throw new ApiError(400, "VALIDATION_FAILED", "recordCategory and retentionDurationDays are required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const updated = await service.upsertRetentionPolicy({
+          organizationId: tenant.organizationId,
+          recordCategory: body.recordCategory,
+          retentionDurationDays: body.retentionDurationDays,
+          disposalAction: body.disposalAction,
+          createdBy: authResult.user.id,
+        });
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 17. Preview Disposal
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/retention/preview",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const preview = await service.previewDisposal(tenant.organizationId);
+        sendJson(response, 200, preview);
+      },
+    });
+
+    // 18. List Legal Holds
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/holds",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const status = (url.searchParams.get("status") as any) || undefined;
+        const service = new AgentComplianceService(database.db);
+        const holds = await service.listLegalHolds(tenant.organizationId, status);
+        sendJson(response, 200, { items: holds, total: holds.length });
+      },
+    });
+
+    // 19. Create Legal Hold
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/holds",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.name || !body?.reason) {
+          throw new ApiError(400, "VALIDATION_FAILED", "name and reason are required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const hold = await service.createLegalHold({
+          organizationId: tenant.organizationId,
+          name: body.name,
+          description: body.description,
+          reason: body.reason,
+          scopeType: body.scopeType,
+          scopeCriteria: body.scopeCriteria,
+          createdBy: authResult.user.id,
+        });
+        sendJson(response, 201, hold);
+      },
+    });
+
+    // 20. Release Legal Hold
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/holds/:holdIdentifier/release",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.justification) {
+          throw new ApiError(400, "VALIDATION_FAILED", "justification is required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const released = await service.releaseLegalHold(
+          tenant.organizationId,
+          routeParams.holdIdentifier,
+          authResult.user.id,
+          body.justification,
+        );
+        sendJson(response, 200, released);
+      },
+    });
+
+    // 21. List Investigations
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/investigations",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const status = (url.searchParams.get("status") as any) || undefined;
+        const service = new AgentComplianceService(database.db);
+        const investigations = await service.listInvestigations(tenant.organizationId, status);
+        sendJson(response, 200, { items: investigations, total: investigations.length });
+      },
+    });
+
+    // 22. Create Investigation
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/investigations",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.title) {
+          throw new ApiError(400, "VALIDATION_FAILED", "title is required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const inv = await service.createInvestigation({
+          organizationId: tenant.organizationId,
+          title: body.title,
+          description: body.description,
+          investigatorId: authResult.user.id,
+          searchFilters: body.searchFilters,
+        });
+        sendJson(response, 201, inv);
+      },
+    });
+
+    // 23. Reconstruct Investigation Timeline
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/investigations/timeline",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const correlationId = url.searchParams.get("correlationId") || undefined;
+        const traceId = url.searchParams.get("traceId") || undefined;
+        const agentId = url.searchParams.get("agentId") || undefined;
+
+        const service = new AgentComplianceService(database.db);
+        const timeline = await service.getInvestigationTimeline(tenant.organizationId, {
+          correlationId,
+          traceId,
+          agentId,
+          investigatorId: authResult.user.id,
+        });
+        sendJson(response, 200, timeline);
+      },
+    });
+
+    // 24. Add Note to Investigation
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/investigations/:caseNumber/notes",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.note) {
+          throw new ApiError(400, "VALIDATION_FAILED", "note is required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const updated = await service.addInvestigationNote(
+          tenant.organizationId,
+          routeParams.caseNumber,
+          body.note,
+          authResult.user.id,
+        );
+        sendJson(response, 200, updated);
       },
     });
 

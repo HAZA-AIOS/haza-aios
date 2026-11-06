@@ -1,6 +1,7 @@
 import { ApiError } from "../../../common/errors/api-error.js";
 import type { AgentSecurityRepository } from "../repositories/agent-security.repository.js";
 import { redactObject } from "../utils/secret-redactor.js";
+export { redactObject };
 import type { AgentSecretReferenceEntity } from "../governance-security.types.js";
 
 export class AgentSecretVaultService {

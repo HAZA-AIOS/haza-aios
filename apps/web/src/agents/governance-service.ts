@@ -866,6 +866,405 @@ export class AgentGovernanceService {
       { authToken: this.getAuthToken() },
     );
   }
+
+  // =========================================================================
+  // Epic 22E: Compliance, Audit Integrity & Evidence Management
+  // =========================================================================
+
+  async getComplianceOverview(organizationId: string): Promise<WebComplianceOverview> {
+    return await apiClient.request<WebComplianceOverview>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/overview`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async listComplianceFrameworks(organizationId: string): Promise<{ items: WebComplianceFramework[]; total: number }> {
+    return await apiClient.request<{ items: WebComplianceFramework[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/frameworks`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async listComplianceControls(
+    organizationId: string,
+    filters?: { frameworkId?: string; category?: string; status?: string },
+  ): Promise<{ items: WebComplianceControl[]; total: number }> {
+    const params = new URLSearchParams();
+    if (filters?.frameworkId) params.set("frameworkId", filters.frameworkId);
+    if (filters?.category) params.set("category", filters.category);
+    if (filters?.status) params.set("status", filters.status);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ items: WebComplianceControl[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/controls${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async verifyComplianceControl(
+    organizationId: string,
+    controlId: string,
+    data: { status: string; exceptions?: string },
+  ): Promise<WebComplianceControl> {
+    return await apiClient.request<WebComplianceControl>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/controls/${controlId}/verify`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async listComplianceAuditEvents(
+    organizationId: string,
+    filters?: { category?: string; eventType?: string; agentId?: string; correlationId?: string; limit?: number },
+  ): Promise<{ items: WebComplianceAuditEvent[]; total: number }> {
+    const params = new URLSearchParams();
+    if (filters?.category) params.set("category", filters.category);
+    if (filters?.eventType) params.set("eventType", filters.eventType);
+    if (filters?.agentId) params.set("agentId", filters.agentId);
+    if (filters?.correlationId) params.set("correlationId", filters.correlationId);
+    if (filters?.limit) params.set("limit", String(filters.limit));
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ items: WebComplianceAuditEvent[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/audit/events${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async verifyAuditIntegrity(
+    organizationId: string,
+    range?: { fromSeq?: number; toSeq?: number },
+  ): Promise<WebAuditChainVerification> {
+    const params = new URLSearchParams();
+    if (range?.fromSeq !== undefined) params.set("fromSeq", String(range.fromSeq));
+    if (range?.toSeq !== undefined) params.set("toSeq", String(range.toSeq));
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<WebAuditChainVerification>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/audit/verify${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async listEvidence(
+    organizationId: string,
+    filters?: { evidenceType?: string; classification?: string; isUnderLegalHold?: boolean; limit?: number },
+  ): Promise<{ items: WebComplianceEvidence[]; total: number }> {
+    const params = new URLSearchParams();
+    if (filters?.evidenceType) params.set("evidenceType", filters.evidenceType);
+    if (filters?.classification) params.set("classification", filters.classification);
+    if (filters?.isUnderLegalHold !== undefined) params.set("isUnderLegalHold", String(filters.isUnderLegalHold));
+    if (filters?.limit) params.set("limit", String(filters.limit));
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ items: WebComplianceEvidence[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/evidence${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async collectEvidence(
+    organizationId: string,
+    data: {
+      workspaceId?: string | null;
+      title: string;
+      evidenceType: string;
+      source: string;
+      classification?: string;
+      relatedControlIds?: string[];
+      structuredPayload?: Record<string, unknown>;
+    },
+  ): Promise<WebComplianceEvidence> {
+    return await apiClient.request<WebComplianceEvidence>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/evidence`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async listEvidencePackages(organizationId: string): Promise<{ items: WebEvidencePackage[]; total: number }> {
+    return await apiClient.request<{ items: WebEvidencePackage[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/packages`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async generateEvidencePackage(
+    organizationId: string,
+    data: {
+      workspaceId?: string | null;
+      packageIdentifier?: string;
+      evidenceIds: string[];
+      auditEventIds?: string[];
+      redactionLevel?: string;
+    },
+  ): Promise<{ packageRecord: WebEvidencePackage; manifest: any }> {
+    return await apiClient.request<{ packageRecord: WebEvidencePackage; manifest: any }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/packages`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async listRetentionPolicies(organizationId: string): Promise<{ items: WebRetentionPolicy[]; total: number }> {
+    return await apiClient.request<{ items: WebRetentionPolicy[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/retention/policies`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async upsertRetentionPolicy(
+    organizationId: string,
+    data: { recordCategory: string; retentionDurationDays: number; disposalAction?: string },
+  ): Promise<WebRetentionPolicy> {
+    return await apiClient.request<WebRetentionPolicy>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/retention/policies`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async previewDisposal(organizationId: string): Promise<any> {
+    return await apiClient.request<any>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/retention/preview`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async listLegalHolds(organizationId: string, status?: string): Promise<{ items: WebLegalHold[]; total: number }> {
+    const query = status ? `?status=${status}` : "";
+    return await apiClient.request<{ items: WebLegalHold[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/holds${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async createLegalHold(
+    organizationId: string,
+    data: { name: string; reason: string; scopeType?: string; scopeCriteria?: Record<string, unknown>; description?: string },
+  ): Promise<WebLegalHold> {
+    return await apiClient.request<WebLegalHold>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/holds`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async releaseLegalHold(
+    organizationId: string,
+    holdIdentifier: string,
+    justification: string,
+  ): Promise<WebLegalHold> {
+    return await apiClient.request<WebLegalHold>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/holds/${holdIdentifier}/release`,
+      {
+        method: "POST",
+        body: JSON.stringify({ justification }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async listInvestigations(organizationId: string, status?: string): Promise<{ items: WebComplianceInvestigation[]; total: number }> {
+    const query = status ? `?status=${status}` : "";
+    return await apiClient.request<{ items: WebComplianceInvestigation[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/investigations${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async createInvestigation(
+    organizationId: string,
+    data: { title: string; description?: string; searchFilters?: Record<string, unknown> },
+  ): Promise<WebComplianceInvestigation> {
+    return await apiClient.request<WebComplianceInvestigation>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/investigations`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async getInvestigationTimeline(
+    organizationId: string,
+    query?: { correlationId?: string; traceId?: string; agentId?: string },
+  ): Promise<{ timeline: WebInvestigationTimeline[]; total: number }> {
+    const params = new URLSearchParams();
+    if (query?.correlationId) params.set("correlationId", query.correlationId);
+    if (query?.traceId) params.set("traceId", query.traceId);
+    if (query?.agentId) params.set("agentId", query.agentId);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ timeline: WebInvestigationTimeline[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/investigations/timeline${qs}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async addInvestigationNote(
+    organizationId: string,
+    caseNumber: string,
+    note: string,
+  ): Promise<WebComplianceInvestigation> {
+    return await apiClient.request<WebComplianceInvestigation>(
+      `/api/v1/organizations/${organizationId}/agent-governance/compliance/investigations/${caseNumber}/notes`,
+      {
+        method: "POST",
+        body: JSON.stringify({ note }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Epic 22E Web Types
+// ---------------------------------------------------------------------------
+
+export interface WebComplianceOverview {
+  organizationId: string;
+  totalControls: number;
+  implementedControls: number;
+  verifiedControls: number;
+  evidencePendingControls: number;
+  noncompliantControls: number;
+  frameworkCoveragePercent: number;
+  activeHoldsCount: number;
+  totalEvidenceCount: number;
+  totalPackagesCount: number;
+  auditIntegrityStatus: {
+    isValid: boolean;
+    totalEvents: number;
+    lastVerifiedAt: string;
+  };
+}
+
+export interface WebComplianceFramework {
+  id: string;
+  frameworkKey: string;
+  name: string;
+  version: string;
+  description: string | null;
+  isEnabled: boolean;
+}
+
+export interface WebComplianceControl {
+  id: string;
+  frameworkId: string;
+  controlKey: string;
+  title: string;
+  description: string | null;
+  category: string;
+  implementationStatus: string;
+  reviewFrequencyDays: number;
+  lastReviewedAt: string | null;
+  nextReviewDueAt: string | null;
+  verifiedAt: string | null;
+  verifiedBy: string | null;
+  exceptions: string | null;
+}
+
+export interface WebComplianceAuditEvent {
+  id: string;
+  eventCategory: string;
+  eventType: string;
+  eventTimestamp: string;
+  actorId: string | null;
+  agentId: string | null;
+  eventOutcome: string;
+  riskSeverity: string;
+  dataClassification: string;
+  redactedMetadata: Record<string, unknown>;
+}
+
+export interface WebAuditChainVerification {
+  organizationId: string;
+  isValid: boolean;
+  totalEventsVerified: number;
+  sequenceRange: { from: number; to: number } | null;
+  brokenLinks: any[];
+  tamperedEvents: any[];
+  missingSequences: number[];
+  verifiedAt: string;
+  details: string;
+}
+
+export interface WebComplianceEvidence {
+  id: string;
+  title: string;
+  evidenceType: string;
+  source: string;
+  classification: string;
+  relatedControlIds: string[];
+  contentHash: string;
+  verificationStatus: string;
+  isUnderLegalHold: boolean;
+  collectedAt: string;
+  accessCount: number;
+}
+
+export interface WebEvidencePackage {
+  id: string;
+  packageIdentifier: string;
+  manifestChecksum: string;
+  hashAlgorithm: string;
+  evidenceIds: string[];
+  auditEventIds: string[];
+  redactionLevel: string;
+  status: string;
+  exportedAt: string;
+}
+
+export interface WebRetentionPolicy {
+  id: string;
+  recordCategory: string;
+  retentionDurationDays: number;
+  disposalAction: string;
+  status: string;
+}
+
+export interface WebLegalHold {
+  id: string;
+  holdIdentifier: string;
+  name: string;
+  reason: string;
+  scopeType: string;
+  status: string;
+  createdAt: string;
+  releasedAt: string | null;
+}
+
+export interface WebComplianceInvestigation {
+  id: string;
+  caseNumber: string;
+  title: string;
+  description: string | null;
+  status: string;
+  notes: Array<{ note: string; authorId: string; timestamp: string }>;
+  createdAt: string;
+}
+
+export interface WebInvestigationTimeline {
+  stage: string;
+  eventId: string;
+  eventTimestamp: string;
+  eventType: string;
+  actorId: string | null;
+  agentId: string | null;
+  outcome: string;
+  details: Record<string, unknown>;
 }
 
 export interface WebAgentSecurityProfile {

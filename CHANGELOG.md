@@ -1,3 +1,49 @@
+## [Unreleased - Epic 22E] - 2026-11-06
+
+### Added
+- **Epic 22E — Enterprise Compliance, Audit Integrity & Evidence Management:**
+  - **Compliance Schema & Persistence (Migration 0035 - `0035_agent_compliance_audit_integrity.sql`):**
+    - Added 10 relational tables: `agent_compliance_events`, `agent_audit_integrity_chains`, `agent_compliance_frameworks`, `agent_compliance_controls`, `agent_compliance_control_mappings`, `agent_compliance_evidence`, `agent_compliance_evidence_packages`, `agent_compliance_retention_policies`, `agent_compliance_legal_holds`, and `agent_compliance_investigations`.
+    - Enforced tenant-isolated unique constraints, indexes, and foreign keys across all compliance tables.
+  - **Unified Compliance Event Model (`compliance.types.ts` & `agent-compliance.repository.ts`):**
+    - Normalized event schema spanning 10 categories (`AGENT_EXECUTION`, `TOOL_INVOCATION`, `POLICY_EVALUATION`, `HUMAN_APPROVAL`, `SECURITY_CONTROL`, `SECRET_ACCESS`, `GOVERNANCE_CHANGE`, `COMPLIANCE_CHANGE`, `EVIDENCE_EXPORT`, `RETENTION_ACTION`).
+    - Idempotent ingestion pipeline rejecting duplicate event IDs while preserving sequence continuity.
+    - Automatic secret redaction via `redactObject` on all incoming metadata and evidence payloads.
+  - **Tamper-Evident Cryptographic Audit Ledger (`agent-compliance.service.ts`):**
+    - Monotonically sequenced, tenant-isolated SHA-256 hash chain (`currentEventHash = sha256(previousHash:sequence:payloadHash)`).
+    - Range verification engine detecting modified payloads, sequence continuity gaps, broken previous-hash links, and missing events.
+    - Deterministic canonical JSON serialization (`canonicalStringify`).
+  - **Compliance Framework & Control Registry:**
+    - Standard framework mappings for ISO/IEC 27001:2022, ISO/IEC 42001:2023, NIST AI RMF 1.0, and SOC 2 Trust Services Criteria.
+    - Granular control statuses (`NOT_IMPLEMENTED`, `PLANNED`, `IMPLEMENTED`, `EVIDENCE_PENDING`, `VERIFIED`, `NONCOMPLIANT`, `NOT_APPLICABLE`).
+    - Explicit authorized review requirements for `VERIFIED` status (no automatic self-certification).
+    - Governance disclaimer emphasizing that control mappings do not constitute formal legal certification.
+  - **Controlled Evidence Registry & Independent Packaging:**
+    - Evidence items stored with SHA-256 canonical content hashes and data classification scopes.
+    - Exported evidence packages containing self-contained JSON manifests with individual evidence checksums, audit hashes, and manifest checksums.
+    - Standalone offline verification function (`verifyEvidencePackageOffline`) requiring zero database or network access.
+    - Cross-tenant export prevention strictly enforced at the service layer.
+  - **Retention Policies & Legal Holds:**
+    - Configurable retention durations across 5 record categories with disposal actions (`ARCHIVE`, `PURGE`, `ANONYMIZE`).
+    - Legal hold creation and release with mandatory justification tracking.
+    - Legal hold override guarantee: records under active hold are marked `RETAIN_UNDER_LEGAL_HOLD` and shielded from disposal.
+    - Dry-run disposal simulation (`previewDisposal`) with zero destructive database operations in Phase 22E.
+  - **Audit Investigations & Timeline Reconstruction:**
+    - Correlates multi-stage agent activity: `REQUEST` → `POLICY` → `APPROVAL` → `SECURITY` → `EXECUTION` → `OUTCOME`.
+    - Investigation case tracking with investigator notes and audited search queries.
+  - **Governance Center UI — Compliance & Audit Console (`AgentGovernancePage.tsx`):**
+    - New "Compliance & Audit" dashboard tab with coverage percentage badge.
+    - 6 sub-navigation sections: Overview & Frameworks, Controls & Mapping, Audit Ledger & Integrity, Evidence & Packages, Legal Holds & Retention, Investigations & Timeline.
+    - Interactive modals for Control Verification, Evidence Collection, Legal Hold Activation, and Investigation Case opening.
+    - 1-click cryptographic hash chain verification with status visualization.
+  - **24 REST API Endpoints:** Mounted under `/api/v1/organizations/:organizationId/agent-governance/compliance/`.
+
+### Verification
+- 24/24 passing unit and integration tests in `apps/api/tests/epic22e-compliance-evidence.test.ts`.
+- 143/143 passing tests across full 9-suite regression test matrix (Epics 16, 19, 20, 21, 22A, 22B, 22C, 22D, 22E).
+- 0 TypeScript compiler errors across `apps/api` and `apps/web`.
+- Database schema verified via `drizzle-kit check` ("Everything's fine 🐶🔥").
+
 ## [Unreleased - Epic 22D] - 2026-11-06
 
 ### Added

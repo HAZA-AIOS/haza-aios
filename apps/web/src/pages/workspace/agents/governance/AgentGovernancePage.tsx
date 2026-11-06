@@ -32,6 +32,10 @@ import {
   type WebPolicyVersionComparisonResult,
   type WebAgentApprovalRequest,
   type WebApprovalDetailsResult,
+  type WebAgentSecurityProfile,
+  type WebAgentSecretReference,
+  type WebAgentSecurityEvent,
+  type WebSecurityPostureSummary,
 } from "../../../../agents/governance-service";
 
 type ActiveTab =
@@ -40,6 +44,7 @@ type ActiveTab =
   | "simulation"
   | "decisions"
   | "approvals"
+  | "security"
   | "profiles"
   | "ownership"
   | "audit";
@@ -72,6 +77,24 @@ export function AgentGovernancePage() {
   const [modalEscalationContact, setModalEscalationContact] = React.useState("");
   const [continuationLoading, setContinuationLoading] = React.useState<Record<string, boolean>>({});
   const [continuationResult, setContinuationResult] = React.useState<Record<string, string>>({});
+
+  // Security Controls State (Phase 22D)
+  const [securityPosture, setSecurityPosture] = React.useState<WebSecurityPostureSummary | null>(null);
+  const [securityProfiles, setSecurityProfiles] = React.useState<WebAgentSecurityProfile[]>([]);
+  const [secretReferences, setSecretReferences] = React.useState<WebAgentSecretReference[]>([]);
+  const [securityEvents, setSecurityEvents] = React.useState<WebAgentSecurityEvent[]>([]);
+  const [selectedAgentForSecurity, setSelectedAgentForSecurity] = React.useState<WebAgentSecurityProfile | null>(null);
+  const [suspendingAgentId, setSuspendingAgentId] = React.useState<string | null>(null);
+  const [suspensionReasonInput, setSuspensionReasonInput] = React.useState("");
+  const [showEmergencyStopModal, setShowEmergencyStopModal] = React.useState(false);
+  const [emergencyStopReason, setEmergencyStopReason] = React.useState("");
+  const [showCreateSecretModal, setShowCreateSecretModal] = React.useState(false);
+  const [newSecretIdent, setNewSecretIdent] = React.useState("");
+  const [newSecretName, setNewSecretName] = React.useState("");
+  const [newSecretDesc, setNewSecretDesc] = React.useState("");
+  const [newSecretAgents, setNewSecretAgents] = React.useState("");
+  const [newSecretTools, setNewSecretTools] = React.useState("");
+  const [newSecretVal, setNewSecretVal] = React.useState("");
 
   // Dialog / Modal states
   const [showCreatePolicy, setShowCreatePolicy] = React.useState(false);
@@ -122,16 +145,33 @@ export function AgentGovernancePage() {
       setLoading(true);
       setError(null);
 
-      const [overviewData, policiesData, profilesData, ownershipData, logsData, modeData, decisionsData] =
-        await Promise.allSettled([
-          agentGovernanceService.getOverview(orgId),
-          agentGovernanceService.listPolicies(orgId),
-          agentGovernanceService.listProfiles(orgId),
-          agentGovernanceService.listOwnership(orgId),
-          agentGovernanceService.listAuditLogs(orgId, { limit: 50 }),
-          agentGovernanceService.getEnforcementMode(orgId),
-          agentGovernanceService.listDecisions(orgId, 50),
-        ]);
+      const [
+        overviewData,
+        policiesData,
+        profilesData,
+        ownershipData,
+        logsData,
+        modeData,
+        decisionsData,
+        approvalsData,
+        postureData,
+        secProfilesData,
+        secretsData,
+        secEventsData,
+      ] = await Promise.allSettled([
+        agentGovernanceService.getOverview(orgId),
+        agentGovernanceService.listPolicies(orgId),
+        agentGovernanceService.listProfiles(orgId),
+        agentGovernanceService.listOwnership(orgId),
+        agentGovernanceService.listAuditLogs(orgId, { limit: 50 }),
+        agentGovernanceService.getEnforcementMode(orgId),
+        agentGovernanceService.listDecisions(orgId, 50),
+        agentGovernanceService.listApprovals(orgId),
+        agentGovernanceService.getSecurityPosture(orgId),
+        agentGovernanceService.listSecurityProfiles(orgId),
+        agentGovernanceService.listSecretReferences(orgId),
+        agentGovernanceService.listSecurityEvents(orgId, { limit: 50 }),
+      ]);
 
       if (overviewData.status === "fulfilled") setOverview(overviewData.value);
       if (policiesData.status === "fulfilled") setPolicies(policiesData.value);
@@ -140,6 +180,11 @@ export function AgentGovernancePage() {
       if (logsData.status === "fulfilled") setAuditLogs(logsData.value);
       if (modeData.status === "fulfilled") setEnforcementMode(modeData.value);
       if (decisionsData.status === "fulfilled") setDecisionHistory(decisionsData.value);
+      if (approvalsData.status === "fulfilled") setApprovals(approvalsData.value || []);
+      if (postureData.status === "fulfilled") setSecurityPosture(postureData.value);
+      if (secProfilesData.status === "fulfilled") setSecurityProfiles(secProfilesData.value.items);
+      if (secretsData.status === "fulfilled") setSecretReferences(secretsData.value.items);
+      if (secEventsData.status === "fulfilled") setSecurityEvents(secEventsData.value.items);
     } catch (err: any) {
       setError(err?.message || "Failed to load governance telemetry");
     } finally {
@@ -345,6 +390,106 @@ export function AgentGovernancePage() {
       setSelectedApprovalDetails(details);
     } catch (err: any) {
       setError(err?.message || "Failed to load approval details");
+    }
+  };
+
+  // Security Controls Handlers (Phase 22D)
+  const handleTriggerEmergencyStop = async () => {
+    try {
+      setError(null);
+      await agentGovernanceService.triggerEmergencyStop(orgId, undefined, emergencyStopReason || "Administrative Emergency Stop");
+      setShowEmergencyStopModal(false);
+      setEmergencyStopReason("");
+      setActionSuccess("Emergency Stop activated across organization agents");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to trigger emergency stop");
+    }
+  };
+
+  const handleResumeEmergencyStop = async () => {
+    try {
+      setError(null);
+      await agentGovernanceService.resumeEmergencyStop(orgId);
+      setActionSuccess("Emergency Stop lifted. Normal agent operations resumed");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to resume emergency stop");
+    }
+  };
+
+  const handleSuspendAgent = async () => {
+    if (!suspendingAgentId || !suspensionReasonInput) return;
+    try {
+      setError(null);
+      await agentGovernanceService.suspendAgent(orgId, suspendingAgentId, suspensionReasonInput);
+      setSuspendingAgentId(null);
+      setSuspensionReasonInput("");
+      setActionSuccess(`Agent '${suspendingAgentId}' suspended successfully`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to suspend agent");
+    }
+  };
+
+  const handleReactivateAgent = async (agentId: string) => {
+    try {
+      setError(null);
+      await agentGovernanceService.reactivateAgent(orgId, agentId);
+      setActionSuccess(`Agent '${agentId}' reactivated successfully`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to reactivate agent");
+    }
+  };
+
+  const handleCreateSecret = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSecretIdent || !newSecretName) return;
+    try {
+      setError(null);
+      await agentGovernanceService.createSecretReference(orgId, {
+        secretIdentifier: newSecretIdent,
+        name: newSecretName,
+        description: newSecretDesc || undefined,
+        allowedAgentIds: newSecretAgents ? newSecretAgents.split(",").map((s) => s.trim()).filter(Boolean) : [],
+        allowedToolKeys: newSecretTools ? newSecretTools.split(",").map((s) => s.trim()).filter(Boolean) : [],
+        initialValue: newSecretVal || undefined,
+      });
+      setShowCreateSecretModal(false);
+      setNewSecretIdent("");
+      setNewSecretName("");
+      setNewSecretDesc("");
+      setNewSecretAgents("");
+      setNewSecretTools("");
+      setNewSecretVal("");
+      setActionSuccess(`Secret reference '${newSecretIdent}' created`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to create secret reference");
+    }
+  };
+
+  const handleRevokeSecret = async (secretId: string) => {
+    try {
+      setError(null);
+      await agentGovernanceService.revokeSecretReference(orgId, secretId);
+      setActionSuccess("Secret reference revoked");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to revoke secret reference");
+    }
+  };
+
+  const handleRotateSecret = async (secretId: string) => {
+    const newVal = prompt("Enter new synthetic credential value (optional, stored in secure backend vault):");
+    try {
+      setError(null);
+      await agentGovernanceService.rotateSecretReference(orgId, secretId, newVal || undefined);
+      setActionSuccess("Secret reference rotated to new version");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to rotate secret reference");
     }
   };
 
@@ -562,6 +707,25 @@ export function AgentGovernancePage() {
               {approvals.filter((a) => a.status === "pending").length}
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setActiveTab("security")}
+          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${
+            activeTab === "security"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <span>Security Controls</span>
+          {securityPosture?.isEmergencyStopped ? (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+              STOPPED
+            </span>
+          ) : (securityPosture?.suspendedAgentsCount ?? 0) > 0 ? (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              {securityPosture?.suspendedAgentsCount} Suspended
+            </span>
+          ) : null}
         </button>
         <button
           onClick={() => setActiveTab("profiles")}
@@ -914,6 +1078,493 @@ export function AgentGovernancePage() {
               metadata: l.metadata,
             }))}
           />
+        </div>
+      )}
+
+      {/* Tab: Human Approvals */}
+      {activeTab === "approvals" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Filter status:</span>
+              {["all", "pending", "approved", "rejected", "consumed", "expired"].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setApprovalFilter(f)}
+                  className={`text-xs px-2.5 py-1 rounded-full font-medium transition-all ${
+                    approvalFilter === f
+                      ? "bg-primary text-primary-foreground font-semibold"
+                      : "bg-muted/40 text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {f.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <Button size="sm" variant="outline" onClick={handleSweepExpiredApprovals}>
+              Sweep Expired
+            </Button>
+          </div>
+
+          {approvals.length === 0 ? (
+            <div className="text-center py-12 border border-dashed border-border rounded-xl">
+              <p className="text-muted-foreground text-sm">No approval requests generated yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {approvals
+                .filter((a) => (approvalFilter === "all" ? true : a.status === approvalFilter))
+                .map((req) => (
+                  <Card key={req.id} className="p-4 bg-card border-border/80 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-foreground">{req.actionTarget}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded font-bold uppercase bg-muted/60 text-muted-foreground">
+                          {req.actionType}
+                        </span>
+                        <GovernanceRiskBadge riskTier={(req.riskClassification || "medium") as any} />
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                            req.status === "approved"
+                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                              : req.status === "pending"
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                              : req.status === "consumed"
+                              ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                              : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                          }`}
+                        >
+                          {req.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{req.approvalReason}</p>
+                      <div className="flex items-center gap-4 text-[11px] text-muted-foreground/80 font-mono">
+                        <span>Agent: {req.agentId}</span>
+                        <span>Requester: {req.requestingActorId}</span>
+                        <span>Expires: {new Date(req.expiresAt).toLocaleTimeString()}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => handleViewApprovalDetails(req.id)}>
+                        Details
+                      </Button>
+                      {req.status === "pending" && (
+                        <>
+                          <Button size="sm" onClick={() => handleOpenApprovalModal("approve", req)}>
+                            Approve
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => handleOpenApprovalModal("reject", req)}>
+                            Reject
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => handleOpenApprovalModal("escalate", req)}>
+                            Escalate
+                          </Button>
+                        </>
+                      )}
+                      {req.status === "approved" && (
+                        <Button
+                          size="sm"
+                          disabled={continuationLoading[req.id]}
+                          onClick={() => handleContinueExecution(req)}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                        >
+                          {continuationLoading[req.id] ? "Resuming..." : "Resume Execution"}
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Security Controls (Phase 22D) */}
+      {activeTab === "security" && (
+        <div className="space-y-6">
+          {/* Emergency Stop Banner */}
+          {securityPosture?.isEmergencyStopped ? (
+            <div className="p-4 rounded-xl bg-rose-500/15 border-2 border-rose-500/40 flex items-center justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse" />
+                  <h4 className="font-bold text-rose-300 text-sm tracking-wide uppercase">
+                    Emergency Stop Active
+                  </h4>
+                </div>
+                <p className="text-xs text-rose-200/90">
+                  All autonomous tasks, agent runtimes, and tool execution gateways have been halted across the organization.
+                </p>
+                {securityPosture.emergencyStoppedBy && (
+                  <span className="text-[10px] text-rose-300/70 font-mono">
+                    Triggered by: {securityPosture.emergencyStoppedBy} at {new Date(securityPosture.emergencyStoppedAt || "").toLocaleString()}
+                  </span>
+                )}
+              </div>
+              <Button
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold shadow-lg shadow-emerald-900/30"
+                onClick={handleResumeEmergencyStop}
+              >
+                Resume Normal Operations
+              </Button>
+            </div>
+          ) : (
+            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between">
+              <div className="space-y-1">
+                <h4 className="font-bold text-foreground text-sm">Security Controls & Kill Switch</h4>
+                <p className="text-xs text-muted-foreground">
+                  Enforces sandboxing, least-privilege capabilities, secret isolation, and real-time execution termination.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-rose-500/40 text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 font-semibold"
+                onClick={() => setShowEmergencyStopModal(true)}
+              >
+                Trigger Emergency Stop
+              </Button>
+            </div>
+          )}
+
+          {/* Posture Overview Metrics */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="p-4 bg-card border-border/80">
+              <span className="text-xs text-muted-foreground font-medium block mb-1">Posture Status</span>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-sm font-bold uppercase px-2 py-0.5 rounded ${
+                    securityPosture?.overallStatus === "HEALTHY"
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                      : securityPosture?.overallStatus === "EMERGENCY_STOPPED"
+                      ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                      : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                  }`}
+                >
+                  {securityPosture?.overallStatus || "HEALTHY"}
+                </span>
+              </div>
+            </Card>
+            <Card className="p-4 bg-card border-border/80">
+              <span className="text-xs text-muted-foreground font-medium block mb-1">Active / Suspended Agents</span>
+              <div className="text-xl font-bold text-foreground flex items-center gap-2">
+                <span className="text-emerald-400">{securityPosture?.activeAgentsCount ?? securityProfiles.filter((p) => !p.isSuspended).length}</span>
+                <span className="text-muted-foreground text-sm">/</span>
+                <span className="text-rose-400">{securityPosture?.suspendedAgentsCount ?? securityProfiles.filter((p) => p.isSuspended).length}</span>
+              </div>
+            </Card>
+            <Card className="p-4 bg-card border-border/80">
+              <span className="text-xs text-muted-foreground font-medium block mb-1">Secret References</span>
+              <div className="text-xl font-bold text-foreground flex items-center gap-2">
+                <span className="text-emerald-400">{securityPosture?.activeSecretReferencesCount ?? secretReferences.filter((s) => s.status === "active").length}</span>
+                <span className="text-muted-foreground text-xs font-normal">Active (Zero Raw Values)</span>
+              </div>
+            </Card>
+            <Card className="p-4 bg-card border-border/80">
+              <span className="text-xs text-muted-foreground font-medium block mb-1">Security Events (24h)</span>
+              <div className="text-xl font-bold text-foreground flex items-center gap-2">
+                <span>{securityPosture?.securityEventsCount24h ?? securityEvents.length}</span>
+                {(securityPosture?.criticalEventsCount24h ?? 0) > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                    {securityPosture?.criticalEventsCount24h} Critical
+                  </span>
+                )}
+              </div>
+            </Card>
+          </div>
+
+          {/* Sub-Section 1: Agent Security Profiles & Sandboxing */}
+          <Card className="p-5 bg-card border-border/80 space-y-4">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <div>
+                <h3 className="font-semibold text-base text-foreground">Agent Capabilities & Sandboxing Profiles</h3>
+                <span className="text-xs text-muted-foreground">
+                  Enforce network allowlists, filesystem boundaries, autonomy ceilings, and suspension controls per agent.
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const agentId = prompt("Enter Agent ID to configure capability profile:");
+                  if (agentId) {
+                    const existing = securityProfiles.find((p) => p.agentId === agentId);
+                    setSelectedAgentForSecurity(
+                      existing || {
+                        id: "",
+                        organizationId: orgId,
+                        workspaceId: null,
+                        agentId,
+                        resourceClassification: "INTERNAL",
+                        networkAccessMode: "BLOCKED",
+                        allowedNetworkDomains: [],
+                        disallowedNetworkDomains: [],
+                        storageAccessMode: "BLOCKED",
+                        allowedStoragePaths: [],
+                        disallowedStoragePaths: [],
+                        databaseOperations: ["READ"],
+                        maxExecutionDurationMs: 30000,
+                        maxToolInvocations: 10,
+                        maxMemoryBytes: 536870912,
+                        maxAutonomyLevel: "L1",
+                        allowAutonomousExecution: false,
+                        delegationAttenuation: true,
+                        allowedToolKeys: [],
+                        disallowedToolKeys: [],
+                        allowedSecretReferenceIds: [],
+                        isSuspended: false,
+                        suspendedAt: null,
+                        suspendedBy: null,
+                        suspensionReason: null,
+                        metadata: {},
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                      },
+                    );
+                  }
+                }}
+              >
+                + Configure Capabilities
+              </Button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-muted/40 text-muted-foreground uppercase text-[10px] tracking-wider">
+                  <tr>
+                    <th className="py-2 px-3">Agent</th>
+                    <th className="py-2 px-3">Network Mode</th>
+                    <th className="py-2 px-3">Storage Mode</th>
+                    <th className="py-2 px-3">Autonomy</th>
+                    <th className="py-2 px-3">Max Budget</th>
+                    <th className="py-2 px-3">Status</th>
+                    <th className="py-2 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {securityProfiles.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-6 text-center text-muted-foreground">
+                        No security capability profiles configured. Agents use default restricted sandbox.
+                      </td>
+                    </tr>
+                  ) : (
+                    securityProfiles.map((p) => (
+                      <tr key={p.id} className="hover:bg-muted/20">
+                        <td className="py-2.5 px-3 font-mono font-medium text-foreground">
+                          {p.agentId}
+                          <span className="block text-[10px] text-muted-foreground uppercase font-sans">
+                            {p.resourceClassification}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="font-mono text-[11px] font-semibold">{p.networkAccessMode}</span>
+                          {p.allowedNetworkDomains.length > 0 && (
+                            <span className="block text-[10px] text-muted-foreground">
+                              {p.allowedNetworkDomains.join(", ")}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-[11px]">{p.storageAccessMode}</td>
+                        <td className="py-2.5 px-3">
+                          <span className="px-1.5 py-0.5 rounded font-mono font-bold text-[10px] bg-muted/60 text-foreground">
+                            {p.maxAutonomyLevel}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-muted-foreground font-mono text-[11px]">
+                          {p.maxExecutionDurationMs / 1000}s · {p.maxToolInvocations} tools
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {p.isSuspended ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                              Suspended
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              Active
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right space-x-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => setSelectedAgentForSecurity(p)}
+                          >
+                            Edit
+                          </Button>
+                          {p.isSuspended ? (
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs bg-emerald-600 hover:bg-emerald-500 text-white"
+                              onClick={() => handleReactivateAgent(p.agentId)}
+                            >
+                              Reactivate
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs text-rose-400 border-rose-500/40 hover:bg-rose-500/20"
+                              onClick={() => setSuspendingAgentId(p.agentId)}
+                            >
+                              Suspend
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* Sub-Section 2: Secret References Inventory */}
+          <Card className="p-5 bg-card border-border/80 space-y-4">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <div>
+                <h3 className="font-semibold text-base text-foreground">Secret Reference Inventory</h3>
+                <span className="text-xs text-muted-foreground">
+                  Opaque identifiers mapped to backend credentials. Raw secrets are NEVER stored in DB or exposed via UI.
+                </span>
+              </div>
+              <Button size="sm" onClick={() => setShowCreateSecretModal(true)}>
+                + Register Secret Reference
+              </Button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-muted/40 text-muted-foreground uppercase text-[10px] tracking-wider">
+                  <tr>
+                    <th className="py-2 px-3">Identifier</th>
+                    <th className="py-2 px-3">Name</th>
+                    <th className="py-2 px-3">Allowed Agents</th>
+                    <th className="py-2 px-3">Version</th>
+                    <th className="py-2 px-3">Last Rotated</th>
+                    <th className="py-2 px-3">Status</th>
+                    <th className="py-2 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {secretReferences.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-6 text-center text-muted-foreground">
+                        No secret references registered for this organization.
+                      </td>
+                    </tr>
+                  ) : (
+                    secretReferences.map((sec) => (
+                      <tr key={sec.id} className="hover:bg-muted/20">
+                        <td className="py-2.5 px-3 font-mono font-bold text-foreground">
+                          {sec.secretIdentifier}
+                        </td>
+                        <td className="py-2.5 px-3 text-muted-foreground">{sec.name}</td>
+                        <td className="py-2.5 px-3 font-mono text-[11px]">
+                          {sec.allowedAgentIds.length === 0 ? "All" : sec.allowedAgentIds.join(", ")}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono">v{sec.version}</td>
+                        <td className="py-2.5 px-3 text-muted-foreground text-[11px]">
+                          {sec.lastRotatedAt ? new Date(sec.lastRotatedAt).toLocaleDateString() : "Never"}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              sec.status === "active"
+                                ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                            }`}
+                          >
+                            {sec.status}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right space-x-1.5">
+                          {sec.status === "active" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs"
+                                onClick={() => handleRotateSecret(sec.id)}
+                              >
+                                Rotate
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs text-rose-400 border-rose-500/40 hover:bg-rose-500/20"
+                                onClick={() => handleRevokeSecret(sec.id)}
+                              >
+                                Revoke
+                              </Button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* Sub-Section 3: Security Events Audit Stream */}
+          <Card className="p-5 bg-card border-border/80 space-y-4">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <div>
+                <h3 className="font-semibold text-base text-foreground">Security Audit Events Stream</h3>
+                <span className="text-xs text-muted-foreground">
+                  Immutable event stream for suspensions, kill switches, capability denials, injection attempts, and continuation bypasses.
+                </span>
+              </div>
+              <Button size="sm" variant="outline" onClick={loadData}>
+                Refresh Events
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              {securityEvents.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground text-xs">
+                  No security incidents or enforcement events recorded.
+                </div>
+              ) : (
+                securityEvents.map((evt) => (
+                  <div
+                    key={evt.id}
+                    className="p-3 rounded-lg bg-muted/20 border border-border/40 flex items-center justify-between text-xs"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase font-mono ${
+                            evt.severity === "critical"
+                              ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                              : evt.severity === "high"
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                              : "bg-muted/60 text-muted-foreground"
+                          }`}
+                        >
+                          {evt.severity}
+                        </span>
+                        <span className="font-bold text-foreground font-mono">{evt.eventType}</span>
+                        <span className="text-muted-foreground">·</span>
+                        <span className="text-muted-foreground font-mono">{evt.targetType}: {evt.targetId}</span>
+                      </div>
+                      <p className="text-muted-foreground text-[11px] font-mono">
+                        {JSON.stringify(evt.details)}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground font-mono whitespace-nowrap">
+                      {new Date(evt.createdAt).toLocaleTimeString()}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
         </div>
       )}
 
@@ -1702,6 +2353,329 @@ export function AgentGovernancePage() {
                 </Button>
                 <Button type="submit" size="sm">
                   Save Ownership
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+      {/* Modal: Emergency Stop Confirmation */}
+      {showEmergencyStopModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <Card className="max-w-md w-full p-6 bg-card border-rose-500/40 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                <h3 className="font-bold text-lg text-rose-300">Activate Emergency Stop</h3>
+              </div>
+              <button
+                onClick={() => setShowEmergencyStopModal(false)}
+                className="text-muted-foreground hover:text-foreground text-sm"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              This will immediately halt all autonomous task workers, tool invocations, and agent runtimes across the entire organization.
+            </p>
+            <div>
+              <label className="block font-medium text-foreground text-xs mb-1">Reason / Justification *</label>
+              <Input
+                placeholder="e.g. Suspected unauthorized model activity or runaway loop"
+                value={emergencyStopReason}
+                onChange={(e) => setEmergencyStopReason(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEmergencyStopModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="bg-rose-600 hover:bg-rose-500 text-white font-semibold"
+                onClick={handleTriggerEmergencyStop}
+              >
+                Confirm Emergency Stop
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Suspend Agent */}
+      {suspendingAgentId && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <Card className="max-w-md w-full p-6 bg-card border-rose-500/40 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <h3 className="font-bold text-lg text-rose-300">Suspend Agent</h3>
+              <button
+                onClick={() => setSuspendingAgentId(null)}
+                className="text-muted-foreground hover:text-foreground text-sm"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Target Agent: <span className="font-mono text-foreground font-semibold">{suspendingAgentId}</span>. All new executions and tool calls will be immediately rejected.
+            </p>
+            <div>
+              <label className="block font-medium text-foreground text-xs mb-1">Suspension Reason *</label>
+              <Input
+                required
+                placeholder="e.g. Administrative security hold pending policy review"
+                value={suspensionReasonInput}
+                onChange={(e) => setSuspensionReasonInput(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSuspendingAgentId(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="bg-rose-600 hover:bg-rose-500 text-white font-semibold"
+                onClick={handleSuspendAgent}
+              >
+                Confirm Suspension
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Register Secret Reference */}
+      {showCreateSecretModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <Card className="max-w-lg w-full p-6 bg-card border-border/80 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <h3 className="font-bold text-lg text-foreground">Register Secret Reference</h3>
+              <button
+                onClick={() => setShowCreateSecretModal(false)}
+                className="text-muted-foreground hover:text-foreground text-sm"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleCreateSecret} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-medium text-foreground mb-1">Opaque Identifier *</label>
+                <Input
+                  required
+                  placeholder="e.g. SEC_REF_ACADEMIC_INTEGRATION_KEY"
+                  value={newSecretIdent}
+                  onChange={(e) => setNewSecretIdent(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block font-medium text-foreground mb-1">Reference Name *</label>
+                <Input
+                  required
+                  placeholder="e.g. Academic SIS Integration Credential"
+                  value={newSecretName}
+                  onChange={(e) => setNewSecretName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block font-medium text-foreground mb-1">Description</label>
+                <Input
+                  placeholder="Optional context about this credential reference"
+                  value={newSecretDesc}
+                  onChange={(e) => setNewSecretDesc(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block font-medium text-foreground mb-1">Allowed Agent IDs (comma separated, empty = all)</label>
+                <Input
+                  placeholder="e.g. agent-academic-planning, agent-assessment-builder"
+                  value={newSecretAgents}
+                  onChange={(e) => setNewSecretAgents(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block font-medium text-foreground mb-1">Allowed Tool Keys (comma separated, empty = all)</label>
+                <Input
+                  placeholder="e.g. education.academic_structure.read"
+                  value={newSecretTools}
+                  onChange={(e) => setNewSecretTools(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block font-medium text-foreground mb-1">Synthetic Initial Value (Stored only in secure in-memory vault)</label>
+                <Input
+                  type="password"
+                  placeholder="Optional synthetic test value (never saved to database)"
+                  value={newSecretVal}
+                  onChange={(e) => setNewSecretVal(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowCreateSecretModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm">
+                  Register Secret Reference
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Configure Capability Profile (70% width) */}
+      {selectedAgentForSecurity && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <Card className="max-w-4xl w-[70vw] max-h-[85vh] overflow-y-auto p-6 bg-card border-border/80 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border/40 pb-3">
+              <div>
+                <h3 className="font-bold text-lg text-foreground">Configure Agent Capabilities & Sandbox</h3>
+                <span className="font-mono text-xs text-muted-foreground">{selectedAgentForSecurity.agentId}</span>
+              </div>
+              <button
+                onClick={() => setSelectedAgentForSecurity(null)}
+                className="text-muted-foreground hover:text-foreground text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  setError(null);
+                  await agentGovernanceService.updateSecurityProfile(orgId, selectedAgentForSecurity.agentId, selectedAgentForSecurity);
+                  setSelectedAgentForSecurity(null);
+                  setActionSuccess("Agent capability profile updated");
+                  await loadData();
+                } catch (err: any) {
+                  setError(err?.message || "Failed to update security profile");
+                }
+              }}
+              className="space-y-4 text-xs"
+            >
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-medium text-foreground mb-1">Resource Classification</label>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+                    value={selectedAgentForSecurity.resourceClassification}
+                    onChange={(e) => setSelectedAgentForSecurity({ ...selectedAgentForSecurity, resourceClassification: e.target.value })}
+                  >
+                    <option value="PUBLIC">PUBLIC</option>
+                    <option value="INTERNAL">INTERNAL</option>
+                    <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+                    <option value="RESTRICTED">RESTRICTED</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-medium text-foreground mb-1">Network Access Mode</label>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+                    value={selectedAgentForSecurity.networkAccessMode}
+                    onChange={(e) => setSelectedAgentForSecurity({ ...selectedAgentForSecurity, networkAccessMode: e.target.value })}
+                  >
+                    <option value="BLOCKED">BLOCKED (No External Requests)</option>
+                    <option value="ALLOWLIST">ALLOWLIST (Enforced Domains)</option>
+                    <option value="UNRESTRICTED">UNRESTRICTED</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium text-foreground mb-1">Allowed Network Domains (comma separated)</label>
+                <Input
+                  placeholder="e.g. *.education.gov, api.schoolhub.org"
+                  value={selectedAgentForSecurity.allowedNetworkDomains.join(", ")}
+                  onChange={(e) => setSelectedAgentForSecurity({
+                    ...selectedAgentForSecurity,
+                    allowedNetworkDomains: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                  })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-medium text-foreground mb-1">Storage Access Mode</label>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+                    value={selectedAgentForSecurity.storageAccessMode}
+                    onChange={(e) => setSelectedAgentForSecurity({ ...selectedAgentForSecurity, storageAccessMode: e.target.value })}
+                  >
+                    <option value="BLOCKED">BLOCKED</option>
+                    <option value="WORKSPACE_ISOLATED">WORKSPACE_ISOLATED</option>
+                    <option value="TEMPORARY_ONLY">TEMPORARY_ONLY</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-medium text-foreground mb-1">Max Autonomy Level</label>
+                  <select
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground"
+                    value={selectedAgentForSecurity.maxAutonomyLevel}
+                    onChange={(e) => setSelectedAgentForSecurity({ ...selectedAgentForSecurity, maxAutonomyLevel: e.target.value })}
+                  >
+                    <option value="L0">L0 (Full Approval)</option>
+                    <option value="L1">L1 (Basic Guidance)</option>
+                    <option value="L2">L2 (Semi-Autonomous)</option>
+                    <option value="L3">L3 (Autonomous)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-medium text-foreground mb-1">Max Execution Duration (ms)</label>
+                  <Input
+                    type="number"
+                    value={selectedAgentForSecurity.maxExecutionDurationMs}
+                    onChange={(e) => setSelectedAgentForSecurity({ ...selectedAgentForSecurity, maxExecutionDurationMs: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="block font-medium text-foreground mb-1">Max Tool Invocations</label>
+                  <Input
+                    type="number"
+                    value={selectedAgentForSecurity.maxToolInvocations}
+                    onChange={(e) => setSelectedAgentForSecurity({ ...selectedAgentForSecurity, maxToolInvocations: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-medium text-foreground mb-1">Disallowed Tools (comma separated)</label>
+                <Input
+                  placeholder="e.g. code.eval, system.shell.exec"
+                  value={selectedAgentForSecurity.disallowedToolKeys.join(", ")}
+                  onChange={(e) => setSelectedAgentForSecurity({
+                    ...selectedAgentForSecurity,
+                    disallowedToolKeys: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                  })}
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedAgentForSecurity(null)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm">
+                  Save Capabilities
                 </Button>
               </div>
             </form>

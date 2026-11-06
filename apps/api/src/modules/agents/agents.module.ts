@@ -11,6 +11,9 @@ import { PolicySimulationService } from "./services/policy-simulation.service.js
 import { AgentApprovalRepository } from "./repositories/agent-approval.repository.js";
 import { AgentApprovalService } from "./services/agent-approval.service.js";
 import { AgentApprovalContinuationService } from "./services/agent-approval-continuation.service.js";
+import { AgentSecurityRepository } from "./repositories/agent-security.repository.js";
+import { AgentSecurityGatewayService } from "./services/agent-security-gateway.service.js";
+import { AgentSecretVaultService } from "./services/agent-secret-vault.service.js";
 import { AgentTeamService } from "./services/agent-team.service.js";
 import { AgentOrchestrationService } from "./services/agent-orchestration.service.js";
 import {
@@ -3936,6 +3939,344 @@ export const agentsModule: BackendModule = {
         const service = new AgentApprovalService(approvalRepo);
         const expired = await service.sweepExpiredApprovals(tenant.organizationId);
         sendJson(response, 200, { expiredCount: expired.length, expired });
+      },
+    });
+
+    // =========================================================================
+    // EPIC 22D — ENTERPRISE AGENT SECURITY CONTROLS, SANDBOXING & SECRETS
+    // =========================================================================
+
+    // 1. Get Security Posture
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/posture",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const gateway = new AgentSecurityGatewayService(secRepo);
+        const posture = await gateway.getSecurityPosture(tenant.organizationId);
+        sendJson(response, 200, posture);
+      },
+    });
+
+    // 2. List Security Profiles / Capabilities
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/capabilities",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const isSuspParam = url.searchParams.get("isSuspended");
+        const isSuspended = isSuspParam !== null ? isSuspParam === "true" : undefined;
+        const profiles = await secRepo.listProfiles(tenant.organizationId, { isSuspended });
+        sendJson(response, 200, { items: profiles, total: profiles.length });
+      },
+    });
+
+    // 3. Get Agent Security Capability Profile
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/capabilities/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        let profile = await secRepo.getProfile(tenant.organizationId, routeParams.agentId);
+        if (!profile) {
+          profile = await secRepo.upsertProfile({
+            organizationId: tenant.organizationId,
+            agentId: routeParams.agentId,
+          });
+        }
+        sendJson(response, 200, profile);
+      },
+    });
+
+    // 4. Update Agent Security Capability Profile
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/capabilities/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const updated = await secRepo.upsertProfile({
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          ...body,
+        });
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 5. Suspend Agent
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/agents/:agentId/suspend",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.reason || typeof body.reason !== "string") {
+          throw new ApiError(400, "VALIDATION_FAILED", "Suspension reason is required");
+        }
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const gateway = new AgentSecurityGatewayService(secRepo);
+        const updated = await gateway.suspendAgent({
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          suspendedBy: authResult.user.id,
+          reason: body.reason,
+        });
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 6. Reactivate Agent
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/agents/:agentId/reactivate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const gateway = new AgentSecurityGatewayService(secRepo);
+        const updated = await gateway.reactivateAgent({
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          actorId: authResult.user.id,
+        });
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 7. Emergency Stop
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/emergency-stop",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const gateway = new AgentSecurityGatewayService(secRepo);
+        await gateway.triggerEmergencyStop({
+          organizationId: tenant.organizationId,
+          workspaceId: body?.workspaceId,
+          actorId: authResult.user.id,
+          reason: body?.reason,
+        });
+        sendJson(response, 200, {
+          status: "EMERGENCY_STOPPED",
+          stoppedAt: new Date().toISOString(),
+          stoppedBy: authResult.user.id,
+        });
+      },
+    });
+
+    // 8. Emergency Resume
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/emergency-resume",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const gateway = new AgentSecurityGatewayService(secRepo);
+        await gateway.resumeEmergencyStop({
+          organizationId: tenant.organizationId,
+          workspaceId: body?.workspaceId,
+          actorId: authResult.user.id,
+        });
+        sendJson(response, 200, {
+          status: "RESUMED",
+          resumedAt: new Date().toISOString(),
+          resumedBy: authResult.user.id,
+        });
+      },
+    });
+
+    // 9. List Secret References
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/secrets",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const status = url.searchParams.get("status") as any;
+        const agentId = url.searchParams.get("agentId") || undefined;
+        const secrets = await secRepo.listSecretReferences(tenant.organizationId, { status, agentId });
+        sendJson(response, 200, { items: secrets, total: secrets.length });
+      },
+    });
+
+    // 10. Create Secret Reference
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/secrets",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.secretIdentifier || !body?.name) {
+          throw new ApiError(400, "VALIDATION_FAILED", "secretIdentifier and name are required");
+        }
+
+        if (body.initialValue) {
+          AgentSecretVaultService.registerSecretValue(
+            tenant.organizationId,
+            body.secretIdentifier,
+            body.initialValue,
+          );
+        }
+
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const created = await secRepo.createSecretReference({
+          organizationId: tenant.organizationId,
+          workspaceId: body.workspaceId,
+          secretIdentifier: body.secretIdentifier,
+          name: body.name,
+          description: body.description,
+          allowedAgentIds: body.allowedAgentIds || [],
+          allowedToolKeys: body.allowedToolKeys || [],
+          createdBy: authResult.user.id,
+          metadata: body.metadata || {},
+        });
+        sendJson(response, 201, created);
+      },
+    });
+
+    // 11. Revoke Secret Reference
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/secrets/:secretId/revoke",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const revoked = await secRepo.revokeSecretReference(tenant.organizationId, routeParams.secretId);
+        if (!revoked) {
+          throw new ApiError(404, "NOT_FOUND", "Secret reference not found");
+        }
+        sendJson(response, 200, revoked);
+      },
+    });
+
+    // 12. Rotate Secret Reference
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/secrets/:secretId/rotate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const rotated = await secRepo.rotateSecretReference(tenant.organizationId, routeParams.secretId);
+        if (!rotated) {
+          throw new ApiError(404, "NOT_FOUND", "Secret reference not found");
+        }
+        if (body?.newValue) {
+          AgentSecretVaultService.registerSecretValue(
+            tenant.organizationId,
+            rotated.secretIdentifier,
+            body.newValue,
+          );
+        }
+        sendJson(response, 200, rotated);
+      },
+    });
+
+    // 13. List Security Events
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/events",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const agentId = url.searchParams.get("agentId") || undefined;
+        const eventType = (url.searchParams.get("eventType") as any) || undefined;
+        const severity = (url.searchParams.get("severity") as any) || undefined;
+        const limitParam = url.searchParams.get("limit");
+        const limit = limitParam ? parseInt(limitParam, 10) : 50;
+
+        const events = await secRepo.listEvents(tenant.organizationId, {
+          agentId,
+          eventType,
+          severity,
+          limit,
+        });
+        sendJson(response, 200, { items: events, total: events.length });
       },
     });
 

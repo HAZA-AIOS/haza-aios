@@ -1,6 +1,8 @@
 import { ApiError } from "../../../common/errors/api-error.js";
 import type { AgentApprovalRepository } from "../repositories/agent-approval.repository.js";
 import type { AgentGovernanceRepository } from "../repositories/agent-governance.repository.js";
+import type { AgentSecurityRepository } from "../repositories/agent-security.repository.js";
+import type { AgentSecurityGatewayService } from "./agent-security-gateway.service.js";
 import type { PolicyEvaluationEngine } from "./policy-evaluation-engine.service.js";
 import type { AgentToolGatewayService } from "../tools/agent-tool-gateway.service.js";
 import {
@@ -8,6 +10,7 @@ import {
   type ApprovalContinuationResult,
   computePayloadFingerprint,
 } from "../governance-approval.types.js";
+import { generateContinuationProof } from "../governance-security.types.js";
 
 export class AgentApprovalContinuationService {
   constructor(
@@ -15,11 +18,14 @@ export class AgentApprovalContinuationService {
     private readonly policyEngine?: PolicyEvaluationEngine,
     private readonly toolGateway?: AgentToolGatewayService,
     private readonly governanceRepo?: AgentGovernanceRepository,
+    private readonly securityRepo?: AgentSecurityRepository,
+    private readonly securityGateway?: AgentSecurityGatewayService,
   ) {}
 
   /**
    * Resumes an approved governed operation after validating identity,
-   * exact payload fingerprint, expiration, and fresh policy re-evaluation.
+   * exact payload fingerprint, expiration, suspension state, emergency controls,
+   * durable execution records, and fresh policy re-evaluation.
    */
   async continueApprovedExecution(
     input: ContinueApprovalExecutionInput,
@@ -86,7 +92,26 @@ export class AgentApprovalContinuationService {
       throw new ApiError(400, "BAD_REQUEST", "Approval request has expired");
     }
 
-    // 4. Exact payload fingerprint verification (anti-tampering)
+    // 4. Emergency stop and Agent suspension checks (Epic 22D)
+    if (this.securityGateway) {
+      if (this.securityGateway.isEmergencyStopped(input.organizationId, request.workspaceId)) {
+        throw new ApiError(
+          503,
+          "FORBIDDEN",
+          "Execution cannot resume: Organization or Workspace is currently under Emergency Stop",
+        );
+      }
+      const isSuspended = await this.securityGateway.isAgentSuspended(input.organizationId, request.agentId);
+      if (isSuspended) {
+        throw new ApiError(
+          403,
+          "FORBIDDEN",
+          `Agent '${request.agentId}' is suspended and cannot resume execution`,
+        );
+      }
+    }
+
+    // 5. Exact payload fingerprint verification (anti-tampering)
     const effectivePayload = input.providedPayload ?? request.payload;
     const providedFingerprint = computePayloadFingerprint(effectivePayload);
 
@@ -98,7 +123,7 @@ export class AgentApprovalContinuationService {
       );
     }
 
-    // 5. Fresh policy re-evaluation (anti-stale-policy attack)
+    // 6. Fresh policy re-evaluation (anti-stale-policy attack)
     if (this.policyEngine) {
       const freshEvaluation = await this.policyEngine.evaluate({
         organizationId: input.organizationId,
@@ -123,7 +148,7 @@ export class AgentApprovalContinuationService {
       }
     }
 
-    // 6. Concurrency-safe atomic claim for single-use consumption
+    // 7. Concurrency-safe atomic claim for single-use consumption
     const consumedAt = new Date().toISOString();
     const updated = await this.approvalRepo.updateRequestStatus({
       organizationId: input.organizationId,
@@ -142,7 +167,34 @@ export class AgentApprovalContinuationService {
       );
     }
 
-    // 7. Resume execution through appropriate runtime gateway
+    // 8. Durable execution reconciliation record (Epic 22D)
+    let continuationRecord: any = null;
+    if (this.securityRepo) {
+      try {
+        continuationRecord = await this.securityRepo.createContinuationRecord({
+          approvalRequestId: request.id,
+          organizationId: input.organizationId,
+          canonicalPayloadFingerprint: request.canonicalPayloadFingerprint,
+          executionId: request.executionId || request.id,
+          actorId: input.actorId,
+          metadata: { actionType: request.actionType, actionTarget: request.actionTarget },
+        });
+      } catch {
+        // Safe continuation if already recorded
+      }
+    }
+
+    // 9. Generate cryptographically signed continuation proof (Epic 22D)
+    const continuationProof = generateContinuationProof({
+      approvalRequestId: request.id,
+      organizationId: input.organizationId,
+      agentId: request.agentId,
+      actionTarget: request.actionTarget,
+      payloadFingerprint: request.canonicalPayloadFingerprint,
+      ttlSeconds: 120,
+    });
+
+    // 10. Resume execution through appropriate runtime gateway
     let executionResult: unknown = null;
     try {
       if (request.actionType === "tool_execution" && this.toolGateway) {
@@ -157,7 +209,7 @@ export class AgentApprovalContinuationService {
             workspaceId: request.workspaceId || "ws-default",
             agentId: request.agentId,
             userId: input.actorId,
-            bypassGovernanceApprovalCheck: true,
+            continuationProof,
           } as any,
         );
         executionResult = toolRes;
@@ -168,10 +220,37 @@ export class AgentApprovalContinuationService {
           actionType: request.actionType,
           actionTarget: request.actionTarget,
           consumedAt,
+          continuationProofNonce: continuationProof.nonce,
         };
       }
+
+      // Mark durable execution record COMPLETED
+      if (this.securityRepo && continuationRecord) {
+        try {
+          await this.securityRepo.updateContinuationRecord(continuationRecord.id, {
+            status: "completed",
+            reconciliationStatus: "completed",
+            completedAt: new Date(),
+          });
+        } catch {
+          // Non-blocking
+        }
+      }
     } catch (err: any) {
-      // Record failure
+      // Mark durable execution record FAILED with error details
+      if (this.securityRepo && continuationRecord) {
+        try {
+          await this.securityRepo.updateContinuationRecord(continuationRecord.id, {
+            status: "failed",
+            reconciliationStatus: "execution_failed",
+            errorDetails: err?.message || String(err),
+          });
+        } catch {
+          // Non-blocking
+        }
+      }
+
+      // Record failure audit log
       if (this.governanceRepo) {
         try {
           await this.governanceRepo.createAuditLog({
@@ -192,7 +271,7 @@ export class AgentApprovalContinuationService {
       throw err;
     }
 
-    // 8. Record audit log for successful consumption
+    // 11. Record audit log for successful consumption
     if (this.governanceRepo) {
       try {
         await this.governanceRepo.createAuditLog({
@@ -207,6 +286,7 @@ export class AgentApprovalContinuationService {
           metadata: {
             actionType: request.actionType,
             actionTarget: request.actionTarget,
+            continuationProofNonce: continuationProof.nonce,
           },
         });
       } catch {

@@ -205,7 +205,13 @@ export class AgentApprovalService {
               ownership.businessOwnerId === input.actorId ||
               ownership.delegatedApproverIds.includes(input.actorId)
             ) {
-              isOwnerOrDelegated = true;
+              // Ensure owner assignment cannot bypass required RBAC privileges on high/critical actions
+              const isHighOrCritical = request.riskClassification === "high" || request.riskClassification === "critical";
+              if (isHighOrCritical && !hasManagePerm && !input.userPermissions?.includes("agent.approve")) {
+                isOwnerOrDelegated = false;
+              } else {
+                isOwnerOrDelegated = true;
+              }
             }
           }
         } catch {

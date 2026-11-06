@@ -4713,6 +4713,154 @@ export const agentApprovalEscalations = mysqlTable(
   ],
 );
 
+export const agentSecurityProfiles = mysqlTable(
+  "agent_security_profiles",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    resourceClassification: varchar("resource_classification", { length: 40 }).notNull().default("internal"),
+    networkAccessMode: varchar("network_access_mode", { length: 40 }).notNull().default("blocked"),
+    allowedNetworkDomains: json("allowed_network_domains").$type<string[]>().notNull().default([]),
+    disallowedNetworkDomains: json("disallowed_network_domains").$type<string[]>().notNull().default([]),
+    storageAccessMode: varchar("storage_access_mode", { length: 40 }).notNull().default("blocked"),
+    allowedStoragePaths: json("allowed_storage_paths").$type<string[]>().notNull().default([]),
+    disallowedStoragePaths: json("disallowed_storage_paths").$type<string[]>().notNull().default([]),
+    databaseOperations: json("database_operations").$type<string[]>().notNull().default(["read"]),
+    maxExecutionDurationMs: int("max_execution_duration_ms").notNull().default(30000),
+    maxToolInvocations: int("max_tool_invocations").notNull().default(10),
+    maxMemoryBytes: bigint("max_memory_bytes", { mode: "number" }).notNull().default(536870912),
+    maxAutonomyLevel: varchar("max_autonomy_level", { length: 20 }).notNull().default("L1"),
+    allowAutonomousExecution: boolean("allow_autonomous_execution").notNull().default(false),
+    delegationAttenuation: boolean("delegation_attenuation").notNull().default(true),
+    allowedToolKeys: json("allowed_tool_keys").$type<string[]>().notNull().default([]),
+    disallowedToolKeys: json("disallowed_tool_keys").$type<string[]>().notNull().default([]),
+    allowedSecretReferenceIds: json("allowed_secret_reference_ids").$type<string[]>().notNull().default([]),
+    isSuspended: boolean("is_suspended").notNull().default(false),
+    suspendedAt: timestamp("suspended_at", { fsp: 3 }),
+    suspendedBy: char("suspended_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    suspensionReason: text("suspension_reason"),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("gov_sec_profiles_org_agent_unique").on(table.organizationId, table.agentId),
+    index("gov_sec_profiles_org_suspended_idx").on(table.organizationId, table.isSuspended),
+    index("gov_sec_profiles_org_agent_idx").on(table.organizationId, table.agentId),
+  ],
+);
+
+export const agentSecretReferences = mysqlTable(
+  "agent_secret_references",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    secretIdentifier: varchar("secret_identifier", { length: 120 }).notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    description: text("description"),
+    allowedAgentIds: json("allowed_agent_ids").$type<string[]>().notNull().default([]),
+    allowedToolKeys: json("allowed_tool_keys").$type<string[]>().notNull().default([]),
+    status: varchar("status", { length: 40 }).notNull().default("active"),
+    version: int("version").notNull().default(1),
+    lastRotatedAt: timestamp("last_rotated_at", { fsp: 3 }),
+    createdBy: char("created_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("gov_secret_ref_org_ident_unique").on(table.organizationId, table.secretIdentifier),
+    index("gov_secret_ref_org_status_idx").on(table.organizationId, table.status),
+    index("gov_secret_ref_org_ident_idx").on(table.organizationId, table.secretIdentifier),
+  ],
+);
+
+export const agentSecurityEvents = mysqlTable(
+  "agent_security_events",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentId: char("agent_id", { length: 36 }).references(() => aiAgentDefinitions.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    actorId: char("actor_id", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    eventType: varchar("event_type", { length: 80 }).notNull(),
+    severity: varchar("severity", { length: 40 }).notNull().default("medium"),
+    targetType: varchar("target_type", { length: 80 }).notNull(),
+    targetId: varchar("target_id", { length: 180 }).notNull(),
+    details: json("details").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("gov_sec_events_org_type_idx").on(table.organizationId, table.eventType, table.createdAt),
+    index("gov_sec_events_org_severity_idx").on(table.organizationId, table.severity, table.createdAt),
+    index("gov_sec_events_agent_idx").on(table.agentId),
+  ],
+);
+
+export const agentContinuationRecords = mysqlTable(
+  "agent_continuation_records",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    approvalRequestId: char("approval_request_id", { length: 36 })
+      .notNull()
+      .references(() => agentApprovalRequests.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    status: varchar("status", { length: 40 }).notNull().default("claimed"),
+    reconciliationStatus: varchar("reconciliation_status", { length: 40 })
+      .notNull()
+      .default("pending_execution"),
+    canonicalPayloadFingerprint: char("canonical_payload_fingerprint", { length: 64 }).notNull(),
+    executionId: varchar("execution_id", { length: 120 }),
+    actorId: char("actor_id", { length: 36 }).notNull(),
+    attempts: int("attempts").notNull().default(1),
+    errorDetails: text("error_details"),
+    startedAt: timestamp("started_at", { fsp: 3 }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { fsp: 3 }),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("gov_continuation_records_req_unique").on(table.approvalRequestId),
+    index("gov_continuation_records_org_status_idx").on(table.organizationId, table.status),
+    index("gov_continuation_records_reconcile_idx").on(table.organizationId, table.reconciliationStatus),
+  ],
+);
+
 export const schema = {
   usageMeterEvents,
   saasPlans,
@@ -4846,6 +4994,10 @@ export const schema = {
   agentApprovalRequests,
   agentApprovalDecisions,
   agentApprovalEscalations,
+  agentSecurityProfiles,
+  agentSecretReferences,
+  agentSecurityEvents,
+  agentContinuationRecords,
   workspaces,
 };
 

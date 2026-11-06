@@ -37,6 +37,8 @@ import type {
 } from "../providers/ai-provider.types.js";
 import { AgentToolGatewayService } from "../tools/agent-tool-gateway.service.js";
 import { AgentGovernanceRepository } from "../repositories/agent-governance.repository.js";
+import { AgentSecurityRepository } from "../repositories/agent-security.repository.js";
+import { AgentSecurityGatewayService } from "./agent-security-gateway.service.js";
 import { PolicyEvaluationEngine } from "./policy-evaluation-engine.service.js";
 import { listTrustedTools, convertToToolDeclaration } from "../tools/trusted-tool-registry.js";
 import { AcademicLessonPlanRepository } from "../repositories/academic-lesson-plan.repository.js";
@@ -270,6 +272,25 @@ export class AgentRuntimeService {
     try {
       const agent = await agentRepo.getByIdForOrganization(run.organizationId, run.agentId);
       if (!agent) throw new ApiError(404, "NOT_FOUND", "Agent definition not found.");
+
+      // Enterprise Security Controls & Emergency Stop Check (Phase 22D)
+      if (this.database?.db) {
+        try {
+          const repoCtx = createRepositoryContext(this.database.db);
+          const secRepo = new AgentSecurityRepository(repoCtx);
+          const secGateway = new AgentSecurityGatewayService(secRepo);
+
+          secGateway.checkExecutionCancellationCheckpoint(run.id, run.organizationId, run.workspaceId);
+          await secGateway.enforceRuntimeEntry({
+            organizationId: run.organizationId,
+            workspaceId: run.workspaceId,
+            agentId: run.agentId,
+            actorId: run.requestedBy,
+          });
+        } catch (secErr: any) {
+          if (secErr instanceof ApiError) throw secErr;
+        }
+      }
 
       // Enterprise Governance Policy Engine Check (Phase 22B)
       if (this.database?.db) {

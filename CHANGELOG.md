@@ -1,3 +1,45 @@
+## [Unreleased - Epic 22D] - 2026-11-06
+
+### Added
+- **Epic 22D — Enterprise Agent Security Controls, Sandboxing & Secret Protection:**
+  - **Capability Model & Profile Persistence (Migration 0034 - `0034_agent_security_controls_sandboxing.sql`):**
+    - Added 4 relational tables: `agent_security_profiles`, `agent_secret_references`, `agent_security_events`, and `agent_continuation_records`.
+    - Enforced security classifications (`PUBLIC`, `INTERNAL`, `CONFIDENTIAL`, `RESTRICTED`), network/storage access modes, resource budgets, and autonomy ceilings (`L0`–`L3`).
+  - **Security Enforcement Gateway (`agent-security-gateway.service.ts`):**
+    - 6-tier deterministic tool risk classification (`READ_ONLY_DATA`, `CONTROLLED_WRITE`, `EXTERNAL_NETWORK`, `FILESYSTEM_ACCESS`, `CODE_EXECUTION`, `SYSTEM_OPERATION`).
+    - Explicit sandboxing boundaries: strictly blocks arbitrary code execution and OS-level operations at the gateway without false sandbox claims.
+    - SSRF prevention: blocks loopback (`127.0.0.1`), RFC1918 private subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), and cloud metadata (`169.254.169.254`).
+    - Storage sandboxing: blocks path traversal sequences (`..`), null bytes, and sensitive system directories (`/etc`, `/proc`, `C:\Windows`).
+    - Multi-agent delegation privilege attenuation: ensures child agents cannot escalate beyond parent autonomy or security limits.
+    - Prompt-injection scanning on untrusted inputs with heuristic pattern detection.
+  - **Opaque Secret Protection Abstraction (`agent-secret-vault.service.ts`):**
+    - Zero plaintext/decryptable credentials stored in database tables or logs.
+    - Database references metadata only (`agent_secret_references`); secrets are held exclusively in-memory or environment-managed synthetic vaults.
+    - Enforces tool-level allowlists before credential injection.
+    - Deep output redaction (`redactObject`) scrubbing API keys, tokens, and credentials from tool outputs, logs, and traces.
+  - **Emergency Security Controls:**
+    - Organization-wide emergency kill switch (`POST /emergency-stop`) halting all agent executions and tool dispatches within milliseconds.
+    - Single-agent immediate suspension and reactivation (`POST /suspend`, `POST /reactivate`).
+    - In-flight execution cancellation checkpoints integrated into agent runtime and workers.
+  - **Phase 22C Security Hardening:**
+    - Eliminated unauthenticated boolean `bypassGovernanceApprovalCheck`.
+    - Introduced cryptographically signed HMAC-SHA256 `ContinuationProof` generated exclusively by `AgentApprovalContinuationService`.
+    - Introduced durable `agent_continuation_records` ensuring anti-replay protection and crash recovery reconciliation.
+    - Hardened reviewer authorization against self-approval and RBAC privilege bypass.
+  - **Governance Center UI — Security Controls Console (`AgentGovernancePage.tsx`):**
+    - New "Security Controls" tab with posture metric cards and active emergency stop banner.
+    - Agent Capabilities profile management table with Suspend, Reactivate, and 70%-width capability drawer.
+    - Secret references table tracking registered secret metadata with zero credential exposure.
+    - Real-time security audit event stream with severity badges and actor attribution.
+    - Action modals for Emergency Stop, Agent Suspension, Secret Registration, and Capability Configuration.
+  - **13 REST API Endpoints:** Mounted under `/api/v1/organizations/:organizationId/agent-governance/security/`.
+
+### Verification
+- 20/20 passing security unit and integration tests in `apps/api/tests/epic22d-security-controls.test.ts`.
+- 119/119 passing tests across full 8-suite agent regression suite (Epics 16, 19, 20, 21, 22A, 22B, 22C, 22D).
+- 0 TypeScript compiler errors in `apps/api` and `apps/web`.
+- Database schema verified via `drizzle-kit check` ("Everything's fine 🐶🔥").
+
 ## [Unreleased - Epic 22C] - 2026-11-05
 
 ### Added

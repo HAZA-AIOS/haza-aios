@@ -682,6 +682,267 @@ export class AgentGovernanceService {
       },
     );
   }
+
+  // =========================================================================
+  // EPIC 22D — SECURITY CONTROLS, SANDBOXING & SECRETS CLIENT METHODS
+  // =========================================================================
+
+  async getSecurityPosture(organizationId: string): Promise<WebSecurityPostureSummary> {
+    return await apiClient.request<WebSecurityPostureSummary>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/posture`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async listSecurityProfiles(
+    organizationId: string,
+    isSuspended?: boolean,
+  ): Promise<{ items: WebAgentSecurityProfile[]; total: number }> {
+    const query = isSuspended !== undefined ? `?isSuspended=${isSuspended}` : "";
+    return await apiClient.request<{ items: WebAgentSecurityProfile[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/capabilities${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async getSecurityProfile(
+    organizationId: string,
+    agentId: string,
+  ): Promise<WebAgentSecurityProfile> {
+    return await apiClient.request<WebAgentSecurityProfile>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/capabilities/${agentId}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async updateSecurityProfile(
+    organizationId: string,
+    agentId: string,
+    data: Partial<WebAgentSecurityProfile>,
+  ): Promise<WebAgentSecurityProfile> {
+    return await apiClient.request<WebAgentSecurityProfile>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/capabilities/${agentId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async suspendAgent(
+    organizationId: string,
+    agentId: string,
+    reason: string,
+  ): Promise<WebAgentSecurityProfile> {
+    return await apiClient.request<WebAgentSecurityProfile>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/agents/${agentId}/suspend`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async reactivateAgent(
+    organizationId: string,
+    agentId: string,
+  ): Promise<WebAgentSecurityProfile> {
+    return await apiClient.request<WebAgentSecurityProfile>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/agents/${agentId}/reactivate`,
+      {
+        method: "POST",
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async triggerEmergencyStop(
+    organizationId: string,
+    workspaceId?: string,
+    reason?: string,
+  ): Promise<{ status: string; stoppedAt: string; stoppedBy: string }> {
+    return await apiClient.request<{ status: string; stoppedAt: string; stoppedBy: string }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/emergency-stop`,
+      {
+        method: "POST",
+        body: JSON.stringify({ workspaceId, reason }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async resumeEmergencyStop(
+    organizationId: string,
+    workspaceId?: string,
+  ): Promise<{ status: string; resumedAt: string; resumedBy: string }> {
+    return await apiClient.request<{ status: string; resumedAt: string; resumedBy: string }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/emergency-resume`,
+      {
+        method: "POST",
+        body: JSON.stringify({ workspaceId }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async listSecretReferences(
+    organizationId: string,
+    status?: string,
+    agentId?: string,
+  ): Promise<{ items: WebAgentSecretReference[]; total: number }> {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (agentId) params.set("agentId", agentId);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ items: WebAgentSecretReference[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/secrets${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async createSecretReference(
+    organizationId: string,
+    data: {
+      secretIdentifier: string;
+      name: string;
+      description?: string;
+      allowedAgentIds?: string[];
+      allowedToolKeys?: string[];
+      initialValue?: string;
+    },
+  ): Promise<WebAgentSecretReference> {
+    return await apiClient.request<WebAgentSecretReference>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/secrets`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async revokeSecretReference(
+    organizationId: string,
+    secretId: string,
+  ): Promise<WebAgentSecretReference> {
+    return await apiClient.request<WebAgentSecretReference>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/secrets/${secretId}/revoke`,
+      {
+        method: "POST",
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async rotateSecretReference(
+    organizationId: string,
+    secretId: string,
+    newValue?: string,
+  ): Promise<WebAgentSecretReference> {
+    return await apiClient.request<WebAgentSecretReference>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/secrets/${secretId}/rotate`,
+      {
+        method: "POST",
+        body: JSON.stringify({ newValue }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async listSecurityEvents(
+    organizationId: string,
+    filters?: { agentId?: string; eventType?: string; severity?: string; limit?: number },
+  ): Promise<{ items: WebAgentSecurityEvent[]; total: number }> {
+    const params = new URLSearchParams();
+    if (filters?.agentId) params.set("agentId", filters.agentId);
+    if (filters?.eventType) params.set("eventType", filters.eventType);
+    if (filters?.severity) params.set("severity", filters.severity);
+    if (filters?.limit) params.set("limit", String(filters.limit));
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ items: WebAgentSecurityEvent[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/security/events${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+}
+
+export interface WebAgentSecurityProfile {
+  id: string;
+  organizationId: string;
+  workspaceId: string | null;
+  agentId: string;
+  resourceClassification: string;
+  networkAccessMode: string;
+  allowedNetworkDomains: string[];
+  disallowedNetworkDomains: string[];
+  storageAccessMode: string;
+  allowedStoragePaths: string[];
+  disallowedStoragePaths: string[];
+  databaseOperations: string[];
+  maxExecutionDurationMs: number;
+  maxToolInvocations: number;
+  maxMemoryBytes: number;
+  maxAutonomyLevel: string;
+  allowAutonomousExecution: boolean;
+  delegationAttenuation: boolean;
+  allowedToolKeys: string[];
+  disallowedToolKeys: string[];
+  allowedSecretReferenceIds: string[];
+  isSuspended: boolean;
+  suspendedAt: string | null;
+  suspendedBy: string | null;
+  suspensionReason: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebAgentSecretReference {
+  id: string;
+  organizationId: string;
+  workspaceId: string | null;
+  secretIdentifier: string;
+  name: string;
+  description: string | null;
+  allowedAgentIds: string[];
+  allowedToolKeys: string[];
+  status: "active" | "revoked" | "rotated";
+  version: number;
+  lastRotatedAt: string | null;
+  createdBy: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebAgentSecurityEvent {
+  id: string;
+  organizationId: string;
+  workspaceId: string | null;
+  agentId: string | null;
+  actorId: string | null;
+  eventType: string;
+  severity: "low" | "medium" | "high" | "critical";
+  targetType: string;
+  targetId: string;
+  details: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface WebSecurityPostureSummary {
+  overallStatus: "HEALTHY" | "SUSPENDED" | "EMERGENCY_STOPPED" | "DEGRADED";
+  isEmergencyStopped: boolean;
+  emergencyStoppedAt?: string | null;
+  emergencyStoppedBy?: string | null;
+  activeAgentsCount: number;
+  suspendedAgentsCount: number;
+  totalSecretReferencesCount: number;
+  activeSecretReferencesCount: number;
+  revokedSecretReferencesCount: number;
+  securityEventsCount24h: number;
+  criticalEventsCount24h: number;
 }
 
 export const agentGovernanceService = new AgentGovernanceService();

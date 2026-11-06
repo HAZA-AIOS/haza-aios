@@ -171,3 +171,67 @@ Before executing any approved operation via `AgentApprovalContinuationService`:
 **Consequences:**  
 - Complete anti-tampering protection against parameter manipulation.
 - Immunity to stale-policy authorization vulnerabilities.
+
+---
+
+### ADR-022-10: Capability Model & Sandboxing Risk Classification
+
+**Status:** Approved  
+**Date:** 2026-11-06  
+**Context:**  
+Agents operate across diverse capabilities (read-only queries, write operations, external network requests, local filesystem access, arbitrary code execution, and system primitives). Without granular risk categorization and deterministic security enforcement, agents risk host compromise, lateral network movement, SSRF attacks, and directory traversal.
+
+**Decision:**  
+Establish 6 risk classifications (`READ_ONLY_DATA`, `CONTROLLED_WRITE`, `EXTERNAL_NETWORK`, `FILESYSTEM_ACCESS`, `CODE_EXECUTION`, `SYSTEM_OPERATION`).
+1. **Explicit Sandbox Boundaries:** Arbitrary code execution (`CODE_EXECUTION`) and untrusted host OS modifications (`SYSTEM_OPERATION`) are strictly prohibited and hard-blocked at the platform security gateway without claiming false container-level isolation.
+2. **SSRF Destination Validation:** Network requests are checked against allowlists and blocked from accessing loopback (`127.0.0.1`, `localhost`), RFC1918 private subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local IPs, and cloud metadata services (`169.254.169.254`).
+3. **Filesystem Traversal Prevention:** Storage operations reject directory traversal sequences (`..`), null bytes, and sensitive system directories (`/etc`, `/var`, `/proc`, `C:\Windows`, `C:\Program Files`).
+4. **Delegation Attenuation:** Multi-agent delegation verifies that child agents have autonomy levels and capabilities strictly equal to or lower than the delegating parent agent.
+
+**Consequences:**  
+- Eliminates SSRF and directory traversal attack vectors.
+- Guarantees agents cannot exceed assigned autonomy ceilings or escalate privileges during delegation.
+- Clear, honest security posture that does not make false sandbox promises.
+
+---
+
+### ADR-022-11: Opaque Secret Vault Abstraction & Redaction
+
+**Status:** Approved  
+**Date:** 2026-11-06  
+**Context:**  
+Tool calls and autonomous agent workflows require external API credentials, database keys, or third-party service tokens. Persisting plaintext or decryptable secret values in database tables or logs presents severe exfiltration and compliance risks.
+
+**Decision:**  
+Implement an opaque secret reference architecture (`agent_secret_references`):
+1. **Zero Secret DB Exposure:** The database stores metadata only (opaque key, secret name, provider, status, rotation timestamps, allowed tool IDs).
+2. **Secure In-Memory Vault:** Secret values are resolved exclusively within secure in-memory vaults (`AgentSecretVaultService`) or environment-managed synthetic test credential sets.
+3. **Scoped Tool Allowlist:** Secrets can only be consumed by tools explicitly listed in their reference scope.
+4. **Deep Redaction:** All tool gateway outputs, logs, and telemetry are scrubbed through recursive object redaction (`redactObject`), preventing credential leakage in conversational responses or traces.
+
+**Consequences:**  
+- Zero plaintext credentials in database rows, API responses, or UI dashboards.
+- Revoking an opaque secret reference immediately prevents any agent from using the credential.
+- Deep output redaction prevents prompt extraction leaks.
+
+---
+
+### ADR-022-12: Cryptographic Continuation Proofs & Durable Reconciliation State
+
+**Status:** Approved  
+**Date:** 2026-11-06  
+**Context:**  
+In Phase 22C, tool gateway continuation previously accepted an unverified boolean flag `bypassGovernanceApprovalCheck: true`, creating an attack vector where an unauthenticated or malicious caller could bypass policy checks. Additionally, failures or crashes during post-approval tool execution risked unrecorded partial state transitions.
+
+**Decision:**  
+Eliminate the boolean bypass flag:
+1. **Cryptographic Proof Token:** Introduce cryptographically signed HMAC-SHA256 continuation tokens (`ContinuationProof`) generated exclusively by `AgentApprovalContinuationService`.
+2. **Durable State Machine:** Introduce durable relational tracking via `agent_continuation_records` (storing `continuationStatus`, `reconciliationStatus`, attempt counts, and error payloads).
+3. **Gateway Verification:** In `AgentToolGatewayService`, reject any request claiming approval continuation without a valid cryptographic token verified against the database record, and fail closed with audit event `CONTINUATION_BYPASS_ATTEMPT`.
+4. **Atomic Reconciliation:** Durable execution state is atomically transitioned from `claimed` to `COMPLETED` on success or `FAILED` on error.
+
+**Consequences:**  
+- Closes the approval bypass vulnerability.
+- Provides anti-replay protection and crash recovery reconciliation for interrupted approvals.
+- Guarantees end-to-end cryptographic integrity.
+

@@ -1,6 +1,12 @@
-## [Unreleased - Epic 22H] - 2026-11-17
+## [0.22.0-epic22] - 2026-11-17
 
 ### Added
+- **Epic 22 — Enterprise Agent Governance, Security & Compliance:**
+  - Production release of the enterprise agent governance, security, and compliance architecture across all 8 phases (22A–22H) merged via PR #61 (`e774da9374f56061a76117322d3bbc4e19773f89`).
+  - Database migrations `0032_agent_governance_foundation.sql` through `0036_agent_risk_trust_management.sql` (28 new relational tables, 98 foreign key constraints, advancing production database to 159 total tables and 457 total foreign keys).
+  - All 20/20 live production smoke tests passed against Railway production services (`scripts/live-production-smoke-test-epic22.ts`).
+  - Default non-blocking `MONITOR` mode active with zero disruption to existing production agent executions and $0.00 spent in paid AI tokens.
+
 - **Epic 22H — Final Security Acceptance, Regression Verification & Release Readiness:**
   - **Release Acceptance Test Suite (`apps/api/tests/epic22h-release-acceptance.test.ts`):**
     - 21 comprehensive acceptance tests spanning the end-to-end governance lifecycle: Agent Request -> RBAC -> Precedence -> Dual Sign-Off -> Continuation Proof -> Execution -> SHA-256 Ledger Append -> Console Telemetry.
@@ -23,9 +29,6 @@
     - Added ADR-022-22, ADR-022-23, and ADR-022-24 to `docs/epic-22/EPIC-22-ARCHITECTURE-DECISIONS.md`.
     - Evaluated Quality Gates G1–G10: all 10 gates passed with 100% compliance.
 
-## [Unreleased - Epic 22G] - 2026-11-17
-
-### Added
 - **Epic 22G — Enterprise Governance Console & Unified Operations:**
   - **Unified Information Architecture & Operations Cockpit (`AgentGovernancePage.tsx`):**
     - Implemented a unified 10-section operational architecture: Overview, Agent Directory, Policies & Rules, Human Approvals, Security Operations, Compliance & Audit, Risk & Trust, Unified Activity, Action Center, Governance Reports, and Settings.
@@ -57,9 +60,6 @@
   - **Architecture Decision Records:** Added ADR-022-19, ADR-022-20, and ADR-022-21 in `docs/epic-22/EPIC-22-ARCHITECTURE-DECISIONS.md`.
   - **Automated Test Coverage:** 22 dedicated test cases passing in `apps/api/tests/epic22g-unified-console.test.ts` (100% passing), 141 tests passing across all Epic 22 suites.
 
-## [Unreleased - Epic 22F] - 2026-11-17
-
-### Added
 - **Epic 22F — Enterprise Agent Risk & Trust Management:**
   - **Risk & Trust Schema & Persistence (Migration 0036 - `0036_agent_risk_trust_management.sql`):**
     - Added 9 relational tables: `agent_risk_configurations`, `agent_risk_register`, `agent_risk_assessments`, `agent_trust_profiles`, `agent_trust_assessment_history`, `agent_behavioral_risk_alerts`, `agent_risk_mitigations`, `agent_risk_exceptions`, and `agent_risk_review_history`.
@@ -90,9 +90,6 @@
   - **Architecture Decision Records:** Added ADR-022-16, ADR-022-17, and ADR-022-18 in `docs/epic-22/EPIC-22-ARCHITECTURE-DECISIONS.md`.
   - **Automated Test Coverage:** 25 dedicated test cases in `apps/api/tests/epic22f-risk-trust.test.ts` (100% passing), 183 regression tests passing across Epics 18–22.
 
-## [Unreleased - Epic 22E] - 2026-11-06
-
-### Added
 - **Epic 22E — Enterprise Compliance, Audit Integrity & Evidence Management:**
   - **Compliance Schema & Persistence (Migration 0035 - `0035_agent_compliance_audit_integrity.sql`):**
     - Added 10 relational tables: `agent_compliance_events`, `agent_audit_integrity_chains`, `agent_compliance_frameworks`, `agent_compliance_controls`, `agent_compliance_control_mappings`, `agent_compliance_evidence`, `agent_compliance_evidence_packages`, `agent_compliance_retention_policies`, `agent_compliance_legal_holds`, and `agent_compliance_investigations`.
@@ -136,9 +133,6 @@
 - 0 TypeScript compiler errors across `apps/api` and `apps/web`.
 - Database schema verified via `drizzle-kit check` ("Everything's fine 🐶🔥").
 
-## [Unreleased - Epic 22D] - 2026-11-06
-
-### Added
 - **Epic 22D — Enterprise Agent Security Controls, Sandboxing & Secret Protection:**
   - **Capability Model & Profile Persistence (Migration 0034 - `0034_agent_security_controls_sandboxing.sql`):**
     - Added 4 relational tables: `agent_security_profiles`, `agent_secret_references`, `agent_security_events`, and `agent_continuation_records`.
@@ -178,9 +172,6 @@
 - 0 TypeScript compiler errors in `apps/api` and `apps/web`.
 - Database schema verified via `drizzle-kit check` ("Everything's fine 🐶🔥").
 
-## [Unreleased - Epic 22C] - 2026-11-05
-
-### Added
 - **Epic 22C — Enterprise Human-in-the-Loop Approval Workflows:**
   - **Approval Domain Persistence & Database Migration 0033 (`0033_agent_human_approval_workflows.sql`):**
     - Added 3 relational tables: `agent_approval_requests`, `agent_approval_decisions`, and `agent_approval_escalations`.
@@ -212,9 +203,6 @@
 - 0 TypeScript compiler errors across `apps/api` and `apps/web`.
 - Database schema verified via `drizzle-kit check` ("Everything's fine 🐶🔥").
 
-## [Unreleased - Epic 22B] - 2026-11-05
-
-### Added
 - **Epic 22B — Enterprise Policy & Permission Engine:**
   - **Deterministic Policy Evaluation Engine (`policy-evaluation-engine.service.ts`):**
     - 5-level deterministic authorization precedence: Mandatory Platform Security > Explicit Deny > Require Approval > Allow > Default Fallback (fail-closed).
@@ -245,9 +233,6 @@
 - 77/77 passing tests across all active test suites (Epics 19, 20, 21, 22A, 22B).
 - 0 TypeScript compiler errors across `apps/api` and `apps/web`.
 
-## [Unreleased - Epic 22A] - 2026-11-05
-
-### Added
 - **Epic 22A — Enterprise Agent Governance Foundation:**
   - **Agent Governance Profiles (`agent-governance.service.ts` & `governance.types.ts`):**
     - Multi-tenant, organization-scoped governance profiles (`agent_governance_profiles`) capturing security classification (`public`, `internal`, `confidential`, `restricted`) and operational risk tiering (`low`, `medium`, `high`, `critical`).

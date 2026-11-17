@@ -1,22 +1,21 @@
 # HAZA-AIOS — Current Release & Roadmap Status
 
 **As of:** 2026-11-17  
-**Production Live Tag:** `v0.21.0-epic21` (Merged into main, Live in Production)  
-**Target Candidate Release:** `v0.22.0-epic22` (**Release Candidate — NOT DEPLOYED / Ready for Release Approval**)  
+**Production Live Tag:** `v0.22.0-epic22` (Merged into main, Live in Production)  
+**Target Candidate Release:** Maintenance & Next Epic  
 **Source repository:** `HAZA-AIOS/haza-aios`  
-**Active Development Branch:** `feature/epic-22-agent-governance-security`  
-**Current Baseline Branch:** `main` (`v0.21.0-epic21`)  
+**Current Baseline Branch:** `main` (`v0.22.0-epic22`)  
 
 ## Production deployment (Live Baseline)
 
 | Component | Status | Notes |
 | --- | --- | --- |
-| Web | Online at https://web-production-76faf.up.railway.app | Railway production (Deployment `bad6c7c0-a0be-420b-8e69-0f29b4b1f9d4`) |
-| API | Online at https://api.haza-aios.com | Railway production (Deployment `5291047a-947f-426e-9fb4-d24c534f2446`) |
-| Worker | Online | Dedicated continuous queue-processing service (Deployment `7b2eaf0b-c193-4392-b108-32615f7d5972`) |
-| MySQL | Online | Railway production; migration `0031_agent_observability_evaluation_reliability.sql` applied |
+| Web | Online at https://web-production-76faf.up.railway.app | Railway production (Deployment `b416884a-8051-457e-ad2b-b7cb7a7eaa5f`) |
+| API | Online at https://api.haza-aios.com | Railway production (Deployment `55692cbe-67ec-4c64-aa13-c6ec81a0d979`) |
+| Worker | Online | Dedicated continuous queue-processing service (Deployment `672085f3-6b8f-4b5d-be1b-e167c4e9ad23`) |
+| MySQL | Online | Railway production; migrations `0001` through `0036` applied (159 total tables, 457 foreign keys) |
 
-The Epic 21 production release report records successful API/Web health checks, migration verification (128 total tables, 359 total foreign keys), and 15/15 passing live production smoke tests.
+The Epic 22 production release report records successful API/Web health checks, migration verification (159 total tables, 457 total foreign keys), and 20/20 passing live production smoke tests.
 
 ## Delivered agent roadmap
 
@@ -33,19 +32,25 @@ The Epic 21 production release report records successful API/Web health checks, 
 | 19 | Multi-Agent Collaboration & Orchestration | Production released (`v0.19.0-epic19`) |
 | 20 | Advanced Autonomous Agents & Continuous Operations | Production released (`v0.20.0-epic20`) |
 | 21 | Agent Operations Observability, Evaluation & Reliability | Production released (`v0.21.0-epic21`) |
-| **22** | **Enterprise Agent Governance, Security & Compliance** | **Release Candidate — Acceptance Verified (Phases 22A–22H Complete; NOT DEPLOYED)** |
+| **22** | **Enterprise Agent Governance, Security & Compliance** | **Production released (`v0.22.0-epic22`)** |
 
-## Epic 22 release candidate evidence & acceptance summary
+## Epic 22 evidence and release summary
 
-- Active Branch: `feature/epic-22-agent-governance-security` (Unmerged, tag `v0.22.0-epic22` not yet created).
-- Baseline Release: `v0.21.0-epic21` (commit `0a39269` / `1dd11fb`).
+- Branch: `main` (Merge Commit: `e774da9374f56061a76117322d3bbc4e19773f89`, PR #61)
+- Release Tag: `v0.22.0-epic22`
 - Automated tests: **162/162 passing tests** across 8 Epic 22 test suites (`epic22a` through `epic22h`).
 - Regression tests: **79/79 passing tests** across Epics 18–21 and Agent Tool Gateway.
-- Quality Gates: **10/10 gates PASSED** (G1 through G10).
-- Builds & Typecheck: API and Web TypeScript typecheck (0 errors) and production builds (Clean).
-- Database migrations: Continuous sequence `0032_agent_governance_foundation.sql` through `0036_agent_risk_trust_management.sql` synchronized with Drizzle schema (`Everything's fine 🐶🔥`).
-- Isolated upgrade & recovery rehearsal: **PASSED** (10/10 steps complete; 28 tables verified, repeat-run idempotency passed with 0 errors, disaster recovery dump and restore matched 159 tables and 457 foreign keys, test schemas cleanly dropped).
-- Scope boundary adherence: Zero production deployments, zero database mutations, zero tag creation. Production deployment strictly deferred pending explicit user authorization.
+- Live smoke tests: **20/20 passing production smoke tests** in `scripts/live-production-smoke-test-epic22.ts`.
+- Database migrations: Continuous sequence `0032_agent_governance_foundation.sql` through `0036_agent_risk_trust_management.sql`. Total production tables: 159, foreign keys: 457, Drizzle journal entries: 37.
+- Capabilities: Enterprise governance foundation, deterministic policy evaluation engine, dual-signoff human approval workflows with HMAC continuation proofs, runtime security gateway with SSRF/path-traversal protection, cryptographic compliance ledger with RFC 3161 hashing and legal holds, mathematical risk scoring with empirical control reductions, multidimensional trust profiles with cold-start baselines, behavioral anomaly detection with SHA-256 fingerprint deduplication, and 10-section Unified Governance Console in `@haza-aios/ui`.
+- Default Mode: Non-blocking `MONITOR` mode active; zero operational disruption to existing agent workflows.
+- Performance: Live API readiness probe latency 525ms (< 1000ms threshold); in-memory policy evaluation latency p99 < 1ms.
+- Multi-Tenant & Security: Strict tenant boundaries enforced across all tables and routes; deep credential scrubbing verified.
+- Production Deployments:
+  - API: `55692cbe-67ec-4c64-aa13-c6ec81a0d979`
+  - Web: `b416884a-8051-457e-ad2b-b7cb7a7eaa5f`
+  - Worker: `672085f3-6b8f-4b5d-be1b-e167c4e9ad23`
+  - MySQL: `railway` database volume
 
 ## Epic 21 evidence and release summary
 
@@ -60,6 +65,6 @@ The Epic 21 production release report records successful API/Web health checks, 
 
 ## Sources of truth
 
-1. Annotated release tags (`v0.21.0-epic21`, `v0.20.0-epic20`, `v0.19.0-epic19`, `v0.18.0-epic18`, `v0.17.0-epic17`, `v0.16.0-epic16`, `v0.15.0-epic15`, etc.).
+1. Annotated release tags (`v0.22.0-epic22`, `v0.21.0-epic21`, `v0.20.0-epic20`, `v0.19.0-epic19`, `v0.18.0-epic18`, `v0.17.0-epic17`, `v0.16.0-epic16`, `v0.15.0-epic15`, etc.).
 2. Applied database migrations in `apps/api/src/database/migrations/`.
 3. Verified Railway deployment logs and service health endpoints.

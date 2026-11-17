@@ -32,6 +32,7 @@ import {
   MultiAgentOrchestrationPage,
   ContinuousOperationsPage,
   AgentObservabilityPage,
+  AgentGovernancePage,
 } from "./pages/workspace/agents";
 import { MarketplaceAgentProfilePage } from "./pages/workspace/marketplace/MarketplaceAgentProfilePage";
 import { InstalledAgentsPage } from "./pages/workspace/marketplace/InstalledAgentsPage";
@@ -744,6 +745,16 @@ function App() {
         <ProtectedRoute>
           <WorkspaceGuard>
             <AgentObservabilityPage />
+          </WorkspaceGuard>
+        </ProtectedRoute>
+      );
+    case "/workspace/agents/governance":
+    case "/workspace/agents/policies":
+    case "/workspace/agents/ownership":
+      return (
+        <ProtectedRoute>
+          <WorkspaceGuard>
+            <AgentGovernancePage />
           </WorkspaceGuard>
         </ProtectedRoute>
       );

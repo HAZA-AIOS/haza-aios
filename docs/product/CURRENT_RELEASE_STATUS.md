@@ -1,12 +1,13 @@
 # HAZA-AIOS — Current Release & Roadmap Status
 
-**As of:** 2026-11-04  
-**Production tag:** `v0.21.0-epic21` (Merged into main, tag `v0.21.0-epic21`)  
-**Target release:** `v0.21.0-epic21` (Released to Production)  
+**As of:** 2026-11-17  
+**Production Live Tag:** `v0.21.0-epic21` (Merged into main, Live in Production)  
+**Target Candidate Release:** `v0.22.0-epic22` (**Release Candidate — NOT DEPLOYED / Ready for Release Approval**)  
 **Source repository:** `HAZA-AIOS/haza-aios`  
-**Current branch:** `main`  
+**Active Development Branch:** `feature/epic-22-agent-governance-security`  
+**Current Baseline Branch:** `main` (`v0.21.0-epic21`)  
 
-## Production deployment
+## Production deployment (Live Baseline)
 
 | Component | Status | Notes |
 | --- | --- | --- |
@@ -31,7 +32,20 @@ The Epic 21 production release report records successful API/Web health checks, 
 | 18 | Live AI Provider Integration & Production Agent Intelligence | Production released (`v0.18.0-epic18`) |
 | 19 | Multi-Agent Collaboration & Orchestration | Production released (`v0.19.0-epic19`) |
 | 20 | Advanced Autonomous Agents & Continuous Operations | Production released (`v0.20.0-epic20`) |
-| **21** | **Agent Operations Observability, Evaluation & Reliability** | **Production released (`v0.21.0-epic21`)** |
+| 21 | Agent Operations Observability, Evaluation & Reliability | Production released (`v0.21.0-epic21`) |
+| **22** | **Enterprise Agent Governance, Security & Compliance** | **Release Candidate — Acceptance Verified (Phases 22A–22H Complete; NOT DEPLOYED)** |
+
+## Epic 22 release candidate evidence & acceptance summary
+
+- Active Branch: `feature/epic-22-agent-governance-security` (Unmerged, tag `v0.22.0-epic22` not yet created).
+- Baseline Release: `v0.21.0-epic21` (commit `0a39269` / `1dd11fb`).
+- Automated tests: **162/162 passing tests** across 8 Epic 22 test suites (`epic22a` through `epic22h`).
+- Regression tests: **79/79 passing tests** across Epics 18–21 and Agent Tool Gateway.
+- Quality Gates: **10/10 gates PASSED** (G1 through G10).
+- Builds & Typecheck: API and Web TypeScript typecheck (0 errors) and production builds (Clean).
+- Database migrations: Continuous sequence `0032_agent_governance_foundation.sql` through `0036_agent_risk_trust_management.sql` synchronized with Drizzle schema (`Everything's fine 🐶🔥`).
+- Isolated upgrade & recovery rehearsal: **PASSED** (10/10 steps complete; 28 tables verified, repeat-run idempotency passed with 0 errors, disaster recovery dump and restore matched 159 tables and 457 foreign keys, test schemas cleanly dropped).
+- Scope boundary adherence: Zero production deployments, zero database mutations, zero tag creation. Production deployment strictly deferred pending explicit user authorization.
 
 ## Epic 21 evidence and release summary
 

@@ -36,6 +36,10 @@ import type {
   ToolDeclaration,
 } from "../providers/ai-provider.types.js";
 import { AgentToolGatewayService } from "../tools/agent-tool-gateway.service.js";
+import { AgentGovernanceRepository } from "../repositories/agent-governance.repository.js";
+import { AgentSecurityRepository } from "../repositories/agent-security.repository.js";
+import { AgentSecurityGatewayService } from "./agent-security-gateway.service.js";
+import { PolicyEvaluationEngine } from "./policy-evaluation-engine.service.js";
 import { listTrustedTools, convertToToolDeclaration } from "../tools/trusted-tool-registry.js";
 import { AcademicLessonPlanRepository } from "../repositories/academic-lesson-plan.repository.js";
 import { KnowledgeService } from "./knowledge.service.js";
@@ -268,6 +272,58 @@ export class AgentRuntimeService {
     try {
       const agent = await agentRepo.getByIdForOrganization(run.organizationId, run.agentId);
       if (!agent) throw new ApiError(404, "NOT_FOUND", "Agent definition not found.");
+
+      // Enterprise Security Controls & Emergency Stop Check (Phase 22D)
+      if (this.database?.db) {
+        try {
+          const repoCtx = createRepositoryContext(this.database.db);
+          const secRepo = new AgentSecurityRepository(repoCtx);
+          const secGateway = new AgentSecurityGatewayService(secRepo);
+
+          secGateway.checkExecutionCancellationCheckpoint(run.id, run.organizationId, run.workspaceId);
+          await secGateway.enforceRuntimeEntry({
+            organizationId: run.organizationId,
+            workspaceId: run.workspaceId,
+            agentId: run.agentId,
+            actorId: run.requestedBy,
+          });
+        } catch (secErr: any) {
+          if (secErr instanceof ApiError) throw secErr;
+        }
+      }
+
+      // Enterprise Governance Policy Engine Check (Phase 22B)
+      if (this.database?.db) {
+        try {
+          const repoCtx = createRepositoryContext(this.database.db);
+          const govRepo = new AgentGovernanceRepository(repoCtx);
+          const policyEngine = new PolicyEvaluationEngine(govRepo);
+          const govDecision = await policyEngine.evaluate({
+            organizationId: run.organizationId,
+            workspaceId: run.workspaceId,
+            actorId: run.requestedBy,
+            agentId: run.agentId,
+            action: "agent_execution",
+            correlationId: run.id,
+          });
+
+          if (govDecision.effectiveDecision === "DENY") {
+            throw new ApiError(
+              403,
+              "FORBIDDEN",
+              `Agent execution blocked by governance policy: ${govDecision.reasonDetails}`,
+            );
+          } else if (govDecision.effectiveDecision === "REQUIRE_APPROVAL") {
+            throw new ApiError(
+              403,
+              "FORBIDDEN",
+              `Agent execution requires human approval: ${govDecision.reasonDetails}`,
+            );
+          }
+        } catch (err: any) {
+          if (err instanceof ApiError) throw err;
+        }
+      }
 
       // Check Human Approval Policy for sensitive capabilities / tools
       const approvalPolicy = agent.humanApprovalPolicy;

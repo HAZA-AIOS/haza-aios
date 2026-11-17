@@ -1,3 +1,283 @@
+## [Unreleased - Epic 22H] - 2026-11-17
+
+### Added
+- **Epic 22H — Final Security Acceptance, Regression Verification & Release Readiness:**
+  - **Release Acceptance Test Suite (`apps/api/tests/epic22h-release-acceptance.test.ts`):**
+    - 21 comprehensive acceptance tests spanning the end-to-end governance lifecycle: Agent Request -> RBAC -> Precedence -> Dual Sign-Off -> Continuation Proof -> Execution -> SHA-256 Ledger Append -> Console Telemetry.
+    - Full adversarial security verification: cross-tenant isolation, continuation proof tampering rejection, SSRF prevention (localhost, loopback, private RFC 1918, AWS IMDSv1), domain allowlisting, filesystem path traversal prevention, unsafe tool category fail-closed enforcement, instant emergency stop, and agent suspension.
+    - Cryptographic compliance ledger verification with single-byte tamper detection, offline evidence package verification, and legal hold precedence over retention purges.
+    - Mathematical risk formula verification with empirical control reduction, multidimensional trust calculation with neutral cold-start baseline, mandatory security overrides, and behavioral anomaly alert fingerprint deduplication.
+    - Console KPI aggregations from real underlying tables, prioritized Action Center, stale action prevention, and audited JSON/CSV report exports.
+  - **Adversarial Security Hardening:**
+    - Fixed IPv6 bracket parsing in `agent-security-gateway.service.ts`: stripped outer brackets (`replace(/^\[|\]$/g, "")`) so loopback bracketed addresses (`http://[::1]:80`) and unique local IPv6 addresses are blocked unconditionally prior to domain allowlist evaluation.
+  - **Performance Percentiles & Benchmarks:**
+    - Verified synthetic evaluation latency (p50: 0.08ms < 10ms SLA, p95: 0.22ms < 25ms SLA, p99: 0.65ms < 50ms SLA) and ledger throughput (~1,250 ops/sec > 50 ops/sec SLA).
+  - **Cumulative Test Regression:**
+    - 162/162 Epic 22 tests passing across all 8 phases (22A–22H).
+    - 79/79 prior epic tests passing across Epics 18–21 and Agent Tool Gateway.
+    - Zero TypeScript errors in both `apps/api` and `apps/web`.
+    - Production builds passing cleanly for both API and Web packages.
+    - Drizzle schema check validated (`Everything's fine 🐶🔥`).
+  - **Release Documentation:**
+    - Authored `docs/epic-22/EPIC-22H-FINAL-ACCEPTANCE-REPORT.md`, `EPIC-22H-SECURITY-VERIFICATION.md`, `EPIC-22H-REGRESSION-REPORT.md`, `EPIC-22H-PRODUCTION-READINESS.md`, `EPIC-22H-DEPLOYMENT-RUNBOOK.md`, and `EPIC-22H-ROLLBACK-RECOVERY.md`.
+    - Added ADR-022-22, ADR-022-23, and ADR-022-24 to `docs/epic-22/EPIC-22-ARCHITECTURE-DECISIONS.md`.
+    - Evaluated Quality Gates G1–G10: all 10 gates passed with 100% compliance.
+
+## [Unreleased - Epic 22G] - 2026-11-17
+
+### Added
+- **Epic 22G — Enterprise Governance Console & Unified Operations:**
+  - **Unified Information Architecture & Operations Cockpit (`AgentGovernancePage.tsx`):**
+    - Implemented a unified 10-section operational architecture: Overview, Agent Directory, Policies & Rules, Human Approvals, Security Operations, Compliance & Audit, Risk & Trust, Unified Activity, Action Center, Governance Reports, and Settings.
+    - Deep-linkable tabs with URL search parameter synchronization (`?tab=...`) and seamless browser navigation history.
+  - **10 Core Operational KPIs:**
+    - Live aggregation computed from underlying database records without fictional data: `totalGovernedAgents`, `activeAgents`, `suspendedAgents`, `pendingApprovals`, `highAndCriticalRisks`, `openSecurityIncidents`, `auditIntegrityStatus`, `complianceControlsRequiringReview`, `openRiskMitigations`, and `expiringExceptions`.
+    - Activity trends (7-day volume breakdown across policies, tools, security events, and approvals).
+    - Risk tier distribution, security posture, and compliance coverage visual summaries.
+  - **Prioritized Action Center (`/console/actions`):**
+    - Real-time operator work queue prioritized by severity (`CRITICAL` > `HIGH` > `MEDIUM` > `LOW`).
+    - Consolidates pending human approvals, critical unmitigated risks, unresolved security incidents, pending mitigation verifications, review-due compliance controls, and expiring exceptions (< 14 days).
+    - Dynamic work queue: resolved items automatically disappear, preventing stale alerts.
+    - Direct "Take Action" navigation buttons jumping straight into the appropriate operational tab.
+  - **Agent Governance Directory & Deep Inspection Drawer (`/console/directory`):**
+    - Searchable, paginated agent catalog with workspace, status, risk tier, and trust tier filtering.
+    - Merges agent identity, ownership accountability, profile cadence, effective security sandbox, trust score, and residual risk.
+    - Interactive slide-over drawer enabling instant suspension, reactivation, capability configuration, and risk exception requests.
+  - **Unified Activity Timeline (`/console/activity`):**
+    - Chronologically correlated cross-domain audit trail across executions, tools, policies, approvals, security events, and compliance logs.
+    - Deep recursive secret redaction via `redactObject` on all metadata payloads.
+    - Multi-faceted filtering (domain, severity, outcome, date range, correlation ID) and bounded pagination.
+  - **Governance Reporting & Audited Exports (`/console/reports` & `/console/reports/export`):**
+    - Executive summaries, security posture audits, compliance reports, and risk assessments.
+    - Audited exports supporting JSON and standard RFC 4180 CSV formats with real browser file downloads.
+    - Automatic compliance ledger audit logging (`agent.governance.report.generated`) upon report export.
+  - **Backend Consolidation Engine (`governance-console.types.ts`, `agent-governance-console.repository.ts`, `agent-governance-console.service.ts`):**
+    - 7 authenticated REST API endpoints mounted under `/api/v1/organizations/:organizationId/agent-governance/console/`.
+    - Zero new database tables required; 100% powered by existing migrations 0001 through 0036.
+  - **Architecture Decision Records:** Added ADR-022-19, ADR-022-20, and ADR-022-21 in `docs/epic-22/EPIC-22-ARCHITECTURE-DECISIONS.md`.
+  - **Automated Test Coverage:** 22 dedicated test cases passing in `apps/api/tests/epic22g-unified-console.test.ts` (100% passing), 141 tests passing across all Epic 22 suites.
+
+## [Unreleased - Epic 22F] - 2026-11-17
+
+### Added
+- **Epic 22F — Enterprise Agent Risk & Trust Management:**
+  - **Risk & Trust Schema & Persistence (Migration 0036 - `0036_agent_risk_trust_management.sql`):**
+    - Added 9 relational tables: `agent_risk_configurations`, `agent_risk_register`, `agent_risk_assessments`, `agent_trust_profiles`, `agent_trust_assessment_history`, `agent_behavioral_risk_alerts`, `agent_risk_mitigations`, `agent_risk_exceptions`, and `agent_risk_review_history`.
+    - Enforced tenant-isolated foreign keys, unique constraints, and composite indexes across all risk entities.
+  - **Deterministic Risk Assessment Engine (`risk-trust.types.ts` & `agent-risk.service.ts`):**
+    - Inherent risk calculation via deterministic $\text{Likelihood} \times \text{Impact} \in [1, 25]$ mapped to tiers (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
+    - Empirical control effectiveness gating: `EFFECTIVE` (40%), `PARTIALLY_EFFECTIVE` (20%), `INEFFECTIVE` (0%), capped at 85% total reduction ($\text{Residual Score} \ge 1$).
+    - Risk assessment versioning preserving historical calculations and assessor rationale.
+  - **Multidimensional Agent Trust Profile Engine (`agent-risk.service.ts`):**
+    - 7 operational trust dimensions: execution reliability (20%), policy adherence (20%), security incident history (20%), human approval outcomes (10%), tool execution safety (10%), compliance evidence quality (10%), and operational consistency (10%).
+    - Cold-start neutral baseline: agents with $< 5$ operations receive neutral baseline score (70/100) and `LOW` confidence.
+    - Deterministic confidence scaling ($<5 \implies \text{LOW}$, $5-19 \implies \text{MEDIUM}$, $\ge 20 \implies \text{HIGH}$).
+    - Zero paid AI token consumption: calculated entirely through operational telemetry aggregation.
+  - **Behavioral Anomaly Detection Engine (10 Rules):**
+    - Evaluates telemetry for repeated policy denials, excessive failed tool calls, repeated unauthorized access, sudden tool spikes, unusual external network destinations, approval rejections, privilege escalation, security control breaches, execution cost/runtime exceedance, and execution failure spikes.
+    - SHA-256 fingerprint deduplication: `SHA-256(orgId + agentId + rule + dateBucket)` increments occurrence count without alert flood.
+    - Acknowledge and resolve workflows with full audit notes.
+  - **Risk-Based Governance Integration & Safeguards:**
+    - Governance recommendations: `ALLOW`, `MONITOR`, `REQUIRE_APPROVAL`, `RESTRICT`, `SUSPEND`.
+    - Mandatory security precedence: explicit security denials immediately enforce `SUSPEND`, superseding trust scores or exceptions.
+    - Default-disabled enforcement mode: risk-based enforcement runs in simulation mode (`[SIMULATION MODE]`) until explicitly enabled.
+    - Self-approval prohibition on exceptions (`requestedBy !== approvedBy`) and mandatory future expiration dates.
+  - **29 Authenticated REST API Endpoints:** Mounted under `/api/v1/organizations/:organizationId/agent-governance/risk/`.
+  - **Governance Center UI — Risk & Trust Center (`AgentGovernancePage.tsx`):**
+    - New "Risk & Trust" tab in governance console with dynamic trust score pill.
+    - 8 sub-navigation views: Overview, Risk Register, 5x5 Matrix, Trust Profiles, Behavioral Alerts, Mitigations, Exceptions, and Reports.
+    - 4 interactive modals for New Risk, Re-Assessment, Mitigation Plan, and Exception Request.
+  - **Architecture Decision Records:** Added ADR-022-16, ADR-022-17, and ADR-022-18 in `docs/epic-22/EPIC-22-ARCHITECTURE-DECISIONS.md`.
+  - **Automated Test Coverage:** 25 dedicated test cases in `apps/api/tests/epic22f-risk-trust.test.ts` (100% passing), 183 regression tests passing across Epics 18–22.
+
+## [Unreleased - Epic 22E] - 2026-11-06
+
+### Added
+- **Epic 22E — Enterprise Compliance, Audit Integrity & Evidence Management:**
+  - **Compliance Schema & Persistence (Migration 0035 - `0035_agent_compliance_audit_integrity.sql`):**
+    - Added 10 relational tables: `agent_compliance_events`, `agent_audit_integrity_chains`, `agent_compliance_frameworks`, `agent_compliance_controls`, `agent_compliance_control_mappings`, `agent_compliance_evidence`, `agent_compliance_evidence_packages`, `agent_compliance_retention_policies`, `agent_compliance_legal_holds`, and `agent_compliance_investigations`.
+    - Enforced tenant-isolated unique constraints, indexes, and foreign keys across all compliance tables.
+  - **Unified Compliance Event Model (`compliance.types.ts` & `agent-compliance.repository.ts`):**
+    - Normalized event schema spanning 10 categories (`AGENT_EXECUTION`, `TOOL_INVOCATION`, `POLICY_EVALUATION`, `HUMAN_APPROVAL`, `SECURITY_CONTROL`, `SECRET_ACCESS`, `GOVERNANCE_CHANGE`, `COMPLIANCE_CHANGE`, `EVIDENCE_EXPORT`, `RETENTION_ACTION`).
+    - Idempotent ingestion pipeline rejecting duplicate event IDs while preserving sequence continuity.
+    - Automatic secret redaction via `redactObject` on all incoming metadata and evidence payloads.
+  - **Tamper-Evident Cryptographic Audit Ledger (`agent-compliance.service.ts`):**
+    - Monotonically sequenced, tenant-isolated SHA-256 hash chain (`currentEventHash = sha256(previousHash:sequence:payloadHash)`).
+    - Range verification engine detecting modified payloads, sequence continuity gaps, broken previous-hash links, and missing events.
+    - Deterministic canonical JSON serialization (`canonicalStringify`).
+  - **Compliance Framework & Control Registry:**
+    - Standard framework mappings for ISO/IEC 27001:2022, ISO/IEC 42001:2023, NIST AI RMF 1.0, and SOC 2 Trust Services Criteria.
+    - Granular control statuses (`NOT_IMPLEMENTED`, `PLANNED`, `IMPLEMENTED`, `EVIDENCE_PENDING`, `VERIFIED`, `NONCOMPLIANT`, `NOT_APPLICABLE`).
+    - Explicit authorized review requirements for `VERIFIED` status (no automatic self-certification).
+    - Governance disclaimer emphasizing that control mappings do not constitute formal legal certification.
+  - **Controlled Evidence Registry & Independent Packaging:**
+    - Evidence items stored with SHA-256 canonical content hashes and data classification scopes.
+    - Exported evidence packages containing self-contained JSON manifests with individual evidence checksums, audit hashes, and manifest checksums.
+    - Standalone offline verification function (`verifyEvidencePackageOffline`) requiring zero database or network access.
+    - Cross-tenant export prevention strictly enforced at the service layer.
+  - **Retention Policies & Legal Holds:**
+    - Configurable retention durations across 5 record categories with disposal actions (`ARCHIVE`, `PURGE`, `ANONYMIZE`).
+    - Legal hold creation and release with mandatory justification tracking.
+    - Legal hold override guarantee: records under active hold are marked `RETAIN_UNDER_LEGAL_HOLD` and shielded from disposal.
+    - Dry-run disposal simulation (`previewDisposal`) with zero destructive database operations in Phase 22E.
+  - **Audit Investigations & Timeline Reconstruction:**
+    - Correlates multi-stage agent activity: `REQUEST` → `POLICY` → `APPROVAL` → `SECURITY` → `EXECUTION` → `OUTCOME`.
+    - Investigation case tracking with investigator notes and audited search queries.
+  - **Governance Center UI — Compliance & Audit Console (`AgentGovernancePage.tsx`):**
+    - New "Compliance & Audit" dashboard tab with coverage percentage badge.
+    - 6 sub-navigation sections: Overview & Frameworks, Controls & Mapping, Audit Ledger & Integrity, Evidence & Packages, Legal Holds & Retention, Investigations & Timeline.
+    - Interactive modals for Control Verification, Evidence Collection, Legal Hold Activation, and Investigation Case opening.
+    - 1-click cryptographic hash chain verification with status visualization.
+  - **24 REST API Endpoints:** Mounted under `/api/v1/organizations/:organizationId/agent-governance/compliance/`.
+
+### Verification
+- 24/24 passing unit and integration tests in `apps/api/tests/epic22e-compliance-evidence.test.ts`.
+- 143/143 passing tests across full 9-suite regression test matrix (Epics 16, 19, 20, 21, 22A, 22B, 22C, 22D, 22E).
+- 0 TypeScript compiler errors across `apps/api` and `apps/web`.
+- Database schema verified via `drizzle-kit check` ("Everything's fine 🐶🔥").
+
+## [Unreleased - Epic 22D] - 2026-11-06
+
+### Added
+- **Epic 22D — Enterprise Agent Security Controls, Sandboxing & Secret Protection:**
+  - **Capability Model & Profile Persistence (Migration 0034 - `0034_agent_security_controls_sandboxing.sql`):**
+    - Added 4 relational tables: `agent_security_profiles`, `agent_secret_references`, `agent_security_events`, and `agent_continuation_records`.
+    - Enforced security classifications (`PUBLIC`, `INTERNAL`, `CONFIDENTIAL`, `RESTRICTED`), network/storage access modes, resource budgets, and autonomy ceilings (`L0`–`L3`).
+  - **Security Enforcement Gateway (`agent-security-gateway.service.ts`):**
+    - 6-tier deterministic tool risk classification (`READ_ONLY_DATA`, `CONTROLLED_WRITE`, `EXTERNAL_NETWORK`, `FILESYSTEM_ACCESS`, `CODE_EXECUTION`, `SYSTEM_OPERATION`).
+    - Explicit sandboxing boundaries: strictly blocks arbitrary code execution and OS-level operations at the gateway without false sandbox claims.
+    - SSRF prevention: blocks loopback (`127.0.0.1`), RFC1918 private subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), and cloud metadata (`169.254.169.254`).
+    - Storage sandboxing: blocks path traversal sequences (`..`), null bytes, and sensitive system directories (`/etc`, `/proc`, `C:\Windows`).
+    - Multi-agent delegation privilege attenuation: ensures child agents cannot escalate beyond parent autonomy or security limits.
+    - Prompt-injection scanning on untrusted inputs with heuristic pattern detection.
+  - **Opaque Secret Protection Abstraction (`agent-secret-vault.service.ts`):**
+    - Zero plaintext/decryptable credentials stored in database tables or logs.
+    - Database references metadata only (`agent_secret_references`); secrets are held exclusively in-memory or environment-managed synthetic vaults.
+    - Enforces tool-level allowlists before credential injection.
+    - Deep output redaction (`redactObject`) scrubbing API keys, tokens, and credentials from tool outputs, logs, and traces.
+  - **Emergency Security Controls:**
+    - Organization-wide emergency kill switch (`POST /emergency-stop`) halting all agent executions and tool dispatches within milliseconds.
+    - Single-agent immediate suspension and reactivation (`POST /suspend`, `POST /reactivate`).
+    - In-flight execution cancellation checkpoints integrated into agent runtime and workers.
+  - **Phase 22C Security Hardening:**
+    - Eliminated unauthenticated boolean `bypassGovernanceApprovalCheck`.
+    - Introduced cryptographically signed HMAC-SHA256 `ContinuationProof` generated exclusively by `AgentApprovalContinuationService`.
+    - Introduced durable `agent_continuation_records` ensuring anti-replay protection and crash recovery reconciliation.
+    - Hardened reviewer authorization against self-approval and RBAC privilege bypass.
+  - **Governance Center UI — Security Controls Console (`AgentGovernancePage.tsx`):**
+    - New "Security Controls" tab with posture metric cards and active emergency stop banner.
+    - Agent Capabilities profile management table with Suspend, Reactivate, and 70%-width capability drawer.
+    - Secret references table tracking registered secret metadata with zero credential exposure.
+    - Real-time security audit event stream with severity badges and actor attribution.
+    - Action modals for Emergency Stop, Agent Suspension, Secret Registration, and Capability Configuration.
+  - **13 REST API Endpoints:** Mounted under `/api/v1/organizations/:organizationId/agent-governance/security/`.
+
+### Verification
+- 20/20 passing security unit and integration tests in `apps/api/tests/epic22d-security-controls.test.ts`.
+- 119/119 passing tests across full 8-suite agent regression suite (Epics 16, 19, 20, 21, 22A, 22B, 22C, 22D).
+- 0 TypeScript compiler errors in `apps/api` and `apps/web`.
+- Database schema verified via `drizzle-kit check` ("Everything's fine 🐶🔥").
+
+## [Unreleased - Epic 22C] - 2026-11-05
+
+### Added
+- **Epic 22C — Enterprise Human-in-the-Loop Approval Workflows:**
+  - **Approval Domain Persistence & Database Migration 0033 (`0033_agent_human_approval_workflows.sql`):**
+    - Added 3 relational tables: `agent_approval_requests`, `agent_approval_decisions`, and `agent_approval_escalations`.
+    - Captures canonical SHA-256 payload fingerprints, matched policy and version, expiration timestamps, and single-use consumption state.
+  - **Deterministic State Machine & Lifecycle Transitions (`agent-approval.service.ts`):**
+    - Validates transitions: `PENDING` -> `APPROVED`, `REJECTED`, `EXPIRED`, `REVOKED`, and `APPROVED` -> `CONSUMED`.
+    - Implemented atomic compare-and-set updates preventing concurrent reviewer modifications or replay attacks.
+  - **Reviewer Authorization Guards:**
+    - Enforced organization scoping and permissions (`agent.manage`, assigned reviewer, or agent ownership).
+    - Hard guards prohibiting agent self-approval and requester self-approval on high/critical risk operations.
+    - Mandatory audit justification enforcement on sensitive actions.
+  - **Secure Execution Continuation (`agent-approval-continuation.service.ts`):**
+    - Re-evaluates live active policies and mandatory restrictions prior to resuming execution.
+    - Matches payload parameters against approved canonical SHA-256 fingerprints to prevent parameter tampering.
+    - Atomically claims approvals for single-use consumption, preventing duplicate side-effects.
+  - **Runtime & Tool Gateway Integration:**
+    - Tool Gateway Gate 1.1 intercepts unapproved operations with `APPROVAL_REQUIRED` and generates persistent approval requests in `ENFORCE` mode.
+    - Bypasses approval checks cleanly when resumed by authorized continuation service with `bypassGovernanceApprovalCheck: true`.
+  - **Governance Center UI — Human Approvals Console (`AgentGovernancePage.tsx`):**
+    - New Human Approvals tab with pending queue count badge, risk distribution cards, and status filter bar.
+    - Interactive 70%-width detail modal displaying request parameters, canonical fingerprints, and immutable decision/escalation history.
+    - Modal dialogs for Approval with justification, Rejection, and Escalation to ownership contacts.
+    - One-click "Execute Approved Action" continuation trigger with inline execution outcome visualization.
+  - **10 REST API Endpoints:** Mounted under `/api/v1/organizations/:organizationId/agent-governance/approvals`.
+
+### Verification
+- 20/20 passing unit and integration tests in `apps/api/tests/epic22c-approval-workflows.test.ts`.
+- 99/99 passing tests across all test suites (Epics 16, 19, 20, 21, 22A, 22B, 22C).
+- 0 TypeScript compiler errors across `apps/api` and `apps/web`.
+- Database schema verified via `drizzle-kit check` ("Everything's fine 🐶🔥").
+
+## [Unreleased - Epic 22B] - 2026-11-05
+
+### Added
+- **Epic 22B — Enterprise Policy & Permission Engine:**
+  - **Deterministic Policy Evaluation Engine (`policy-evaluation-engine.service.ts`):**
+    - 5-level deterministic authorization precedence: Mandatory Platform Security > Explicit Deny > Require Approval > Allow > Default Fallback (fail-closed).
+    - Hard platform security boundaries intercepting disallowed system/network primitives (`raw_socket`, `system_exec`) and cross-tenant violations with immediate `DENY`.
+    - Fail-closed error handling catching evaluation exceptions and enforcing `DENY` by default.
+  - **Context-Aware Permission Resolution (`permission-resolution.service.ts`):**
+    - Resolves tenant boundaries, agent governance profile constraints, and human accountability status.
+    - Blocks execution of unassigned or orphaned agents when accountability is required.
+  - **Safe Rollout Operational Modes (`DISABLED`, `MONITOR`, `ENFORCE`):**
+    - Configurable per-organization mode persisted as versioned, audited policy key `sys-enforcement-mode`.
+    - Default `MONITOR` mode records violations to audit trail without interrupting runtime workflows.
+    - `ENFORCE` mode executes runtime blocking on `DENY` and halts on `REQUIRE_APPROVAL`.
+  - **Runtime Enforcement Integration:**
+    - Integrated with Tool Gateway (`agent-tool-gateway.service.ts`) at Gate 1.1 with `POLICY_VIOLATION` or `APPROVAL_REQUIRED` rejection codes.
+    - Integrated with Agent Runtime (`agent-runtime.service.ts`) with HTTP 403 Forbidden gating on disallowed attempts.
+  - **Read-Only Simulation & Version Diffing (`policy-simulation.service.ts`):**
+    - Explainable simulation sandbox evaluating candidate contexts with zero runtime side-effects.
+    - Rule-level diff comparisons across immutable policy version snapshots.
+  - **Governance Center UI Additions (`apps/web`):**
+    - Interactive operational mode switcher and status alert banner.
+    - Policy decision simulation sandbox for dry-run testing.
+    - Live decision stream tab querying decision audit events.
+    - Policy version comparison modal displaying rule additions, removals, and changes.
+  - **6 REST API Endpoints:** Mounted under `/api/v1/organizations/:organizationId/agent-governance/` (`/evaluate`, `/simulate`, `/mode`, `/decisions`, `/policies/:policyId/versions/compare`).
+
+### Verification
+- 17/17 passing unit and integration tests in `apps/api/tests/epic22b-policy-engine.test.ts`.
+- 77/77 passing tests across all active test suites (Epics 19, 20, 21, 22A, 22B).
+- 0 TypeScript compiler errors across `apps/api` and `apps/web`.
+
+## [Unreleased - Epic 22A] - 2026-11-05
+
+### Added
+- **Epic 22A — Enterprise Agent Governance Foundation:**
+  - **Agent Governance Profiles (`agent-governance.service.ts` & `governance.types.ts`):**
+    - Multi-tenant, organization-scoped governance profiles (`agent_governance_profiles`) capturing security classification (`public`, `internal`, `confidential`, `restricted`) and operational risk tiering (`low`, `medium`, `high`, `critical`).
+    - Compliance framework tags (`SOC2`, `HIPAA`, `GDPR`, `ISO27001`), maximum autonomy level caps (1–4), tool approval flags, and configurable review cadences (in days).
+    - Periodic compliance review scheduling and review recording with automated recalculation of next review due dates and status tracking (`compliant`, `pending_review`, `non_compliant`, `exempt`).
+  - **Ownership & Accountability Console (`agent_ownership_assignments`):**
+    - Mandatory primary owner assignment and escalation contact (email/pager/slack) for every governed agent.
+    - Optional technical owner and business owner role assignments to support cross-functional accountability.
+    - Accountability status tracking (`active`, `orphaned`, `transferred`) with automated detection of orphaned agents lacking owners.
+  - **Governance Policy Registry & Versioning (`agent_governance_policies` & `agent_governance_policy_versions`):**
+    - Centralized policy registry with organization-unique policy keys, covering `security`, `compliance`, `behavioral`, `data_access`, `model_restriction`, and `tool_restriction`.
+    - Four severity tiers (`low`, `medium`, `high`, `critical`) and enforcement actions (`audit`, `warn`, `require_approval`, `block`).
+    - Explicit lifecycle state machine (`draft` -> `review` -> `active` -> `deprecated` -> `archived`) with strict transition validation.
+    - Immutable policy versions table (`agent_governance_policy_versions`) capturing rule snapshots and change summaries on every revision.
+  - **Immutable Governance Audit Ledger (`agent_governance_audit_logs`):**
+    - Append-only audit trail recording actor ID, action name, target type and ID, before/after states, and metadata for all governance profile, policy, review, and ownership operations.
+  - **Database Migration 0032 (`0032_agent_governance_foundation.sql`):**
+    - Added 5 relational tables: `agent_governance_profiles`, `agent_ownership_assignments`, `agent_governance_policies`, `agent_governance_policy_versions`, and `agent_governance_audit_logs`.
+  - **Governance Center UI Console (`apps/web` & `@haza-aios/ui`):**
+    - 5-tab dark premium management console at `/workspace/agents/governance` covering Overview & Risk Posture, Policy Registry, Agent Profiles, Ownership & Accountability, and Audit Ledger.
+    - UI primitives in `@haza-aios/ui`: `GovernanceRiskBadge`, `SecurityClassificationBadge`, `PolicyLifecycleBadge`, `ComplianceStatusBadge`, `GovernanceOverviewMetricCard`, `PolicyInventoryCard`, `AgentGovernanceProfileCard`, and `GovernanceAuditLogTable`.
+  - **14 REST API Endpoints:** Mounted under `/api/v1/organizations/:organizationId/agent-governance/` with tenant RBAC protection.
+
+### Verification
+- 13/13 passing automated unit and integration tests in `apps/api/tests/epic22a-governance-foundation.test.ts`.
+- 12/12 passing regression tests in `apps/api/tests/epic21-observability-reliability.test.ts`.
+- Database schema verified via `npm run db:check -w apps/api` ("Everything's fine 🐶🔥").
+- 0 TypeScript compiler errors across `apps/api`, `apps/web`, and `packages/ui`.
+- Passive policy foundation; zero interference with existing agent executions.
+
 ## [0.21.0-epic21] - 2026-11-04
 
 ### Added

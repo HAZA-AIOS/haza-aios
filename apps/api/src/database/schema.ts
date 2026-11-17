@@ -4435,6 +4435,1077 @@ export const agentIncidents = mysqlTable(
   ],
 );
 
+
+export const agentGovernanceProfiles = mysqlTable(
+  "agent_governance_profiles",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    securityClassification: varchar("security_classification", { length: 40 }).notNull().default("internal"),
+    riskTier: varchar("risk_tier", { length: 40 }).notNull().default("medium"),
+    complianceFrameworks: json("compliance_frameworks").$type<string[]>().notNull().default([]),
+    maxAutonomyLevel: varchar("max_autonomy_level", { length: 20 }).notNull().default("L2"),
+    approvalPolicy: varchar("approval_policy", { length: 40 }).notNull().default("standard"),
+    auditFrequency: varchar("audit_frequency", { length: 40 }).notNull().default("quarterly"),
+    strictTelemetry: boolean("strict_telemetry").notNull().default(true),
+    reviewCadenceDays: int("review_cadence_days").notNull().default(90),
+    lastReviewedAt: timestamp("last_reviewed_at", { fsp: 3 }),
+    nextReviewDueAt: timestamp("next_review_due_at", { fsp: 3 }),
+    complianceStatus: varchar("compliance_status", { length: 40 }).notNull().default("compliant"),
+    notes: text("notes"),
+    createdBy: char("created_by", { length: 36 }).notNull(),
+    updatedBy: char("updated_by", { length: 36 }).notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("gov_profiles_org_agent_unique").on(table.organizationId, table.agentId),
+    index("gov_profiles_org_status_idx").on(table.organizationId, table.complianceStatus),
+    index("gov_profiles_org_tier_idx").on(table.organizationId, table.riskTier),
+  ],
+);
+
+export const agentOwnershipAssignments = mysqlTable(
+  "agent_ownership_assignments",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    primaryOwnerId: char("primary_owner_id", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    technicalOwnerId: char("technical_owner_id", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    businessOwnerId: char("business_owner_id", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    escalationContact: varchar("escalation_contact", { length: 255 }).notNull(),
+    reviewCadence: varchar("review_cadence", { length: 40 }).notNull().default("quarterly"),
+    accountabilityStatus: varchar("accountability_status", { length: 40 }).notNull().default("active"),
+    delegatedApproverIds: json("delegated_approver_ids").$type<string[]>().notNull().default([]),
+    assignedBy: char("assigned_by", { length: 36 }).notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("gov_ownership_org_agent_unique").on(table.organizationId, table.agentId),
+    index("gov_ownership_org_primary_idx").on(table.organizationId, table.primaryOwnerId),
+  ],
+);
+
+export const agentGovernancePolicies = mysqlTable(
+  "agent_governance_policies",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    name: varchar("name", { length: 180 }).notNull(),
+    policyKey: varchar("policy_key", { length: 120 }).notNull(),
+    policyType: varchar("policy_type", { length: 60 }).notNull(),
+    scopeType: varchar("scope_type", { length: 40 }).notNull().default("organization"),
+    targetAgentIds: json("target_agent_ids").$type<string[]>().notNull().default([]),
+    severity: varchar("severity", { length: 20 }).notNull().default("medium"),
+    enforcementAction: varchar("enforcement_action", { length: 40 }).notNull().default("log"),
+    lifecycleState: varchar("lifecycle_state", { length: 40 }).notNull().default("draft"),
+    currentVersion: int("current_version").notNull().default(1),
+    description: text("description"),
+    rules: json("rules").$type<Record<string, unknown>>().notNull().default({}),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdBy: char("created_by", { length: 36 }).notNull(),
+    updatedBy: char("updated_by", { length: 36 }).notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("gov_policies_org_key_unique").on(table.organizationId, table.policyKey),
+    index("gov_policies_org_type_idx").on(table.organizationId, table.policyType),
+    index("gov_policies_org_state_idx").on(table.organizationId, table.lifecycleState),
+  ],
+);
+
+export const agentGovernancePolicyVersions = mysqlTable(
+  "agent_governance_policy_versions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    policyId: char("policy_id", { length: 36 })
+      .notNull()
+      .references(() => agentGovernancePolicies.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    version: int("version").notNull(),
+    lifecycleState: varchar("lifecycle_state", { length: 40 }).notNull().default("draft"),
+    changeSummary: text("change_summary").notNull(),
+    rules: json("rules").$type<Record<string, unknown>>().notNull().default({}),
+    createdBy: char("created_by", { length: 36 }).notNull(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("gov_policy_versions_unique").on(table.policyId, table.version),
+    index("gov_policy_versions_org_idx").on(table.organizationId, table.policyId),
+  ],
+);
+
+export const agentGovernanceAuditLogs = mysqlTable(
+  "agent_governance_audit_logs",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    actorId: char("actor_id", { length: 36 }).notNull(),
+    action: varchar("action", { length: 120 }).notNull(),
+    targetType: varchar("target_type", { length: 80 }).notNull(),
+    targetId: char("target_id", { length: 36 }).notNull(),
+    beforeState: json("before_state").$type<Record<string, unknown>>(),
+    afterState: json("after_state").$type<Record<string, unknown>>(),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("gov_audit_org_created_idx").on(table.organizationId, table.createdAt),
+    index("gov_audit_org_target_idx").on(table.organizationId, table.targetType, table.targetId),
+  ],
+);
+
+export const agentApprovalRequests = mysqlTable(
+  "agent_approval_requests",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    executionId: varchar("execution_id", { length: 120 }),
+    correlationId: varchar("correlation_id", { length: 120 }),
+    traceId: varchar("trace_id", { length: 120 }),
+    spanId: varchar("span_id", { length: 120 }),
+    actionType: varchar("action_type", { length: 80 }).notNull(),
+    actionTarget: varchar("action_target", { length: 180 }).notNull(),
+    resourceId: varchar("resource_id", { length: 180 }),
+    requestingActorId: char("requesting_actor_id", { length: 36 }).notNull(),
+    requestingActorType: varchar("requesting_actor_type", { length: 40 }).notNull().default("user"),
+    canonicalPayloadFingerprint: char("canonical_payload_fingerprint", { length: 64 }).notNull(),
+    payload: json("payload").$type<Record<string, unknown>>().notNull().default({}),
+    matchedPolicyId: char("matched_policy_id", { length: 36 }).references(() => agentGovernancePolicies.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    matchedPolicyVersion: int("matched_policy_version"),
+    approvalReason: text("approval_reason").notNull(),
+    riskClassification: varchar("risk_classification", { length: 40 }).notNull().default("medium"),
+    securityClassification: varchar("security_classification", { length: 40 }).notNull().default("internal"),
+    assignedReviewerId: char("assigned_reviewer_id", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    assignedRole: varchar("assigned_role", { length: 80 }),
+    status: varchar("status", { length: 40 }).notNull().default("pending"),
+    decisionId: char("decision_id", { length: 36 }),
+    consumedAt: timestamp("consumed_at", { fsp: 3 }),
+    consumedBy: char("consumed_by", { length: 36 }),
+    idempotencyKey: varchar("idempotency_key", { length: 120 }).notNull(),
+    expiresAt: timestamp("expires_at", { fsp: 3 }).notNull(),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => [
+    uniqueIndex("gov_approval_requests_org_idemp_unique").on(table.organizationId, table.idempotencyKey),
+    index("gov_approval_requests_org_status_idx").on(table.organizationId, table.status),
+    index("gov_approval_requests_org_agent_idx").on(table.organizationId, table.agentId),
+    index("gov_approval_requests_org_reviewer_idx").on(table.organizationId, table.assignedReviewerId, table.status),
+    index("gov_approval_requests_expires_idx").on(table.organizationId, table.expiresAt, table.status),
+    index("gov_approval_requests_fingerprint_idx").on(table.organizationId, table.agentId, table.canonicalPayloadFingerprint),
+  ],
+);
+
+export const agentApprovalDecisions = mysqlTable(
+  "agent_approval_decisions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    approvalRequestId: char("approval_request_id", { length: 36 })
+      .notNull()
+      .references(() => agentApprovalRequests.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    decision: varchar("decision", { length: 40 }).notNull(),
+    decidedByActorId: char("decided_by_actor_id", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    decidedByActorType: varchar("decided_by_actor_type", { length: 40 }).notNull().default("user"),
+    reason: text("reason"),
+    justification: text("justification"),
+    policySnapshot: json("policy_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("gov_approval_decisions_request_idx").on(table.approvalRequestId),
+    index("gov_approval_decisions_org_decision_idx").on(table.organizationId, table.decision, table.createdAt),
+  ],
+);
+
+export const agentApprovalEscalations = mysqlTable(
+  "agent_approval_escalations",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    approvalRequestId: char("approval_request_id", { length: 36 })
+      .notNull()
+      .references(() => agentApprovalRequests.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    escalatedByActorId: char("escalated_by_actor_id", { length: 36 }).notNull(),
+    previousReviewerId: char("previous_reviewer_id", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    escalatedToReviewerId: char("escalated_to_reviewer_id", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    escalationContact: varchar("escalation_contact", { length: 255 }),
+    reason: text("reason").notNull(),
+    status: varchar("status", { length: 40 }).notNull().default("escalated"),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("gov_approval_escalations_request_idx").on(table.approvalRequestId),
+    index("gov_approval_escalations_org_created_idx").on(table.organizationId, table.createdAt),
+  ],
+);
+
+export const agentSecurityProfiles = mysqlTable(
+  "agent_security_profiles",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    resourceClassification: varchar("resource_classification", { length: 40 }).notNull().default("internal"),
+    networkAccessMode: varchar("network_access_mode", { length: 40 }).notNull().default("blocked"),
+    allowedNetworkDomains: json("allowed_network_domains").$type<string[]>().notNull().default([]),
+    disallowedNetworkDomains: json("disallowed_network_domains").$type<string[]>().notNull().default([]),
+    storageAccessMode: varchar("storage_access_mode", { length: 40 }).notNull().default("blocked"),
+    allowedStoragePaths: json("allowed_storage_paths").$type<string[]>().notNull().default([]),
+    disallowedStoragePaths: json("disallowed_storage_paths").$type<string[]>().notNull().default([]),
+    databaseOperations: json("database_operations").$type<string[]>().notNull().default(["read"]),
+    maxExecutionDurationMs: int("max_execution_duration_ms").notNull().default(30000),
+    maxToolInvocations: int("max_tool_invocations").notNull().default(10),
+    maxMemoryBytes: bigint("max_memory_bytes", { mode: "number" }).notNull().default(536870912),
+    maxAutonomyLevel: varchar("max_autonomy_level", { length: 20 }).notNull().default("L1"),
+    allowAutonomousExecution: boolean("allow_autonomous_execution").notNull().default(false),
+    delegationAttenuation: boolean("delegation_attenuation").notNull().default(true),
+    allowedToolKeys: json("allowed_tool_keys").$type<string[]>().notNull().default([]),
+    disallowedToolKeys: json("disallowed_tool_keys").$type<string[]>().notNull().default([]),
+    allowedSecretReferenceIds: json("allowed_secret_reference_ids").$type<string[]>().notNull().default([]),
+    isSuspended: boolean("is_suspended").notNull().default(false),
+    suspendedAt: timestamp("suspended_at", { fsp: 3 }),
+    suspendedBy: char("suspended_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    suspensionReason: text("suspension_reason"),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("gov_sec_profiles_org_agent_unique").on(table.organizationId, table.agentId),
+    index("gov_sec_profiles_org_suspended_idx").on(table.organizationId, table.isSuspended),
+    index("gov_sec_profiles_org_agent_idx").on(table.organizationId, table.agentId),
+  ],
+);
+
+export const agentSecretReferences = mysqlTable(
+  "agent_secret_references",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    secretIdentifier: varchar("secret_identifier", { length: 120 }).notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    description: text("description"),
+    allowedAgentIds: json("allowed_agent_ids").$type<string[]>().notNull().default([]),
+    allowedToolKeys: json("allowed_tool_keys").$type<string[]>().notNull().default([]),
+    status: varchar("status", { length: 40 }).notNull().default("active"),
+    version: int("version").notNull().default(1),
+    lastRotatedAt: timestamp("last_rotated_at", { fsp: 3 }),
+    createdBy: char("created_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("gov_secret_ref_org_ident_unique").on(table.organizationId, table.secretIdentifier),
+    index("gov_secret_ref_org_status_idx").on(table.organizationId, table.status),
+    index("gov_secret_ref_org_ident_idx").on(table.organizationId, table.secretIdentifier),
+  ],
+);
+
+export const agentSecurityEvents = mysqlTable(
+  "agent_security_events",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentId: char("agent_id", { length: 36 }).references(() => aiAgentDefinitions.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    actorId: char("actor_id", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    eventType: varchar("event_type", { length: 80 }).notNull(),
+    severity: varchar("severity", { length: 40 }).notNull().default("medium"),
+    targetType: varchar("target_type", { length: 80 }).notNull(),
+    targetId: varchar("target_id", { length: 180 }).notNull(),
+    details: json("details").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("gov_sec_events_org_type_idx").on(table.organizationId, table.eventType, table.createdAt),
+    index("gov_sec_events_org_severity_idx").on(table.organizationId, table.severity, table.createdAt),
+    index("gov_sec_events_agent_idx").on(table.agentId),
+  ],
+);
+
+export const agentContinuationRecords = mysqlTable(
+  "agent_continuation_records",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    approvalRequestId: char("approval_request_id", { length: 36 })
+      .notNull()
+      .references(() => agentApprovalRequests.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    status: varchar("status", { length: 40 }).notNull().default("claimed"),
+    reconciliationStatus: varchar("reconciliation_status", { length: 40 })
+      .notNull()
+      .default("pending_execution"),
+    canonicalPayloadFingerprint: char("canonical_payload_fingerprint", { length: 64 }).notNull(),
+    executionId: varchar("execution_id", { length: 120 }),
+    actorId: char("actor_id", { length: 36 }).notNull(),
+    attempts: int("attempts").notNull().default(1),
+    errorDetails: text("error_details"),
+    startedAt: timestamp("started_at", { fsp: 3 }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { fsp: 3 }),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("gov_continuation_records_req_unique").on(table.approvalRequestId),
+    index("gov_continuation_records_org_status_idx").on(table.organizationId, table.status),
+    index("gov_continuation_records_reconcile_idx").on(table.organizationId, table.reconciliationStatus),
+  ],
+);
+
+export const agentComplianceEvents = mysqlTable(
+  "agent_compliance_events",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    eventCategory: varchar("event_category", { length: 60 }).notNull(),
+    eventType: varchar("event_type", { length: 80 }).notNull(),
+    eventTimestamp: timestamp("event_timestamp", { fsp: 3 }).notNull(),
+    ingestionTimestamp: timestamp("ingestion_timestamp", { fsp: 3 }).notNull().defaultNow(),
+    actorId: char("actor_id", { length: 36 }),
+    actorType: varchar("actor_type", { length: 40 }).notNull().default("user"),
+    agentId: char("agent_id", { length: 36 }),
+    executionId: varchar("execution_id", { length: 120 }),
+    policyId: char("policy_id", { length: 36 }),
+    policyVersion: int("policy_version"),
+    approvalRequestId: char("approval_request_id", { length: 36 }),
+    securityEventRef: varchar("security_event_ref", { length: 120 }),
+    correlationId: varchar("correlation_id", { length: 120 }),
+    traceId: varchar("trace_id", { length: 120 }),
+    resourceType: varchar("resource_type", { length: 80 }),
+    resourceId: varchar("resource_id", { length: 180 }),
+    eventOutcome: varchar("event_outcome", { length: 40 }).notNull().default("SUCCESS"),
+    riskSeverity: varchar("risk_severity", { length: 40 }).notNull().default("LOW"),
+    dataClassification: varchar("data_classification", { length: 40 }).notNull().default("INTERNAL"),
+    redactedMetadata: json("redacted_metadata").$type<Record<string, unknown>>().notNull().default({}),
+    schemaVersion: int("schema_version").notNull().default(1),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_ace_org_cat_time").on(table.organizationId, table.eventCategory, table.eventTimestamp),
+    index("idx_ace_org_correl").on(table.organizationId, table.correlationId),
+    index("idx_ace_org_agent").on(table.organizationId, table.agentId),
+  ],
+);
+
+export const agentAuditIntegrityChains = mysqlTable(
+  "agent_audit_integrity_chains",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    eventId: char("event_id", { length: 36 })
+      .notNull()
+      .references(() => agentComplianceEvents.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    sequenceNumber: bigint("sequence_number", { mode: "number" }).notNull(),
+    previousEventHash: char("previous_event_hash", { length: 64 }).notNull(),
+    payloadHash: char("payload_hash", { length: 64 }).notNull(),
+    currentEventHash: char("current_event_hash", { length: 64 }).notNull(),
+    hashAlgorithm: varchar("hash_algorithm", { length: 32 }).notNull().default("SHA-256"),
+    schemaVersion: int("schema_version").notNull().default(1),
+    recordedAt: timestamp("recorded_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_aaic_org_seq").on(table.organizationId, table.sequenceNumber),
+    uniqueIndex("idx_aaic_org_event").on(table.organizationId, table.eventId),
+    index("idx_aaic_org_hash").on(table.organizationId, table.currentEventHash),
+  ],
+);
+
+export const agentComplianceFrameworks = mysqlTable(
+  "agent_compliance_frameworks",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    frameworkKey: varchar("framework_key", { length: 64 }).notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    version: varchar("version", { length: 40 }).notNull(),
+    description: text("description"),
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_acf_org_key").on(table.organizationId, table.frameworkKey),
+  ],
+);
+
+export const agentComplianceControls = mysqlTable(
+  "agent_compliance_controls",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    frameworkId: char("framework_id", { length: 36 })
+      .notNull()
+      .references(() => agentComplianceFrameworks.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    controlKey: varchar("control_key", { length: 64 }).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description"),
+    category: varchar("category", { length: 80 }).notNull(),
+    implementationStatus: varchar("implementation_status", { length: 40 }).notNull().default("NOT_IMPLEMENTED"),
+    ownerId: char("owner_id", { length: 36 }).references(() => users.id, { onDelete: "set null", onUpdate: "cascade" }),
+    reviewFrequencyDays: int("review_frequency_days").notNull().default(90),
+    lastReviewedAt: timestamp("last_reviewed_at", { fsp: 3 }),
+    nextReviewDueAt: timestamp("next_review_due_at", { fsp: 3 }),
+    verifiedAt: timestamp("verified_at", { fsp: 3 }),
+    verifiedBy: char("verified_by", { length: 36 }).references(() => users.id, { onDelete: "set null", onUpdate: "cascade" }),
+    exceptions: text("exceptions"),
+    metadata: json("metadata").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_acc_org_ctrl").on(table.organizationId, table.frameworkId, table.controlKey),
+    index("idx_acc_org_status").on(table.organizationId, table.implementationStatus),
+  ],
+);
+
+export const agentComplianceControlMappings = mysqlTable(
+  "agent_compliance_control_mappings",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    controlId: char("control_id", { length: 36 })
+      .notNull()
+      .references(() => agentComplianceControls.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    targetType: varchar("target_type", { length: 60 }).notNull(),
+    targetKey: varchar("target_key", { length: 120 }).notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_accm_ctrl_target").on(table.controlId, table.targetType, table.targetKey),
+  ],
+);
+
+export const agentComplianceEvidence = mysqlTable(
+  "agent_compliance_evidence",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    title: varchar("title", { length: 200 }).notNull(),
+    evidenceType: varchar("evidence_type", { length: 60 }).notNull(),
+    source: varchar("source", { length: 120 }).notNull(),
+    classification: varchar("classification", { length: 40 }).notNull().default("INTERNAL"),
+    relatedControlIds: json("related_control_ids").$type<string[]>().notNull().default([]),
+    contentHash: char("content_hash", { length: 64 }).notNull(),
+    storageReference: varchar("storage_reference", { length: 255 }),
+    structuredPayload: json("structured_payload").$type<Record<string, unknown>>().notNull().default({}),
+    verificationStatus: varchar("verification_status", { length: 40 }).notNull().default("VALID"),
+    retentionPolicyId: char("retention_policy_id", { length: 36 }),
+    isUnderLegalHold: boolean("is_under_legal_hold").notNull().default(false),
+    collectedBy: char("collected_by", { length: 36 }).references(() => users.id, { onDelete: "set null", onUpdate: "cascade" }),
+    collectedAt: timestamp("collected_at", { fsp: 3 }).notNull().defaultNow(),
+    accessCount: int("access_count").notNull().default(0),
+    lastAccessedAt: timestamp("last_accessed_at", { fsp: 3 }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_acev_org_type").on(table.organizationId, table.evidenceType),
+    index("idx_acev_org_hold").on(table.organizationId, table.isUnderLegalHold),
+  ],
+);
+
+export const agentComplianceEvidencePackages = mysqlTable(
+  "agent_compliance_evidence_packages",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    packageIdentifier: varchar("package_identifier", { length: 120 }).notNull(),
+    manifestChecksum: char("manifest_checksum", { length: 64 }).notNull(),
+    hashAlgorithm: varchar("hash_algorithm", { length: 32 }).notNull().default("SHA-256"),
+    evidenceIds: json("evidence_ids").$type<string[]>().notNull().default([]),
+    auditEventIds: json("audit_event_ids").$type<string[]>().notNull().default([]),
+    manifestPayload: json("manifest_payload").$type<Record<string, unknown>>().notNull().default({}),
+    redactionLevel: varchar("redaction_level", { length: 40 }).notNull().default("DEEP_SECRET_SCRUBBED"),
+    status: varchar("status", { length: 40 }).notNull().default("GENERATED"),
+    exportedBy: char("exported_by", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    exportedAt: timestamp("exported_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_acep_org_pkg").on(table.organizationId, table.packageIdentifier),
+  ],
+);
+
+export const agentComplianceRetentionPolicies = mysqlTable(
+  "agent_compliance_retention_policies",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    recordCategory: varchar("record_category", { length: 60 }).notNull(),
+    retentionDurationDays: int("retention_duration_days").notNull().default(365),
+    effectiveFrom: timestamp("effective_from", { fsp: 3 }).notNull().defaultNow(),
+    disposalAction: varchar("disposal_action", { length: 40 }).notNull().default("ARCHIVE"),
+    status: varchar("status", { length: 40 }).notNull().default("ACTIVE"),
+    createdBy: char("created_by", { length: 36 }).references(() => users.id, { onDelete: "set null", onUpdate: "cascade" }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_acrp_org_cat").on(table.organizationId, table.recordCategory),
+  ],
+);
+
+export const agentComplianceLegalHolds = mysqlTable(
+  "agent_compliance_legal_holds",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    holdIdentifier: varchar("hold_identifier", { length: 120 }).notNull(),
+    name: varchar("name", { length: 180 }).notNull(),
+    description: text("description"),
+    reason: text("reason").notNull(),
+    scopeType: varchar("scope_type", { length: 40 }).notNull().default("ALL"),
+    scopeCriteria: json("scope_criteria").$type<Record<string, unknown>>().notNull().default({}),
+    status: varchar("status", { length: 40 }).notNull().default("ACTIVE"),
+    createdBy: char("created_by", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    releasedBy: char("released_by", { length: 36 }).references(() => users.id, { onDelete: "set null", onUpdate: "cascade" }),
+    releasedAt: timestamp("released_at", { fsp: 3 }),
+    releaseJustification: text("release_justification"),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_aclh_org_ident").on(table.organizationId, table.holdIdentifier),
+    index("idx_aclh_org_status").on(table.organizationId, table.status),
+  ],
+);
+
+export const agentComplianceInvestigations = mysqlTable(
+  "agent_compliance_investigations",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    caseNumber: varchar("case_number", { length: 80 }).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description"),
+    investigatorId: char("investigator_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    status: varchar("status", { length: 40 }).notNull().default("OPEN"),
+    searchFilters: json("search_filters").$type<Record<string, unknown>>().notNull().default({}),
+    findings: text("findings"),
+    notes: json("notes").$type<Array<{ note: string; authorId: string; timestamp: string }>>().notNull().default([]),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_acin_org_case").on(table.organizationId, table.caseNumber),
+    index("idx_acin_org_status").on(table.organizationId, table.status),
+  ],
+);
+
+export const agentRiskConfigurations = mysqlTable(
+  "agent_risk_configurations",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    riskScoringModel: varchar("risk_scoring_model", { length: 60 })
+      .notNull()
+      .default("INHERENT_LIKELIHOOD_IMPACT_V1"),
+    lowThresholdMax: int("low_threshold_max").notNull().default(5),
+    mediumThresholdMax: int("medium_threshold_max").notNull().default(11),
+    highThresholdMax: int("high_threshold_max").notNull().default(19),
+    criticalThresholdMin: int("critical_threshold_min").notNull().default(20),
+    riskEnforcementEnabled: boolean("risk_enforcement_enabled").notNull().default(false),
+    riskEnforcementMode: varchar("risk_enforcement_mode", { length: 40 })
+      .notNull()
+      .default("MONITOR"),
+    trustEvaluationWindowDays: int("trust_evaluation_window_days").notNull().default(30),
+    minOperationsForConfidence: int("min_operations_for_confidence").notNull().default(5),
+    behavioralDetectionEnabled: boolean("behavioral_detection_enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_arc_org").on(table.organizationId),
+  ],
+);
+
+export const agentRiskRegister = mysqlTable(
+  "agent_risk_register",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    riskIdentifier: varchar("risk_identifier", { length: 80 }).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description"),
+    agentId: char("agent_id", { length: 36 }).references(() => aiAgentDefinitions.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    riskCategory: varchar("risk_category", { length: 60 }).notNull(),
+    riskSource: varchar("risk_source", { length: 80 }).notNull().default("MANUAL_ASSESSMENT"),
+    likelihood: int("likelihood").notNull().default(3),
+    impact: int("impact").notNull().default(3),
+    inherentScore: int("inherent_score").notNull().default(9),
+    inherentTier: varchar("inherent_tier", { length: 30 }).notNull().default("MEDIUM"),
+    existingControls: json("existing_controls")
+      .$type<Array<{ id: string; name: string; effectiveness: string; reductionFactor?: number }>>()
+      .notNull()
+      .default([]),
+    residualScore: int("residual_score").notNull().default(9),
+    residualTier: varchar("residual_tier", { length: 30 }).notNull().default("MEDIUM"),
+    ownerId: char("owner_id", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    treatmentStrategy: varchar("treatment_strategy", { length: 40 })
+      .notNull()
+      .default("MITIGATE"),
+    mitigationStatus: varchar("mitigation_status", { length: 40 })
+      .notNull()
+      .default("IDENTIFIED"),
+    reviewFrequency: varchar("review_frequency", { length: 40 })
+      .notNull()
+      .default("QUARTERLY"),
+    nextReviewDate: timestamp("next_review_date", { fsp: 3 }),
+    linkedSecurityEvents: json("linked_security_events")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    linkedComplianceControls: json("linked_compliance_controls")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    linkedEvidenceIds: json("linked_evidence_ids")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    createdBy: char("created_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_arr_org_identifier").on(table.organizationId, table.riskIdentifier),
+    index("idx_arr_org_agent").on(table.organizationId, table.agentId),
+    index("idx_arr_org_cat_tier").on(table.organizationId, table.riskCategory, table.residualTier),
+  ],
+);
+
+export const agentRiskAssessments = mysqlTable(
+  "agent_risk_assessments",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    riskId: char("risk_id", { length: 36 })
+      .notNull()
+      .references(() => agentRiskRegister.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: char("agent_id", { length: 36 }).references(() => aiAgentDefinitions.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    assessmentVersion: varchar("assessment_version", { length: 32 }).notNull().default("v1.0.0"),
+    scoringModel: varchar("scoring_model", { length: 60 })
+      .notNull()
+      .default("INHERENT_LIKELIHOOD_IMPACT_V1"),
+    likelihood: int("likelihood").notNull(),
+    impact: int("impact").notNull(),
+    inherentScore: int("inherent_score").notNull(),
+    inherentTier: varchar("inherent_tier", { length: 30 }).notNull(),
+    controlsEvaluated: json("controls_evaluated")
+      .$type<Array<Record<string, unknown>>>()
+      .notNull()
+      .default([]),
+    residualScore: int("residual_score").notNull(),
+    residualTier: varchar("residual_tier", { length: 30 }).notNull(),
+    rationale: text("rationale"),
+    calculationInputs: json("calculation_inputs")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    assessedBy: char("assessed_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    assessedAt: timestamp("assessed_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_ara_risk_assess").on(table.riskId, table.assessedAt),
+    index("idx_ara_org_agent").on(table.organizationId, table.agentId),
+  ],
+);
+
+export const agentTrustProfiles = mysqlTable(
+  "agent_trust_profiles",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    trustScore: int("trust_score").notNull().default(70),
+    trustConfidence: varchar("trust_confidence", { length: 30 }).notNull().default("LOW"),
+    trustTier: varchar("trust_tier", { length: 30 }).notNull().default("NEUTRAL"),
+    dimensionScores: json("dimension_scores")
+      .$type<Record<string, number>>()
+      .notNull()
+      .default({}),
+    evidenceCount: int("evidence_count").notNull().default(0),
+    isInsufficientEvidence: boolean("is_insufficient_evidence").notNull().default(true),
+    contributingFactors: json("contributing_factors")
+      .$type<Array<{ dimension: string; score: number; weight: number; explanation: string }>>()
+      .notNull()
+      .default([]),
+    modelVersion: varchar("model_version", { length: 32 }).notNull().default("v1.0.0"),
+    lastEvaluatedAt: timestamp("last_evaluated_at", { fsp: 3 }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_atp_org_agent").on(table.organizationId, table.agentId),
+    index("idx_atp_org_score").on(table.organizationId, table.trustScore),
+  ],
+);
+
+export const agentTrustAssessmentHistory = mysqlTable(
+  "agent_trust_assessment_history",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    trustScore: int("trust_score").notNull(),
+    trustConfidence: varchar("trust_confidence", { length: 30 }).notNull(),
+    dimensionScores: json("dimension_scores")
+      .$type<Record<string, number>>()
+      .notNull()
+      .default({}),
+    evidenceCount: int("evidence_count").notNull(),
+    isInsufficientEvidence: boolean("is_insufficient_evidence").notNull(),
+    evaluationReason: varchar("evaluation_reason", { length: 120 })
+      .notNull()
+      .default("PERIODIC_EVALUATION"),
+    evaluatedBy: char("evaluated_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    evaluatedAt: timestamp("evaluated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_atah_org_agent_eval").on(table.organizationId, table.agentId, table.evaluatedAt),
+  ],
+);
+
+export const agentBehavioralRiskAlerts = mysqlTable(
+  "agent_behavioral_risk_alerts",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentId: char("agent_id", { length: 36 }).references(() => aiAgentDefinitions.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    alertIdentifier: varchar("alert_identifier", { length: 120 }).notNull(),
+    detectionRule: varchar("detection_rule", { length: 80 }).notNull(),
+    severity: varchar("severity", { length: 30 }).notNull().default("MEDIUM"),
+    status: varchar("status", { length: 40 }).notNull().default("ACTIVE"),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description").notNull(),
+    evidenceRefs: json("evidence_refs").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    fingerprint: varchar("fingerprint", { length: 128 }).notNull(),
+    firstDetectedAt: timestamp("first_detected_at", { fsp: 3 }).notNull().defaultNow(),
+    lastDetectedAt: timestamp("last_detected_at", { fsp: 3 }).notNull().defaultNow(),
+    occurrenceCount: int("occurrence_count").notNull().default(1),
+    acknowledgedBy: char("acknowledged_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    acknowledgedAt: timestamp("acknowledged_at", { fsp: 3 }),
+    resolvedBy: char("resolved_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    resolvedAt: timestamp("resolved_at", { fsp: 3 }),
+    resolutionNotes: text("resolution_notes"),
+  },
+  (table) => [
+    index("idx_abra_org_agent_stat").on(table.organizationId, table.agentId, table.status),
+    index("idx_abra_org_rule_fp").on(table.organizationId, table.detectionRule, table.fingerprint),
+  ],
+);
+
+export const agentRiskMitigations = mysqlTable(
+  "agent_risk_mitigations",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    riskId: char("risk_id", { length: 36 })
+      .notNull()
+      .references(() => agentRiskRegister.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    planIdentifier: varchar("plan_identifier", { length: 80 }).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description"),
+    ownerId: char("owner_id", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    priority: varchar("priority", { length: 30 }).notNull().default("MEDIUM"),
+    targetDate: timestamp("target_date", { fsp: 3 }),
+    correctiveActions: json("corrective_actions")
+      .$type<Array<{ actionId: string; description: string; status: string; assignedTo?: string; completedAt?: string }>>()
+      .notNull()
+      .default([]),
+    evidenceAttachments: json("evidence_attachments").$type<string[]>().notNull().default([]),
+    status: varchar("status", { length: 40 }).notNull().default("OPEN"),
+    verifiedBy: char("verified_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    verifiedAt: timestamp("verified_at", { fsp: 3 }),
+    verificationNotes: text("verification_notes"),
+    createdBy: char("created_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_arm_org_risk").on(table.organizationId, table.riskId),
+    index("idx_arm_org_status").on(table.organizationId, table.status),
+  ],
+);
+
+export const agentRiskExceptions = mysqlTable(
+  "agent_risk_exceptions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    riskId: char("risk_id", { length: 36 })
+      .notNull()
+      .references(() => agentRiskRegister.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    exceptionIdentifier: varchar("exception_identifier", { length: 80 }).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    justification: text("justification").notNull(),
+    scopeType: varchar("scope_type", { length: 40 }).notNull().default("AGENT"),
+    scopeTarget: varchar("scope_target", { length: 180 }).notNull(),
+    status: varchar("status", { length: 40 }).notNull().default("REQUESTED"),
+    requestedBy: char("requested_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    requestedAt: timestamp("requested_at", { fsp: 3 }).notNull().defaultNow(),
+    approvedBy: char("approved_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    approvedAt: timestamp("approved_at", { fsp: 3 }),
+    approvalNotes: text("approval_notes"),
+    effectiveDate: timestamp("effective_date", { fsp: 3 }).notNull().defaultNow(),
+    expirationDate: timestamp("expiration_date", { fsp: 3 }).notNull(),
+    compensatingControls: json("compensating_controls")
+      .$type<Array<{ controlName: string; description: string; verified: boolean }>>()
+      .notNull()
+      .default([]),
+    revokedBy: char("revoked_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    revokedAt: timestamp("revoked_at", { fsp: 3 }),
+    revocationReason: text("revocation_reason"),
+  },
+  (table) => [
+    index("idx_are_org_risk").on(table.organizationId, table.riskId),
+    index("idx_are_org_stat_exp").on(table.organizationId, table.status, table.expirationDate),
+  ],
+);
+
+export const agentRiskReviewHistory = mysqlTable(
+  "agent_risk_review_history",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    riskId: char("risk_id", { length: 36 })
+      .notNull()
+      .references(() => agentRiskRegister.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    reviewType: varchar("review_type", { length: 50 }).notNull().default("PERIODIC_REVIEW"),
+    reviewedBy: char("reviewed_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    previousResidualScore: int("previous_residual_score").notNull(),
+    newResidualScore: int("new_residual_score").notNull(),
+    previousStatus: varchar("previous_status", { length: 40 }).notNull(),
+    newStatus: varchar("new_status", { length: 40 }).notNull(),
+    notes: text("notes").notNull(),
+    reviewedAt: timestamp("reviewed_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_arrh_org_risk").on(table.organizationId, table.riskId, table.reviewedAt),
+  ],
+);
+
 export const schema = {
   usageMeterEvents,
   saasPlans,
@@ -4560,6 +5631,37 @@ export const schema = {
   agentReliabilityMetrics,
   agentAlertRules,
   agentIncidents,
+  agentGovernanceProfiles,
+  agentOwnershipAssignments,
+  agentGovernancePolicies,
+  agentGovernancePolicyVersions,
+  agentGovernanceAuditLogs,
+  agentApprovalRequests,
+  agentApprovalDecisions,
+  agentApprovalEscalations,
+  agentSecurityProfiles,
+  agentSecretReferences,
+  agentSecurityEvents,
+  agentContinuationRecords,
+  agentComplianceEvents,
+  agentAuditIntegrityChains,
+  agentComplianceFrameworks,
+  agentComplianceControls,
+  agentComplianceControlMappings,
+  agentComplianceEvidence,
+  agentComplianceEvidencePackages,
+  agentComplianceRetentionPolicies,
+  agentComplianceLegalHolds,
+  agentComplianceInvestigations,
+  agentRiskConfigurations,
+  agentRiskRegister,
+  agentRiskAssessments,
+  agentTrustProfiles,
+  agentTrustAssessmentHistory,
+  agentBehavioralRiskAlerts,
+  agentRiskMitigations,
+  agentRiskExceptions,
+  agentRiskReviewHistory,
   workspaces,
 };
 

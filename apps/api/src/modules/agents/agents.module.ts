@@ -4,6 +4,20 @@ import { AgentObservabilityService } from "./services/agent-observability.servic
 import { AgentEvaluationService } from "./services/agent-evaluation.service.js";
 import { AgentReliabilityService } from "./services/agent-reliability.service.js";
 import { AgentCostService } from "./services/agent-cost.service.js";
+import { AgentGovernanceRepository } from "./repositories/agent-governance.repository.js";
+import { AgentGovernanceService } from "./services/agent-governance.service.js";
+import { PolicyEvaluationEngine } from "./services/policy-evaluation-engine.service.js";
+import { PolicySimulationService } from "./services/policy-simulation.service.js";
+import { AgentApprovalRepository } from "./repositories/agent-approval.repository.js";
+import { AgentApprovalService } from "./services/agent-approval.service.js";
+import { AgentApprovalContinuationService } from "./services/agent-approval-continuation.service.js";
+import { AgentSecurityRepository } from "./repositories/agent-security.repository.js";
+import { AgentSecurityGatewayService } from "./services/agent-security-gateway.service.js";
+import { AgentSecretVaultService } from "./services/agent-secret-vault.service.js";
+import { AgentComplianceService } from "./services/agent-compliance.service.js";
+import { AgentComplianceRepository } from "./repositories/agent-compliance.repository.js";
+import { AgentRiskService } from "./services/agent-risk.service.js";
+import { AgentGovernanceConsoleService } from "./services/agent-governance-console.service.js";
 import { AgentTeamService } from "./services/agent-team.service.js";
 import { AgentOrchestrationService } from "./services/agent-orchestration.service.js";
 import {
@@ -3184,6 +3198,2507 @@ export const agentsModule: BackendModule = {
         sendJson(response, 200, { costAttribution });
       },
     });
+
+    // =========================================================================
+    // EPIC 22A: ENTERPRISE AGENT GOVERNANCE FOUNDATION
+    // =========================================================================
+
+    // 1. Get Governance Overview Stats
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/overview",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const overview = await service.getGovernanceOverview(tenant.organizationId);
+        sendJson(response, 200, { overview });
+      },
+    });
+
+    // 2. List Agent Governance Profiles
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/profiles",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const riskTier = url.searchParams.get("riskTier") || undefined;
+        const complianceStatus = url.searchParams.get("complianceStatus") || undefined;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const profiles = await service.listProfiles(tenant.organizationId, {
+          riskTier,
+          complianceStatus,
+        });
+        sendJson(response, 200, { profiles });
+      },
+    });
+
+    // 3. Get Single Agent Governance Profile
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/profiles/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const data = await service.getAgentProfile(tenant.organizationId, routeParams.agentId);
+        sendJson(response, 200, data);
+      },
+    });
+
+    // 4. Upsert Agent Governance Profile
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/profiles/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const profile = await service.upsertProfile({
+          ...body,
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          userId: auth.user.id,
+        });
+        sendJson(response, 200, { profile });
+      },
+    });
+
+    // 5. Record Compliance Review for Agent
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/profiles/:agentId/review",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const profile = await service.recordAgentReview({
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          reviewedBy: auth.user.id,
+          complianceStatus: body.complianceStatus || "compliant",
+          notes: body.notes,
+        });
+        sendJson(response, 200, { profile });
+      },
+    });
+
+    // 6. List Ownership Assignments
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/ownership",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const ownerships = await service.listOwnership(tenant.organizationId);
+        sendJson(response, 200, { ownerships });
+      },
+    });
+
+    // 7. Get Agent Ownership Assignment
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/ownership/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const ownership = await service.getAgentOwnership(tenant.organizationId, routeParams.agentId);
+        sendJson(response, 200, { ownership });
+      },
+    });
+
+    // 8. Assign Agent Ownership
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/ownership/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const ownership = await service.assignOwnership({
+          ...body,
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          assignedBy: auth.user.id,
+        });
+        sendJson(response, 200, { ownership });
+      },
+    });
+
+    // 9. List Governance Policies
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/policies",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const policyType = url.searchParams.get("policyType") || undefined;
+        const lifecycleState = url.searchParams.get("lifecycleState") || undefined;
+        const severity = url.searchParams.get("severity") || undefined;
+        const scopeType = url.searchParams.get("scopeType") || undefined;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const policies = await service.listPolicies(tenant.organizationId, {
+          policyType,
+          lifecycleState,
+          severity,
+          scopeType,
+        });
+        sendJson(response, 200, { policies });
+      },
+    });
+
+    // 10. Register / Create Governance Policy
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/policies",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const policy = await service.createPolicy({
+          ...body,
+          organizationId: tenant.organizationId,
+          createdBy: auth.user.id,
+        });
+        sendJson(response, 201, { policy });
+      },
+    });
+
+    // 11. Get Governance Policy & Version History
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/policies/:policyId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const data = await service.getPolicy(tenant.organizationId, routeParams.policyId);
+        sendJson(response, 200, data);
+      },
+    });
+
+    // 12. Update Governance Policy Definition
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/policies/:policyId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const policy = await service.updatePolicy(
+          tenant.organizationId,
+          routeParams.policyId,
+          {
+            ...body,
+            updatedBy: auth.user.id,
+          },
+        );
+        sendJson(response, 200, { policy });
+      },
+    });
+
+    // 13. Transition Policy Lifecycle State
+    router.register({
+      method: "PATCH",
+      path: "/api/v1/organizations/:organizationId/agent-governance/policies/:policyId/lifecycle",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const policy = await service.transitionPolicyLifecycle(
+          tenant.organizationId,
+          routeParams.policyId,
+          body.lifecycleState,
+          auth.user.id,
+        );
+        sendJson(response, 200, { policy });
+      },
+    });
+
+    // 14. List Governance Audit Logs
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/audit-logs",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const targetType = url.searchParams.get("targetType") || undefined;
+        const targetId = url.searchParams.get("targetId") || undefined;
+        const limit = Number(url.searchParams.get("limit") || "50");
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const service = new AgentGovernanceService(repo);
+        const auditLogs = await service.listAuditLogs(tenant.organizationId, {
+          targetType,
+          targetId,
+          limit,
+        });
+        sendJson(response, 200, { auditLogs });
+      },
+    });
+    // 15. Policy Evaluation
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/evaluate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const engine = new PolicyEvaluationEngine(repo);
+        const decision = await engine.evaluate({
+          ...body,
+          organizationId: tenant.organizationId,
+          actorId: body.actorId || authResult.user.id,
+        });
+        sendJson(response, 200, { decision });
+      },
+    });
+
+    // 16. Policy Simulation
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/simulate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const simService = new PolicySimulationService(repo);
+        const simulation = await simService.simulatePolicyDecision({
+          ...body,
+          organizationId: tenant.organizationId,
+          actorId: body.actorId || authResult.user.id,
+        });
+        sendJson(response, 200, { simulation });
+      },
+    });
+
+    // 17. Get Governance Enforcement Mode
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/mode",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const engine = new PolicyEvaluationEngine(repo);
+        const enforcementMode = await engine.getEnforcementMode(tenant.organizationId);
+        sendJson(response, 200, { enforcementMode });
+      },
+    });
+
+    // 18. Set Governance Enforcement Mode
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/mode",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const mode = body.mode;
+        if (mode !== "DISABLED" && mode !== "MONITOR" && mode !== "ENFORCE") {
+          throw new ApiError(400, "VALIDATION_FAILED", "Mode must be one of: DISABLED, MONITOR, ENFORCE");
+        }
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const engine = new PolicyEvaluationEngine(repo);
+        await engine.setEnforcementMode(tenant.organizationId, mode, authResult.user.id);
+        sendJson(response, 200, { enforcementMode: mode, updated: true });
+      },
+    });
+
+    // 19. List Policy Decision History
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/decisions",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const limit = Number(url.searchParams.get("limit") || "50");
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const allLogs = await repo.listAuditLogs(tenant.organizationId, { limit });
+        const decisions = allLogs.filter((l) => l.action === "policy_decision" || l.action === "policy_simulation");
+        sendJson(response, 200, { decisions: decisions.slice(0, limit) });
+      },
+    });
+
+    // 20. Compare Policy Versions
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/policies/:policyId/versions/compare",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const v1 = Number(url.searchParams.get("v1") || "1");
+        const v2 = Number(url.searchParams.get("v2") || "2");
+        const repo = new AgentGovernanceRepository(createRepositoryContext(database.db));
+        const simService = new PolicySimulationService(repo);
+        const comparison = await simService.comparePolicyVersions(
+          tenant.organizationId,
+          routeParams.policyId,
+          v1,
+          v2,
+        );
+        sendJson(response, 200, { comparison });
+      },
+    });
+
+    // 21. List Governance Approval Requests
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const status = url.searchParams.get("status") as any;
+        const agentId = url.searchParams.get("agentId") || undefined;
+        const riskClassification = url.searchParams.get("riskClassification") as any;
+        const assignedReviewerId = url.searchParams.get("assignedReviewerId") || undefined;
+        const limit = Number(url.searchParams.get("limit") || "50");
+        const offset = Number(url.searchParams.get("offset") || "0");
+
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const approvals = await service.listApprovals(tenant.organizationId, {
+          status,
+          agentId,
+          riskClassification,
+          assignedReviewerId,
+          limit,
+          offset,
+        });
+
+        sendJson(response, 200, { approvals });
+      },
+    });
+
+    // 22. Get Governance Approval Details
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const details = await service.getApprovalDetails(
+          tenant.organizationId,
+          routeParams.approvalId,
+        );
+        sendJson(response, 200, { details });
+      },
+    });
+
+    // 23. Create Governance Approval Request
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const approvalRequest = await service.createApprovalRequest({
+          ...body,
+          organizationId: tenant.organizationId,
+          requestingActorId: body.requestingActorId || authResult.user.id,
+        });
+
+        sendJson(response, 201, { approvalRequest });
+      },
+    });
+
+    // 24. Approve Governance Approval Request
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId/approve",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const result = await service.decideApprovalRequest({
+          approvalRequestId: routeParams.approvalId,
+          organizationId: tenant.organizationId,
+          decision: "approved",
+          actorId: authResult.user.id,
+          actorType: "user",
+          userRoles: authResult.memberships?.filter(m => m.organizationId === tenant.organizationId).map(m => m.role) || [],
+          userPermissions: authResult.memberships?.find(m => m.organizationId === tenant.organizationId)?.permissions || [],
+          justification: body.justification,
+          reason: body.reason,
+        });
+
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 25. Reject Governance Approval Request
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId/reject",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const result = await service.decideApprovalRequest({
+          approvalRequestId: routeParams.approvalId,
+          organizationId: tenant.organizationId,
+          decision: "rejected",
+          actorId: authResult.user.id,
+          actorType: "user",
+          userRoles: authResult.memberships?.filter(m => m.organizationId === tenant.organizationId).map(m => m.role) || [],
+          userPermissions: authResult.memberships?.find(m => m.organizationId === tenant.organizationId)?.permissions || [],
+          justification: body.justification,
+          reason: body.reason,
+        });
+
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 26. Revoke Governance Approval Request
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId/revoke",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const result = await service.decideApprovalRequest({
+          approvalRequestId: routeParams.approvalId,
+          organizationId: tenant.organizationId,
+          decision: "revoked",
+          actorId: authResult.user.id,
+          actorType: "user",
+          userRoles: authResult.memberships?.filter(m => m.organizationId === tenant.organizationId).map(m => m.role) || [],
+          userPermissions: authResult.memberships?.find(m => m.organizationId === tenant.organizationId)?.permissions || [],
+          reason: body.reason,
+        });
+
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 27. Escalate Governance Approval Request
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId/escalate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body.reason) {
+          throw new ApiError(400, "VALIDATION_FAILED", "Escalation reason is required");
+        }
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo, govRepo);
+
+        const result = await service.escalateApprovalRequest({
+          approvalRequestId: routeParams.approvalId,
+          organizationId: tenant.organizationId,
+          actorId: authResult.user.id,
+          escalatedToReviewerId: body.escalatedToReviewerId,
+          reason: body.reason,
+        });
+
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 28. Get Approval Status
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId/status",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const requestEntity = await approvalRepo.getRequestById(
+          tenant.organizationId,
+          routeParams.approvalId,
+        );
+        if (!requestEntity) {
+          throw new ApiError(404, "NOT_FOUND", "Approval request not found");
+        }
+        sendJson(response, 200, {
+          id: requestEntity.id,
+          status: requestEntity.status,
+          expiresAt: requestEntity.expiresAt,
+          consumedAt: requestEntity.consumedAt,
+          consumedBy: requestEntity.consumedBy,
+          decisionId: requestEntity.decisionId,
+        });
+      },
+    });
+
+    // 29. Continue Approved Execution
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/:approvalId/continue",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const govRepo = new AgentGovernanceRepository(repoCtx);
+        const policyEngine = new PolicyEvaluationEngine(govRepo);
+        const continuationService = new AgentApprovalContinuationService(
+          approvalRepo,
+          policyEngine,
+          undefined,
+          govRepo,
+        );
+
+        const result = await continuationService.continueApprovedExecution({
+          approvalRequestId: routeParams.approvalId,
+          organizationId: tenant.organizationId,
+          actorId: authResult.user.id,
+          providedPayload: body.providedPayload,
+          idempotencyKey: body.idempotencyKey,
+        });
+
+        sendJson(response, 200, { continuation: result });
+      },
+    });
+
+    // 30. Expire Sweep
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/approvals/expire-sweep",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const approvalRepo = new AgentApprovalRepository(repoCtx);
+        const service = new AgentApprovalService(approvalRepo);
+        const expired = await service.sweepExpiredApprovals(tenant.organizationId);
+        sendJson(response, 200, { expiredCount: expired.length, expired });
+      },
+    });
+
+    // =========================================================================
+    // EPIC 22D — ENTERPRISE AGENT SECURITY CONTROLS, SANDBOXING & SECRETS
+    // =========================================================================
+
+    // 1. Get Security Posture
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/posture",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const gateway = new AgentSecurityGatewayService(secRepo);
+        const posture = await gateway.getSecurityPosture(tenant.organizationId);
+        sendJson(response, 200, posture);
+      },
+    });
+
+    // 2. List Security Profiles / Capabilities
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/capabilities",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const isSuspParam = url.searchParams.get("isSuspended");
+        const isSuspended = isSuspParam !== null ? isSuspParam === "true" : undefined;
+        const profiles = await secRepo.listProfiles(tenant.organizationId, { isSuspended });
+        sendJson(response, 200, { items: profiles, total: profiles.length });
+      },
+    });
+
+    // 3. Get Agent Security Capability Profile
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/capabilities/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        let profile = await secRepo.getProfile(tenant.organizationId, routeParams.agentId);
+        if (!profile) {
+          profile = await secRepo.upsertProfile({
+            organizationId: tenant.organizationId,
+            agentId: routeParams.agentId,
+          });
+        }
+        sendJson(response, 200, profile);
+      },
+    });
+
+    // 4. Update Agent Security Capability Profile
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/capabilities/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const updated = await secRepo.upsertProfile({
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          ...body,
+        });
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 5. Suspend Agent
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/agents/:agentId/suspend",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.reason || typeof body.reason !== "string") {
+          throw new ApiError(400, "VALIDATION_FAILED", "Suspension reason is required");
+        }
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const gateway = new AgentSecurityGatewayService(secRepo);
+        const updated = await gateway.suspendAgent({
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          suspendedBy: authResult.user.id,
+          reason: body.reason,
+        });
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 6. Reactivate Agent
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/agents/:agentId/reactivate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const gateway = new AgentSecurityGatewayService(secRepo);
+        const updated = await gateway.reactivateAgent({
+          organizationId: tenant.organizationId,
+          agentId: routeParams.agentId,
+          actorId: authResult.user.id,
+        });
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 7. Emergency Stop
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/emergency-stop",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const gateway = new AgentSecurityGatewayService(secRepo);
+        await gateway.triggerEmergencyStop({
+          organizationId: tenant.organizationId,
+          workspaceId: body?.workspaceId,
+          actorId: authResult.user.id,
+          reason: body?.reason,
+        });
+        sendJson(response, 200, {
+          status: "EMERGENCY_STOPPED",
+          stoppedAt: new Date().toISOString(),
+          stoppedBy: authResult.user.id,
+        });
+      },
+    });
+
+    // 8. Emergency Resume
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/emergency-resume",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const gateway = new AgentSecurityGatewayService(secRepo);
+        await gateway.resumeEmergencyStop({
+          organizationId: tenant.organizationId,
+          workspaceId: body?.workspaceId,
+          actorId: authResult.user.id,
+        });
+        sendJson(response, 200, {
+          status: "RESUMED",
+          resumedAt: new Date().toISOString(),
+          resumedBy: authResult.user.id,
+        });
+      },
+    });
+
+    // 9. List Secret References
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/secrets",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const status = url.searchParams.get("status") as any;
+        const agentId = url.searchParams.get("agentId") || undefined;
+        const secrets = await secRepo.listSecretReferences(tenant.organizationId, { status, agentId });
+        sendJson(response, 200, { items: secrets, total: secrets.length });
+      },
+    });
+
+    // 10. Create Secret Reference
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/secrets",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.secretIdentifier || !body?.name) {
+          throw new ApiError(400, "VALIDATION_FAILED", "secretIdentifier and name are required");
+        }
+
+        if (body.initialValue) {
+          AgentSecretVaultService.registerSecretValue(
+            tenant.organizationId,
+            body.secretIdentifier,
+            body.initialValue,
+          );
+        }
+
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const created = await secRepo.createSecretReference({
+          organizationId: tenant.organizationId,
+          workspaceId: body.workspaceId,
+          secretIdentifier: body.secretIdentifier,
+          name: body.name,
+          description: body.description,
+          allowedAgentIds: body.allowedAgentIds || [],
+          allowedToolKeys: body.allowedToolKeys || [],
+          createdBy: authResult.user.id,
+          metadata: body.metadata || {},
+        });
+        sendJson(response, 201, created);
+      },
+    });
+
+    // 11. Revoke Secret Reference
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/secrets/:secretId/revoke",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const revoked = await secRepo.revokeSecretReference(tenant.organizationId, routeParams.secretId);
+        if (!revoked) {
+          throw new ApiError(404, "NOT_FOUND", "Secret reference not found");
+        }
+        sendJson(response, 200, revoked);
+      },
+    });
+
+    // 12. Rotate Secret Reference
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/secrets/:secretId/rotate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const rotated = await secRepo.rotateSecretReference(tenant.organizationId, routeParams.secretId);
+        if (!rotated) {
+          throw new ApiError(404, "NOT_FOUND", "Secret reference not found");
+        }
+        if (body?.newValue) {
+          AgentSecretVaultService.registerSecretValue(
+            tenant.organizationId,
+            rotated.secretIdentifier,
+            body.newValue,
+          );
+        }
+        sendJson(response, 200, rotated);
+      },
+    });
+
+    // 13. List Security Events
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/security/events",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const repoCtx = createRepositoryContext(database.db);
+        const secRepo = new AgentSecurityRepository(repoCtx);
+        const agentId = url.searchParams.get("agentId") || undefined;
+        const eventType = (url.searchParams.get("eventType") as any) || undefined;
+        const severity = (url.searchParams.get("severity") as any) || undefined;
+        const limitParam = url.searchParams.get("limit");
+        const limit = limitParam ? parseInt(limitParam, 10) : 50;
+
+        const events = await secRepo.listEvents(tenant.organizationId, {
+          agentId,
+          eventType,
+          severity,
+          limit,
+        });
+        sendJson(response, 200, { items: events, total: events.length });
+      },
+    });
+
+    // =========================================================================
+    // EPIC 22E: Compliance, Audit Integrity & Evidence Management Endpoints
+    // =========================================================================
+
+    // 1. Compliance Overview
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/overview",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const overview = await service.getComplianceOverview(tenant.organizationId);
+        sendJson(response, 200, overview);
+      },
+    });
+
+    // 2. Framework Listing
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/frameworks",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const frameworks = await service.listFrameworks(tenant.organizationId);
+        sendJson(response, 200, { items: frameworks, total: frameworks.length });
+      },
+    });
+
+    // 3. Control Listing
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/controls",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const frameworkId = url.searchParams.get("frameworkId") || undefined;
+        const category = url.searchParams.get("category") || undefined;
+        const status = (url.searchParams.get("status") as any) || undefined;
+
+        const service = new AgentComplianceService(database.db);
+        const controls = await service.listControls(tenant.organizationId, {
+          frameworkId,
+          category,
+          status,
+        });
+        sendJson(response, 200, { items: controls, total: controls.length });
+      },
+    });
+
+    // 4. Get Control by ID
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/controls/:controlId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const control = await service.getControl(tenant.organizationId, routeParams.controlId);
+        if (!control) {
+          throw new ApiError(404, "NOT_FOUND", "Compliance control not found");
+        }
+        sendJson(response, 200, control);
+      },
+    });
+
+    // 5. Update Control Verification
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/controls/:controlId/verify",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.status) {
+          throw new ApiError(400, "VALIDATION_FAILED", "Status is required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const updated = await service.verifyControl(tenant.organizationId, routeParams.controlId, {
+          status: body.status,
+          verifiedBy: authResult.user.id,
+          exceptions: body.exceptions,
+        });
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 6. Unified Audit Events Listing
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/audit/events",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const category = (url.searchParams.get("category") as any) || undefined;
+        const eventType = url.searchParams.get("eventType") || undefined;
+        const agentId = url.searchParams.get("agentId") || undefined;
+        const correlationId = url.searchParams.get("correlationId") || undefined;
+        const limitParam = url.searchParams.get("limit");
+        const limit = limitParam ? parseInt(limitParam, 10) : 50;
+
+        const repo = new AgentComplianceRepository(database.db);
+        const { events, total } = await repo.listEvents(tenant.organizationId, {
+          category,
+          eventType,
+          agentId,
+          correlationId,
+          limit,
+        });
+        sendJson(response, 200, { items: events, total });
+      },
+    });
+
+    // 7. Verify Audit Integrity Chain
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/audit/verify",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const fromSeqParam = url.searchParams.get("fromSeq");
+        const toSeqParam = url.searchParams.get("toSeq");
+        const range =
+          fromSeqParam || toSeqParam
+            ? {
+                fromSeq: fromSeqParam ? parseInt(fromSeqParam, 10) : undefined,
+                toSeq: toSeqParam ? parseInt(toSeqParam, 10) : undefined,
+              }
+            : undefined;
+
+        const service = new AgentComplianceService(database.db);
+        const verification = await service.verifyAuditIntegrity(tenant.organizationId, range);
+        sendJson(response, 200, verification);
+      },
+    });
+
+    // 8. List Evidence
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/evidence",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const evidenceType = (url.searchParams.get("evidenceType") as any) || undefined;
+        const classification = (url.searchParams.get("classification") as any) || undefined;
+        const isUnderLegalHold = url.searchParams.has("isUnderLegalHold")
+          ? url.searchParams.get("isUnderLegalHold") === "true"
+          : undefined;
+        const limitParam = url.searchParams.get("limit");
+        const limit = limitParam ? parseInt(limitParam, 10) : 50;
+
+        const service = new AgentComplianceService(database.db);
+        const { evidence, total } = await service.listEvidence(tenant.organizationId, {
+          evidenceType,
+          classification,
+          isUnderLegalHold,
+          limit,
+        });
+        sendJson(response, 200, { items: evidence, total });
+      },
+    });
+
+    // 9. Collect Evidence
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/evidence",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.title || !body?.evidenceType || !body?.source) {
+          throw new ApiError(400, "VALIDATION_FAILED", "title, evidenceType, and source are required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const evidence = await service.collectEvidence(tenant.organizationId, {
+          workspaceId: body.workspaceId,
+          title: body.title,
+          evidenceType: body.evidenceType,
+          source: body.source,
+          classification: body.classification,
+          relatedControlIds: body.relatedControlIds,
+          structuredPayload: body.structuredPayload,
+          collectedBy: authResult.user.id,
+        });
+        sendJson(response, 201, evidence);
+      },
+    });
+
+    // 10. Get Evidence Detail
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/evidence/:evidenceId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const evidence = await service.getEvidence(tenant.organizationId, routeParams.evidenceId);
+        if (!evidence) {
+          throw new ApiError(404, "NOT_FOUND", "Evidence item not found");
+        }
+        sendJson(response, 200, evidence);
+      },
+    });
+
+    // 11. List Evidence Packages
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/packages",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const packages = await service.listEvidencePackages(tenant.organizationId);
+        sendJson(response, 200, { items: packages, total: packages.length });
+      },
+    });
+
+    // 12. Generate Evidence Package
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/packages",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!Array.isArray(body?.evidenceIds) || body.evidenceIds.length === 0) {
+          throw new ApiError(400, "VALIDATION_FAILED", "evidenceIds array is required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const result = await service.generateEvidencePackage(tenant.organizationId, {
+          workspaceId: body.workspaceId,
+          packageIdentifier: body.packageIdentifier,
+          evidenceIds: body.evidenceIds,
+          auditEventIds: body.auditEventIds,
+          exportedBy: authResult.user.id,
+          redactionLevel: body.redactionLevel,
+        });
+        sendJson(response, 201, result);
+      },
+    });
+
+    // 13. Get Evidence Package Detail
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/packages/:packageId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const pkg = await service.getEvidencePackage(tenant.organizationId, routeParams.packageId);
+        if (!pkg) {
+          throw new ApiError(404, "NOT_FOUND", "Evidence package not found");
+        }
+        sendJson(response, 200, pkg);
+      },
+    });
+
+    // 14. Verify Package Offline
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/packages/verify",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.manifest) {
+          throw new ApiError(400, "VALIDATION_FAILED", "manifest payload is required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const verification = service.verifyPackageOffline(body.manifest, body.expectedChecksum);
+        sendJson(response, 200, verification);
+      },
+    });
+
+    // 15. List Retention Policies
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/retention/policies",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const policies = await service.listRetentionPolicies(tenant.organizationId);
+        sendJson(response, 200, { items: policies, total: policies.length });
+      },
+    });
+
+    // 16. Upsert Retention Policy
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/retention/policies",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.recordCategory || typeof body?.retentionDurationDays !== "number") {
+          throw new ApiError(400, "VALIDATION_FAILED", "recordCategory and retentionDurationDays are required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const updated = await service.upsertRetentionPolicy({
+          organizationId: tenant.organizationId,
+          recordCategory: body.recordCategory,
+          retentionDurationDays: body.retentionDurationDays,
+          disposalAction: body.disposalAction,
+          createdBy: authResult.user.id,
+        });
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 17. Preview Disposal
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/retention/preview",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentComplianceService(database.db);
+        const preview = await service.previewDisposal(tenant.organizationId);
+        sendJson(response, 200, preview);
+      },
+    });
+
+    // 18. List Legal Holds
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/holds",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const status = (url.searchParams.get("status") as any) || undefined;
+        const service = new AgentComplianceService(database.db);
+        const holds = await service.listLegalHolds(tenant.organizationId, status);
+        sendJson(response, 200, { items: holds, total: holds.length });
+      },
+    });
+
+    // 19. Create Legal Hold
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/holds",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.name || !body?.reason) {
+          throw new ApiError(400, "VALIDATION_FAILED", "name and reason are required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const hold = await service.createLegalHold({
+          organizationId: tenant.organizationId,
+          name: body.name,
+          description: body.description,
+          reason: body.reason,
+          scopeType: body.scopeType,
+          scopeCriteria: body.scopeCriteria,
+          createdBy: authResult.user.id,
+        });
+        sendJson(response, 201, hold);
+      },
+    });
+
+    // 20. Release Legal Hold
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/holds/:holdIdentifier/release",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.justification) {
+          throw new ApiError(400, "VALIDATION_FAILED", "justification is required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const released = await service.releaseLegalHold(
+          tenant.organizationId,
+          routeParams.holdIdentifier,
+          authResult.user.id,
+          body.justification,
+        );
+        sendJson(response, 200, released);
+      },
+    });
+
+    // 21. List Investigations
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/investigations",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const status = (url.searchParams.get("status") as any) || undefined;
+        const service = new AgentComplianceService(database.db);
+        const investigations = await service.listInvestigations(tenant.organizationId, status);
+        sendJson(response, 200, { items: investigations, total: investigations.length });
+      },
+    });
+
+    // 22. Create Investigation
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/investigations",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.title) {
+          throw new ApiError(400, "VALIDATION_FAILED", "title is required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const inv = await service.createInvestigation({
+          organizationId: tenant.organizationId,
+          title: body.title,
+          description: body.description,
+          investigatorId: authResult.user.id,
+          searchFilters: body.searchFilters,
+        });
+        sendJson(response, 201, inv);
+      },
+    });
+
+    // 23. Reconstruct Investigation Timeline
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/investigations/timeline",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const correlationId = url.searchParams.get("correlationId") || undefined;
+        const traceId = url.searchParams.get("traceId") || undefined;
+        const agentId = url.searchParams.get("agentId") || undefined;
+
+        const service = new AgentComplianceService(database.db);
+        const timeline = await service.getInvestigationTimeline(tenant.organizationId, {
+          correlationId,
+          traceId,
+          agentId,
+          investigatorId: authResult.user.id,
+        });
+        sendJson(response, 200, timeline);
+      },
+    });
+
+    // 24. Add Note to Investigation
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/compliance/investigations/:caseNumber/notes",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.note) {
+          throw new ApiError(400, "VALIDATION_FAILED", "note is required");
+        }
+        const service = new AgentComplianceService(database.db);
+        const updated = await service.addInvestigationNote(
+          tenant.organizationId,
+          routeParams.caseNumber,
+          body.note,
+          authResult.user.id,
+        );
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // =======================================================================
+    // EPIC 22F: ENTERPRISE AGENT RISK & TRUST MANAGEMENT
+    // =======================================================================
+
+    // 1. Risk Overview
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/overview",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentRiskService(database.db);
+        const overview = await service.getOverview(tenant.organizationId);
+        sendJson(response, 200, overview);
+      },
+    });
+
+    // 2. Risk Configuration - GET
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/configuration",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentRiskService(database.db);
+        const config = await service.getConfiguration(tenant.organizationId);
+        sendJson(response, 200, config);
+      },
+    });
+
+    // 3. Risk Configuration - PUT
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/configuration",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const service = new AgentRiskService(database.db);
+        const updated = await service.updateConfiguration(tenant.organizationId, body);
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 4. Risk Register - List
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/register",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const category = (url.searchParams.get("category") as any) || undefined;
+        const residualTier = (url.searchParams.get("residualTier") as any) || undefined;
+        const agentId = url.searchParams.get("agentId") || undefined;
+        const status = (url.searchParams.get("status") as any) || undefined;
+        const limit = url.searchParams.get("limit") ? Number(url.searchParams.get("limit")) : undefined;
+        const offset = url.searchParams.get("offset") ? Number(url.searchParams.get("offset")) : undefined;
+
+        const service = new AgentRiskService(database.db);
+        const items = await service.listRisks(tenant.organizationId, {
+          category,
+          residualTier,
+          agentId,
+          status,
+          limit,
+          offset,
+        });
+        sendJson(response, 200, { items, total: items.length });
+      },
+    });
+
+    // 5. Risk Register - Create
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/register",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.title || !body?.riskCategory || body?.likelihood === undefined || body?.impact === undefined) {
+          throw new ApiError(400, "VALIDATION_FAILED", "title, riskCategory, likelihood, and impact are required");
+        }
+        const service = new AgentRiskService(database.db);
+        const riskIdentifier = body.riskIdentifier ?? `RISK-${Date.now().toString(36).toUpperCase()}`;
+        const created = await service.createRisk(tenant.organizationId, {
+          ...body,
+          riskIdentifier,
+          createdBy: authResult.user.id,
+        });
+        sendJson(response, 201, created);
+      },
+    });
+
+    // 6. Risk Register - Get by ID
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/register/:riskId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentRiskService(database.db);
+        const risk = await service.getRisk(tenant.organizationId, routeParams.riskId);
+        if (!risk) {
+          throw new ApiError(404, "NOT_FOUND", "Risk not found");
+        }
+        sendJson(response, 200, risk);
+      },
+    });
+
+    // 7. Risk Register - Update
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/register/:riskId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const service = new AgentRiskService(database.db);
+        const updated = await service.updateRisk(tenant.organizationId, routeParams.riskId, body, authResult.user.id);
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 8. Risk Register - Delete
+    router.register({
+      method: "DELETE",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/register/:riskId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const service = new AgentRiskService(database.db);
+        const result = await service.deleteRisk(tenant.organizationId, routeParams.riskId, authResult.user.id);
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 9. Risk Assessments - Record Assessment
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/register/:riskId/assessments",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (body?.likelihood === undefined || body?.impact === undefined) {
+          throw new ApiError(400, "VALIDATION_FAILED", "likelihood and impact are required");
+        }
+        const service = new AgentRiskService(database.db);
+        const result = await service.assessRisk(
+          tenant.organizationId,
+          routeParams.riskId,
+          body,
+          authResult.user.id,
+        );
+        sendJson(response, 201, result);
+      },
+    });
+
+    // 10. Risk Assessments - List History for Risk
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/register/:riskId/assessments",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentRiskService(database.db);
+        const items = await service.listAssessmentsForRisk(tenant.organizationId, routeParams.riskId);
+        sendJson(response, 200, { items, total: items.length });
+      },
+    });
+
+    // 11. Risk Matrix 5x5
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/matrix",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentRiskService(database.db);
+        const matrix = await service.getMatrix(tenant.organizationId);
+        sendJson(response, 200, { matrix });
+      },
+    });
+
+    // 12. Agent Trust Profiles - List
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/trust-profiles",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const tier = (url.searchParams.get("tier") as any) || undefined;
+        const confidence = (url.searchParams.get("confidence") as any) || undefined;
+        const limit = url.searchParams.get("limit") ? Number(url.searchParams.get("limit")) : undefined;
+        const offset = url.searchParams.get("offset") ? Number(url.searchParams.get("offset")) : undefined;
+
+        const service = new AgentRiskService(database.db);
+        const items = await service.listTrustProfiles(tenant.organizationId, {
+          tier,
+          confidence,
+          limit,
+          offset,
+        });
+        sendJson(response, 200, { items, total: items.length });
+      },
+    });
+
+    // 13. Agent Trust Profile - Get by Agent ID
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/trust-profiles/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentRiskService(database.db);
+        const profile = await service.getTrustProfile(tenant.organizationId, routeParams.agentId);
+        sendJson(response, 200, profile);
+      },
+    });
+
+    // 14. Agent Trust Profile - Re-evaluate
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/trust-profiles/:agentId/evaluate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const service = new AgentRiskService(database.db);
+        const profile = await service.evaluateAgentTrust(tenant.organizationId, routeParams.agentId, {
+          actorId: authResult.user.id,
+        });
+        sendJson(response, 200, profile);
+      },
+    });
+
+    // 15. Agent Trust History
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/trust-profiles/:agentId/history",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentRiskService(database.db);
+        const history = await service.getTrustAssessmentHistory(tenant.organizationId, routeParams.agentId);
+        sendJson(response, 200, { items: history, total: history.length });
+      },
+    });
+
+    // 16. Behavioral Alerts - List
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/alerts",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const agentId = url.searchParams.get("agentId") || undefined;
+        const status = (url.searchParams.get("status") as any) || undefined;
+        const severity = (url.searchParams.get("severity") as any) || undefined;
+        const rule = (url.searchParams.get("rule") as any) || undefined;
+        const limit = url.searchParams.get("limit") ? Number(url.searchParams.get("limit")) : undefined;
+        const offset = url.searchParams.get("offset") ? Number(url.searchParams.get("offset")) : undefined;
+
+        const service = new AgentRiskService(database.db);
+        const items = await service.listAlerts(tenant.organizationId, {
+          agentId,
+          status,
+          severity,
+          rule,
+          limit,
+          offset,
+        });
+        sendJson(response, 200, { items, total: items.length });
+      },
+    });
+
+    // 17. Behavioral Alerts - Detect
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/alerts/detect",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const service = new AgentRiskService(database.db);
+        const alerts = await service.detectBehavioralRisks(
+          tenant.organizationId,
+          body?.agentId,
+          body?.lookbackMinutes ?? 60,
+        );
+        sendJson(response, 200, { items: alerts, detected: alerts.length });
+      },
+    });
+
+    // 18. Behavioral Alerts - Acknowledge
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/alerts/:alertId/acknowledge",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const service = new AgentRiskService(database.db);
+        const updated = await service.acknowledgeAlert(
+          tenant.organizationId,
+          routeParams.alertId,
+          authResult.user.id,
+        );
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 19. Behavioral Alerts - Resolve
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/alerts/:alertId/resolve",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const service = new AgentRiskService(database.db);
+        const updated = await service.resolveAlert(
+          tenant.organizationId,
+          routeParams.alertId,
+          authResult.user.id,
+          body?.notes,
+        );
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 20. Mitigations - List
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/mitigations",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const riskId = url.searchParams.get("riskId") || undefined;
+        const status = (url.searchParams.get("status") as any) || undefined;
+        const ownerId = url.searchParams.get("ownerId") || undefined;
+
+        const service = new AgentRiskService(database.db);
+        const items = await service.listMitigations(tenant.organizationId, {
+          riskId,
+          status,
+          ownerId,
+        });
+        sendJson(response, 200, { items, total: items.length });
+      },
+    });
+
+    // 21. Mitigations - Create
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/mitigations",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.riskId || !body?.title) {
+          throw new ApiError(400, "VALIDATION_FAILED", "riskId and title are required");
+        }
+        const service = new AgentRiskService(database.db);
+        const planIdentifier = body.planIdentifier ?? `MIT-${Date.now().toString(36).toUpperCase()}`;
+        const created = await service.createMitigationPlan(tenant.organizationId, {
+          ...body,
+          planIdentifier,
+          correctiveActions: body.correctiveActions ?? [],
+          createdBy: authResult.user.id,
+        });
+        sendJson(response, 201, created);
+      },
+    });
+
+    // 22. Mitigations - Get by ID
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/mitigations/:mitigationId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentRiskService(database.db);
+        const mitigation = await service.getMitigation(tenant.organizationId, routeParams.mitigationId);
+        if (!mitigation) {
+          throw new ApiError(404, "NOT_FOUND", "Mitigation plan not found");
+        }
+        sendJson(response, 200, mitigation);
+      },
+    });
+
+    // 23. Mitigations - Update
+    router.register({
+      method: "PUT",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/mitigations/:mitigationId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const service = new AgentRiskService(database.db);
+        const updated = await service.updateMitigationPlan(
+          tenant.organizationId,
+          routeParams.mitigationId,
+          body,
+          authResult.user.id,
+        );
+        sendJson(response, 200, updated);
+      },
+    });
+
+    // 24. Mitigations - Verify
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/mitigations/:mitigationId/verify",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.notes) {
+          throw new ApiError(400, "VALIDATION_FAILED", "Verification notes are required");
+        }
+        const service = new AgentRiskService(database.db);
+        const verified = await service.verifyMitigationPlan(
+          tenant.organizationId,
+          routeParams.mitigationId,
+          authResult.user.id,
+          body.notes,
+          body.evidenceIds,
+        );
+        sendJson(response, 200, verified);
+      },
+    });
+
+    // 25. Exceptions - List
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/exceptions",
+      async handler(request, response, { database, routeParams, url }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const riskId = url.searchParams.get("riskId") || undefined;
+        const status = (url.searchParams.get("status") as any) || undefined;
+        const scopeTarget = url.searchParams.get("scopeTarget") || undefined;
+
+        const service = new AgentRiskService(database.db);
+        const items = await service.listExceptions(tenant.organizationId, {
+          riskId,
+          status,
+          scopeTarget,
+        });
+        sendJson(response, 200, { items, total: items.length });
+      },
+    });
+
+    // 26. Exceptions - Request
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/exceptions",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.riskId || !body?.title || !body?.justification || !body?.expirationDate) {
+          throw new ApiError(400, "VALIDATION_FAILED", "riskId, title, justification, and expirationDate are required");
+        }
+        const service = new AgentRiskService(database.db);
+        const exceptionIdentifier = body.exceptionIdentifier ?? `EXC-${Date.now().toString(36).toUpperCase()}`;
+        const created = await service.requestException(tenant.organizationId, {
+          ...body,
+          exceptionIdentifier,
+          scopeType: body.scopeType ?? "AGENT",
+          scopeTarget: body.scopeTarget ?? "*",
+          compensatingControls: body.compensatingControls ?? [],
+          requestedBy: authResult.user.id,
+        });
+        sendJson(response, 201, created);
+      },
+    });
+
+    // 27. Exceptions - Approve
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/exceptions/:exceptionId/approve",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const service = new AgentRiskService(database.db);
+        const approved = await service.approveException(
+          tenant.organizationId,
+          routeParams.exceptionId,
+          authResult.user.id,
+          body?.notes,
+        );
+        sendJson(response, 200, approved);
+      },
+    });
+
+    // 28. Exceptions - Revoke
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/exceptions/:exceptionId/revoke",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const authResult = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.reason) {
+          throw new ApiError(400, "VALIDATION_FAILED", "Revocation reason is required");
+        }
+        const service = new AgentRiskService(database.db);
+        const revoked = await service.revokeException(
+          tenant.organizationId,
+          routeParams.exceptionId,
+          authResult.user.id,
+          body.reason,
+        );
+        sendJson(response, 200, revoked);
+      },
+    });
+
+    // 29. Governance Simulation / Recommendation
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/risk/simulate",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const body = (request.body ?? {}) as any;
+        if (!body?.agentId) {
+          throw new ApiError(400, "VALIDATION_FAILED", "agentId is required for simulation");
+        }
+        const service = new AgentRiskService(database.db);
+        const recommendation = await service.evaluateRiskGovernanceDecision(
+          tenant.organizationId,
+          body.agentId,
+          {
+            toolName: body.toolName,
+            action: body.action,
+            explicitSecurityDenial: body.explicitSecurityDenial,
+          },
+        );
+        sendJson(response, 200, recommendation);
+      },
+    });
+
+    // =========================================================================
+    // EPIC 22G: ENTERPRISE GOVERNANCE CONSOLE & UNIFIED OPERATIONS
+    // =========================================================================
+
+    // 1. Console Overview (Unified KPI Dashboard)
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/overview",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentGovernanceConsoleService(database.db);
+        const overview = await service.getConsoleOverview(tenant.organizationId);
+        sendJson(response, 200, overview);
+      },
+    });
+
+    // 2. Agent Governance Directory (List / Search / Filters)
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/directory",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const url = new URL(request.url ?? "/", "http://localhost");
+        const search = url.searchParams.get("search") ?? undefined;
+        const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
+        const status = (url.searchParams.get("status") as any) ?? undefined;
+        const riskTier = url.searchParams.get("riskTier") ?? undefined;
+        const trustTier = url.searchParams.get("trustTier") ?? undefined;
+        const page = parseInt(url.searchParams.get("page") ?? "1", 10);
+        const pageSize = parseInt(url.searchParams.get("pageSize") ?? "20", 10);
+
+        const service = new AgentGovernanceConsoleService(database.db);
+        const result = await service.listAgentDirectory(tenant.organizationId, {
+          search,
+          workspaceId,
+          status,
+          riskTier,
+          trustTier,
+          page,
+          pageSize,
+        });
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 3. Agent Directory Detail
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/directory/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentGovernanceConsoleService(database.db);
+        const detail = await service.getAgentDirectoryDetail(
+          tenant.organizationId,
+          routeParams.agentId,
+        );
+        if (!detail) {
+          throw new ApiError(404, "NOT_FOUND", `Agent with ID "${routeParams.agentId}" not found`);
+        }
+        sendJson(response, 200, detail);
+      },
+    });
+
+    // 4. Unified Activity Timeline
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/activity",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const url = new URL(request.url ?? "/", "http://localhost");
+        const startDate = url.searchParams.get("startDate") ?? undefined;
+        const endDate = url.searchParams.get("endDate") ?? undefined;
+        const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
+        const agentId = url.searchParams.get("agentId") ?? undefined;
+        const actorId = url.searchParams.get("actorId") ?? undefined;
+        const category = url.searchParams.get("category") ?? undefined;
+        const severity = url.searchParams.get("severity") ?? undefined;
+        const outcome = url.searchParams.get("outcome") ?? undefined;
+        const correlationId = url.searchParams.get("correlationId") ?? undefined;
+        const traceId = url.searchParams.get("traceId") ?? undefined;
+        const page = parseInt(url.searchParams.get("page") ?? "1", 10);
+        const pageSize = parseInt(url.searchParams.get("pageSize") ?? "30", 10);
+
+        const service = new AgentGovernanceConsoleService(database.db);
+        const result = await service.getUnifiedActivity(tenant.organizationId, {
+          startDate,
+          endDate,
+          workspaceId,
+          agentId,
+          actorId,
+          category,
+          severity,
+          outcome,
+          correlationId,
+          traceId,
+          page,
+          pageSize,
+        });
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 5. Governance Action Center
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/actions",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentGovernanceConsoleService(database.db);
+        const actions = await service.getActionCenter(tenant.organizationId);
+        sendJson(response, 200, { items: actions, total: actions.length });
+      },
+    });
+
+    // 6. Governance Reporting
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/reports",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const url = new URL(request.url ?? "/", "http://localhost");
+        const startDate = url.searchParams.get("startDate") ?? undefined;
+        const endDate = url.searchParams.get("endDate") ?? undefined;
+        const reportType = (url.searchParams.get("reportType") as any) ?? undefined;
+
+        const service = new AgentGovernanceConsoleService(database.db);
+        const report = await service.generateReport(
+          tenant.organizationId,
+          { startDate, endDate, reportType },
+          auth.user.id,
+        );
+        sendJson(response, 200, report);
+      },
+    });
+
+    // 7. Governance Report Export (JSON / CSV)
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/reports/export",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const format = body?.format === "CSV" ? "CSV" : "JSON";
+
+        const service = new AgentGovernanceConsoleService(database.db);
+        const exported = await service.exportReport(
+          tenant.organizationId,
+          format,
+          {
+            startDate: body?.startDate,
+            endDate: body?.endDate,
+            reportType: body?.reportType,
+          },
+          auth.user.id,
+        );
+        sendJson(response, 200, exported);
+      },
+    });
+
   },
 };
 

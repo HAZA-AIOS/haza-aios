@@ -3,6 +3,13 @@ import { createRepositoryContext } from "../../../database/repositories/reposito
 import { AgentRuntimeRepository } from "../repositories/agent-runtime.repository.js";
 import { AgentRepository } from "../repositories/agent.repository.js";
 import { AgentToolRepository } from "../repositories/agent-tool.repository.js";
+import { AgentGovernanceRepository } from "../repositories/agent-governance.repository.js";
+import { AgentSecurityRepository } from "../repositories/agent-security.repository.js";
+import { AgentSecurityGatewayService } from "../services/agent-security-gateway.service.js";
+import { PolicyEvaluationEngine } from "../services/policy-evaluation-engine.service.js";
+import { computePayloadFingerprint } from "../governance-approval.types.js";
+import { verifyContinuationProof } from "../governance-security.types.js";
+import { redactObject } from "../utils/secret-redactor.js";
 import { getTrustedTool, listTrustedTools } from "./trusted-tool-registry.js";
 import type {
   ToolDomainContext,
@@ -70,23 +77,41 @@ export class AgentToolGatewayService {
   private toolRepo: AgentToolRepository;
   private runtimeRepo: AgentRuntimeRepository;
   private agentRepo: AgentRepository;
+  private policyEngine?: PolicyEvaluationEngine;
+  private securityGateway?: AgentSecurityGatewayService;
+  private securityRepo?: AgentSecurityRepository;
 
   constructor(
     private readonly database: any,
     toolRepo?: any,
     runtimeRepo?: any,
     agentRepo?: any,
+    securityGateway?: any,
+    securityRepo?: any,
   ) {
     if (this.database?.db) {
       const repoCtx = createRepositoryContext(this.database.db);
       this.toolRepo = toolRepo ?? new AgentToolRepository(repoCtx);
       this.runtimeRepo = runtimeRepo ?? new AgentRuntimeRepository(repoCtx);
       this.agentRepo = agentRepo ?? new AgentRepository(repoCtx);
+      this.policyEngine = new PolicyEvaluationEngine(new AgentGovernanceRepository(repoCtx));
+      this.securityRepo = securityRepo ?? new AgentSecurityRepository(repoCtx);
+      this.securityGateway = securityGateway ?? new AgentSecurityGatewayService(this.securityRepo!);
     } else {
       this.toolRepo = (toolRepo || database?.toolRepo || database) as any;
       this.runtimeRepo = (runtimeRepo || database?.runtimeRepo || database) as any;
       this.agentRepo = (agentRepo || database?.agentRepo || database) as any;
+      this.securityGateway = securityGateway || database?.securityGateway;
+      this.securityRepo = securityRepo || database?.securityRepo;
     }
+  }
+
+  setSecurityGateway(gateway: AgentSecurityGatewayService): void {
+    this.securityGateway = gateway;
+  }
+
+  setPolicyEngine(engine: PolicyEvaluationEngine): void {
+    this.policyEngine = engine;
   }
 
   async initialize(): Promise<void> {
@@ -167,6 +192,143 @@ export class AgentToolGatewayService {
         },
         durationMs: Date.now() - startTime,
       };
+    }
+
+    // 1.1 Continuation Proof & Governance Policy Engine Evaluation (Phase 22B/22C/22D)
+    let bypassViaValidProof = false;
+    if (callerContext?.continuationProof) {
+      const proofVerification = verifyContinuationProof(callerContext.continuationProof, {
+        approvalRequestId: callerContext.continuationProof.approvalRequestId,
+        organizationId,
+        agentId,
+        actionTarget: request.toolKey,
+        payloadFingerprint: computePayloadFingerprint(request.input || {}),
+      });
+
+      if (!proofVerification.valid) {
+        if (this.securityRepo) {
+          await this.securityRepo.createEvent({
+            organizationId,
+            workspaceId,
+            agentId,
+            actorId: userId,
+            eventType: "CONTINUATION_BYPASS_ATTEMPT",
+            severity: "CRITICAL",
+            targetType: "tool",
+            targetId: request.toolKey,
+            details: { reason: proofVerification.reason },
+          });
+        }
+        return {
+          success: false,
+          executionId: "unknown",
+          toolKey: request.toolKey,
+          toolVersion: request.toolVersion ?? "1.0.0",
+          error: {
+            category: "POLICY_VIOLATION",
+            message: `Continuation authorization failed: ${proofVerification.reason}`,
+          },
+          durationMs: Date.now() - startTime,
+        };
+      }
+      bypassViaValidProof = true;
+    } else if (callerContext?.bypassGovernanceApprovalCheck === true) {
+      if (this.securityRepo) {
+        await this.securityRepo.createEvent({
+          organizationId,
+          workspaceId,
+          agentId,
+          actorId: userId,
+          eventType: "CONTINUATION_BYPASS_ATTEMPT",
+          severity: "HIGH",
+          targetType: "tool",
+          targetId: request.toolKey,
+          details: { reason: "Client attempted unauthenticated bypassGovernanceApprovalCheck boolean flag" },
+        });
+      }
+      return {
+        success: false,
+        executionId: "unknown",
+        toolKey: request.toolKey,
+        toolVersion: request.toolVersion ?? "1.0.0",
+        error: {
+          category: "POLICY_VIOLATION",
+          message: "Governance approval bypass requires authenticated continuation authorization proof",
+        },
+        durationMs: Date.now() - startTime,
+      };
+    }
+
+    const effectiveEngine = callerContext?.policyEngine || this.policyEngine;
+    if (!bypassViaValidProof && effectiveEngine && typeof effectiveEngine.evaluate === "function") {
+      const govDecision = await effectiveEngine.evaluate({
+        organizationId,
+        workspaceId,
+        actorId: userId,
+        agentId,
+        toolKey: request.toolKey,
+        action: "tool_invocation",
+        resourceClassification: callerContext?.resourceClassification || null,
+        riskTier: callerContext?.riskTier || null,
+        correlationId: runId,
+        parameters: request.input || {},
+      });
+
+      if (govDecision.effectiveDecision === "DENY") {
+        return {
+          success: false,
+          executionId: "unknown",
+          toolKey: request.toolKey,
+          toolVersion: request.toolVersion ?? "1.0.0",
+          error: {
+            category: "POLICY_VIOLATION",
+            message: `Tool execution blocked by governance policy: ${govDecision.reasonDetails}`,
+          },
+          durationMs: Date.now() - startTime,
+        };
+      } else if (govDecision.effectiveDecision === "REQUIRE_APPROVAL") {
+        return {
+          success: false,
+          executionId: "unknown",
+          toolKey: request.toolKey,
+          toolVersion: request.toolVersion ?? "1.0.0",
+          error: {
+            category: "APPROVAL_REQUIRED",
+            message: `Tool '${request.toolKey}' requires human approval before execution: ${govDecision.reasonDetails}`,
+            details: {
+              approvalRequestId: govDecision.approvalRequestId,
+            },
+          },
+          durationMs: Date.now() - startTime,
+        };
+      }
+    }
+
+    // 1.2 Enterprise Security Gateway & Sandboxing (Epic 22D)
+    const effectiveSecGateway = callerContext?.securityGateway || this.securityGateway;
+    if (effectiveSecGateway) {
+      try {
+        await effectiveSecGateway.enforceToolInvocation({
+          organizationId,
+          workspaceId,
+          agentId,
+          toolKey: request.toolKey,
+          toolInput: request.input || {},
+          actorId: userId,
+        });
+      } catch (err: any) {
+        return {
+          success: false,
+          executionId: "unknown",
+          toolKey: request.toolKey,
+          toolVersion: request.toolVersion ?? "1.0.0",
+          error: {
+            category: "POLICY_VIOLATION",
+            message: err?.message || "Tool execution blocked by security gateway",
+          },
+          durationMs: Date.now() - startTime,
+        };
+      }
     }
 
     // 2. Resolve Agent Definition
@@ -497,14 +659,14 @@ export class AgentToolGatewayService {
           status: "completed",
           completedAt: new Date(),
           durationMs,
-          outputSnapshot: adapterOutput,
+          outputSnapshot: redactObject(adapterOutput),
         });
       } else if ((this.toolRepo as any)?.updateExecutionRecord) {
         await (this.toolRepo as any).updateExecutionRecord(execution.id, {
           status: "completed",
           completedAt: new Date(),
           durationMs,
-          outputSnapshot: adapterOutput,
+          outputSnapshot: redactObject(adapterOutput),
         });
       }
 
@@ -527,7 +689,7 @@ export class AgentToolGatewayService {
         executionId: execution.id,
         toolKey: trustedTool.toolKey,
         toolVersion: trustedTool.version,
-        data: adapterOutput,
+        data: redactObject(adapterOutput),
         durationMs,
       };
     } catch (execErr: any) {

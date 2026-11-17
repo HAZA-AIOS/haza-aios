@@ -17,6 +17,7 @@ import { AgentSecretVaultService } from "./services/agent-secret-vault.service.j
 import { AgentComplianceService } from "./services/agent-compliance.service.js";
 import { AgentComplianceRepository } from "./repositories/agent-compliance.repository.js";
 import { AgentRiskService } from "./services/agent-risk.service.js";
+import { AgentGovernanceConsoleService } from "./services/agent-governance-console.service.js";
 import { AgentTeamService } from "./services/agent-team.service.js";
 import { AgentOrchestrationService } from "./services/agent-orchestration.service.js";
 import {
@@ -5501,6 +5502,200 @@ export const agentsModule: BackendModule = {
           },
         );
         sendJson(response, 200, recommendation);
+      },
+    });
+
+    // =========================================================================
+    // EPIC 22G: ENTERPRISE GOVERNANCE CONSOLE & UNIFIED OPERATIONS
+    // =========================================================================
+
+    // 1. Console Overview (Unified KPI Dashboard)
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/overview",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentGovernanceConsoleService(database.db);
+        const overview = await service.getConsoleOverview(tenant.organizationId);
+        sendJson(response, 200, overview);
+      },
+    });
+
+    // 2. Agent Governance Directory (List / Search / Filters)
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/directory",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const url = new URL(request.url ?? "/", "http://localhost");
+        const search = url.searchParams.get("search") ?? undefined;
+        const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
+        const status = (url.searchParams.get("status") as any) ?? undefined;
+        const riskTier = url.searchParams.get("riskTier") ?? undefined;
+        const trustTier = url.searchParams.get("trustTier") ?? undefined;
+        const page = parseInt(url.searchParams.get("page") ?? "1", 10);
+        const pageSize = parseInt(url.searchParams.get("pageSize") ?? "20", 10);
+
+        const service = new AgentGovernanceConsoleService(database.db);
+        const result = await service.listAgentDirectory(tenant.organizationId, {
+          search,
+          workspaceId,
+          status,
+          riskTier,
+          trustTier,
+          page,
+          pageSize,
+        });
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 3. Agent Directory Detail
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/directory/:agentId",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentGovernanceConsoleService(database.db);
+        const detail = await service.getAgentDirectoryDetail(
+          tenant.organizationId,
+          routeParams.agentId,
+        );
+        if (!detail) {
+          throw new ApiError(404, "NOT_FOUND", `Agent with ID "${routeParams.agentId}" not found`);
+        }
+        sendJson(response, 200, detail);
+      },
+    });
+
+    // 4. Unified Activity Timeline
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/activity",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const url = new URL(request.url ?? "/", "http://localhost");
+        const startDate = url.searchParams.get("startDate") ?? undefined;
+        const endDate = url.searchParams.get("endDate") ?? undefined;
+        const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
+        const agentId = url.searchParams.get("agentId") ?? undefined;
+        const actorId = url.searchParams.get("actorId") ?? undefined;
+        const category = url.searchParams.get("category") ?? undefined;
+        const severity = url.searchParams.get("severity") ?? undefined;
+        const outcome = url.searchParams.get("outcome") ?? undefined;
+        const correlationId = url.searchParams.get("correlationId") ?? undefined;
+        const traceId = url.searchParams.get("traceId") ?? undefined;
+        const page = parseInt(url.searchParams.get("page") ?? "1", 10);
+        const pageSize = parseInt(url.searchParams.get("pageSize") ?? "30", 10);
+
+        const service = new AgentGovernanceConsoleService(database.db);
+        const result = await service.getUnifiedActivity(tenant.organizationId, {
+          startDate,
+          endDate,
+          workspaceId,
+          agentId,
+          actorId,
+          category,
+          severity,
+          outcome,
+          correlationId,
+          traceId,
+          page,
+          pageSize,
+        });
+        sendJson(response, 200, result);
+      },
+    });
+
+    // 5. Governance Action Center
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/actions",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const service = new AgentGovernanceConsoleService(database.db);
+        const actions = await service.getActionCenter(tenant.organizationId);
+        sendJson(response, 200, { items: actions, total: actions.length });
+      },
+    });
+
+    // 6. Governance Reporting
+    router.register({
+      method: "GET",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/reports",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.read",
+        );
+        const url = new URL(request.url ?? "/", "http://localhost");
+        const startDate = url.searchParams.get("startDate") ?? undefined;
+        const endDate = url.searchParams.get("endDate") ?? undefined;
+        const reportType = (url.searchParams.get("reportType") as any) ?? undefined;
+
+        const service = new AgentGovernanceConsoleService(database.db);
+        const report = await service.generateReport(
+          tenant.organizationId,
+          { startDate, endDate, reportType },
+          auth.user.id,
+        );
+        sendJson(response, 200, report);
+      },
+    });
+
+    // 7. Governance Report Export (JSON / CSV)
+    router.register({
+      method: "POST",
+      path: "/api/v1/organizations/:organizationId/agent-governance/console/reports/export",
+      async handler(request, response, { database, routeParams }) {
+        const tenant = createTenantContext(routeParams.organizationId);
+        const auth = await new AuthService(database).requireOrganizationPermission(
+          request,
+          tenant.organizationId,
+          "agent.manage",
+        );
+        const body = (request.body ?? {}) as any;
+        const format = body?.format === "CSV" ? "CSV" : "JSON";
+
+        const service = new AgentGovernanceConsoleService(database.db);
+        const exported = await service.exportReport(
+          tenant.organizationId,
+          format,
+          {
+            startDate: body?.startDate,
+            endDate: body?.endDate,
+            reportType: body?.reportType,
+          },
+          auth.user.id,
+        );
+        sendJson(response, 200, exported);
       },
     });
 

@@ -1432,6 +1432,122 @@ export class AgentGovernanceService {
       },
     );
   }
+
+  // --- Epic 22G: Unified Governance Console Operations ---
+  async getConsoleOverview(organizationId: string): Promise<WebConsoleOverview> {
+    return await apiClient.request<WebConsoleOverview>(
+      `/api/v1/organizations/${organizationId}/agent-governance/console/overview`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async getAgentDirectory(
+    organizationId: string,
+    filter?: {
+      search?: string;
+      workspaceId?: string;
+      status?: string;
+      riskTier?: string;
+      trustTier?: string;
+      page?: number;
+      pageSize?: number;
+    },
+  ): Promise<{ items: WebAgentDirectoryItem[]; total: number; page: number; pageSize: number }> {
+    const params = new URLSearchParams();
+    if (filter?.search) params.set("search", filter.search);
+    if (filter?.workspaceId) params.set("workspaceId", filter.workspaceId);
+    if (filter?.status) params.set("status", filter.status);
+    if (filter?.riskTier) params.set("riskTier", filter.riskTier);
+    if (filter?.trustTier) params.set("trustTier", filter.trustTier);
+    if (filter?.page) params.set("page", String(filter.page));
+    if (filter?.pageSize) params.set("pageSize", String(filter.pageSize));
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ items: WebAgentDirectoryItem[]; total: number; page: number; pageSize: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/console/directory${qs}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async getAgentDirectoryDetail(organizationId: string, agentId: string): Promise<WebAgentDirectoryDetail> {
+    return await apiClient.request<WebAgentDirectoryDetail>(
+      `/api/v1/organizations/${organizationId}/agent-governance/console/directory/${agentId}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async getUnifiedActivity(
+    organizationId: string,
+    filter?: {
+      startDate?: string;
+      endDate?: string;
+      workspaceId?: string;
+      agentId?: string;
+      actorId?: string;
+      category?: string;
+      severity?: string;
+      outcome?: string;
+      correlationId?: string;
+      traceId?: string;
+      page?: number;
+      pageSize?: number;
+    },
+  ): Promise<{ items: WebUnifiedActivityItem[]; total: number; page: number; pageSize: number }> {
+    const params = new URLSearchParams();
+    if (filter?.startDate) params.set("startDate", filter.startDate);
+    if (filter?.endDate) params.set("endDate", filter.endDate);
+    if (filter?.workspaceId) params.set("workspaceId", filter.workspaceId);
+    if (filter?.agentId) params.set("agentId", filter.agentId);
+    if (filter?.actorId) params.set("actorId", filter.actorId);
+    if (filter?.category) params.set("category", filter.category);
+    if (filter?.severity) params.set("severity", filter.severity);
+    if (filter?.outcome) params.set("outcome", filter.outcome);
+    if (filter?.correlationId) params.set("correlationId", filter.correlationId);
+    if (filter?.traceId) params.set("traceId", filter.traceId);
+    if (filter?.page) params.set("page", String(filter.page));
+    if (filter?.pageSize) params.set("pageSize", String(filter.pageSize));
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ items: WebUnifiedActivityItem[]; total: number; page: number; pageSize: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/console/activity${qs}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async getActionCenter(organizationId: string): Promise<{ items: WebGovernanceActionItem[]; total: number }> {
+    return await apiClient.request<{ items: WebGovernanceActionItem[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/console/actions`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async getGovernanceReports(
+    organizationId: string,
+    query?: { startDate?: string; endDate?: string; reportType?: string },
+  ): Promise<WebGovernanceReport> {
+    const params = new URLSearchParams();
+    if (query?.startDate) params.set("startDate", query.startDate);
+    if (query?.endDate) params.set("endDate", query.endDate);
+    if (query?.reportType) params.set("reportType", query.reportType);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<WebGovernanceReport>(
+      `/api/v1/organizations/${organizationId}/agent-governance/console/reports${qs}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async exportGovernanceReport(
+    organizationId: string,
+    format: "JSON" | "CSV",
+    query?: { startDate?: string; endDate?: string; reportType?: string },
+  ): Promise<{ format: string; content: string; filename: string }> {
+    return await apiClient.request<{ format: string; content: string; filename: string }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/console/reports/export`,
+      {
+        method: "POST",
+        body: JSON.stringify({ format, query }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1825,6 +1941,208 @@ export interface WebRiskGovernanceRecommendation {
   reasons: string[];
   mandatorySecurityOverrideApplied: boolean;
   evaluatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Epic 22G Web Types
+// ---------------------------------------------------------------------------
+
+export interface WebGovernanceKpis {
+  totalGovernedAgents: number;
+  activeAgents: number;
+  suspendedAgents: number;
+  pendingApprovals: number;
+  highAndCriticalRisks: number;
+  openSecurityIncidents: number;
+  auditIntegrityStatus: "INTACT" | "COMPROMISED" | "UNCHECKED";
+  lastVerifiedSequence: number;
+  complianceControlsRequiringReview: number;
+  openRiskMitigations: number;
+  expiringExceptions: number;
+  averageTrustScore: number;
+}
+
+export interface WebActivityTrendPoint {
+  date: string;
+  policyEvaluations: number;
+  toolInvocations: number;
+  securityEvents: number;
+  approvals: number;
+}
+
+export interface WebCriticalGovernanceEvent {
+  id: string;
+  category: string;
+  eventType: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
+  timestamp: string;
+  description: string;
+  agentId?: string | null;
+  agentName?: string | null;
+  actorId?: string | null;
+}
+
+export interface WebConsoleOverview {
+  kpis: WebGovernanceKpis;
+  enforcementMode: "MONITOR" | "ENFORCE" | "DISABLED";
+  securityPosture: {
+    isEmergencyStopped: boolean;
+    emergencyStoppedAt?: string | null;
+    emergencyStoppedBy?: string | null;
+    suspendedAgentsCount: number;
+    unresolvedIncidentsCount: number;
+    secretReferencesCount: number;
+  };
+  complianceSummary: {
+    frameworkCount: number;
+    totalControls: number;
+    verifiedControls: number;
+    coveragePercent: number;
+    activeLegalHoldsCount: number;
+  };
+  riskDistribution: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+  approvalQueueSummary: {
+    pending: number;
+    escalated: number;
+    approvedLast7Days: number;
+    rejectedLast7Days: number;
+  };
+  activityTrends: WebActivityTrendPoint[];
+  recentCriticalEvents: WebCriticalGovernanceEvent[];
+  outstandingActionsCount: number;
+  asOf: string;
+}
+
+export interface WebAgentDirectoryItem {
+  agentId: string;
+  name: string;
+  agentKey: string;
+  organizationId: string;
+  workspaceId: string | null;
+  workspaceName?: string | null;
+  ownerId: string | null;
+  ownerEmail?: string | null;
+  technicalOwnerId?: string | null;
+  administratorId: string | null;
+  profileId: string | null;
+  securityClassification: "PUBLIC" | "INTERNAL" | "CONFIDENTIAL" | "RESTRICTED";
+  maxAutonomyLevel: "L0" | "L1" | "L2" | "L3";
+  isSuspended: boolean;
+  suspensionReason: string | null;
+  trustScore: number;
+  trustTier: string;
+  trustConfidence: string;
+  residualRiskTier: string;
+  pendingApprovalsCount: number;
+  activeAlertsCount: number;
+  assignedPoliciesCount: number;
+  lastActiveAt: string | null;
+  createdAt: string;
+}
+
+export interface WebAgentDirectoryDetail extends WebAgentDirectoryItem {
+  description: string;
+  networkAccessMode: string;
+  storageAccessMode: string;
+  databaseOperations: string[];
+  allowedDomains: string[];
+  allowedToolKeys: string[];
+  disallowedToolKeys: string[];
+  allowedSecretReferenceIds: string[];
+  delegationAttenuation: boolean;
+  governanceReviewCadenceDays: number;
+  nextReviewDueAt: string | null;
+  recentRunsCount: number;
+  recentAuditLogsCount: number;
+  effectivePolicyKeys: string[];
+}
+
+export interface WebUnifiedActivityItem {
+  id: string;
+  sourceDomain: "COMPLIANCE" | "SECURITY" | "POLICY" | "APPROVAL" | "EXECUTION" | "RISK";
+  category: string;
+  eventType: string;
+  timestamp: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
+  actorId: string | null;
+  actorType: string;
+  agentId: string | null;
+  agentName?: string | null;
+  workspaceId: string | null;
+  outcome: "SUCCESS" | "FAILED" | "DENIED" | "APPROVED" | "REJECTED" | "FLAGGED";
+  correlationId: string | null;
+  traceId: string | null;
+  summary: string;
+  redactedMetadata: Record<string, unknown>;
+}
+
+export interface WebGovernanceActionItem {
+  actionId: string;
+  category: "APPROVAL" | "RISK" | "SECURITY" | "MITIGATION" | "COMPLIANCE" | "EXCEPTION" | "INTEGRITY";
+  priority: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  title: string;
+  description: string;
+  sourceEntityType: string;
+  sourceEntityId: string;
+  targetTab: string;
+  agentId?: string | null;
+  agentName?: string | null;
+  dueAt: string | null;
+  createdAt: string;
+  status: string;
+  suggestedActionLabel: string;
+}
+
+export interface WebGovernanceReport {
+  organizationId: string;
+  generatedAt: string;
+  period: { from: string; to: string };
+  reportType: string;
+  executiveSummary: {
+    governedAgentsCount: number;
+    activePoliciesCount: number;
+    emergencyStopActive: boolean;
+    auditIntegrityStatus: "INTACT" | "COMPROMISED" | "UNCHECKED";
+    averageTrustScore: number;
+    openIncidentsCount: number;
+    complianceCoveragePercent: number;
+  };
+  securityMetrics: {
+    suspendedAgents: number;
+    totalIncidents: number;
+    criticalIncidents: number;
+    secretReferencesCount: number;
+  };
+  complianceMetrics: {
+    frameworkCount: number;
+    totalControls: number;
+    verifiedControls: number;
+    nonCompliantControls: number;
+    evidencePackagesCount: number;
+    activeHoldsCount: number;
+  };
+  riskMetrics: {
+    totalRisks: number;
+    risksByTier: {
+      critical: number;
+      high: number;
+      medium: number;
+      low: number;
+    };
+    openMitigations: number;
+    activeExceptions: number;
+    activeBehavioralAlerts: number;
+  };
+  approvalMetrics: {
+    pendingApprovals: number;
+    escalatedApprovals: number;
+    approvalRatePercent: number;
+  };
 }
 
 export const agentGovernanceService = new AgentGovernanceService();

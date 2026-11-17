@@ -57,10 +57,20 @@ import {
   type WebRiskException,
   type WebRiskMatrixCell,
   type WebRiskGovernanceRecommendation,
+  type WebConsoleOverview,
+  type WebAgentDirectoryItem,
+  type WebAgentDirectoryDetail,
+  type WebUnifiedActivityItem,
+  type WebGovernanceActionItem,
+  type WebGovernanceReport,
+  type WebGovernanceKpis,
+  type WebActivityTrendPoint,
+  type WebCriticalGovernanceEvent,
 } from "../../../../agents/governance-service";
 
 type ActiveTab =
   | "overview"
+  | "agents"
   | "policies"
   | "simulation"
   | "decisions"
@@ -68,6 +78,10 @@ type ActiveTab =
   | "security"
   | "compliance"
   | "risk"
+  | "activity"
+  | "actions"
+  | "reports"
+  | "settings"
   | "profiles"
   | "ownership"
   | "audit";
@@ -205,6 +219,38 @@ export function AgentGovernancePage() {
   const [riskSimExplicitDenial, setRiskSimExplicitDenial] = React.useState(false);
   const [riskSimResult, setRiskSimResult] = React.useState<WebRiskGovernanceRecommendation | null>(null);
 
+  // Unified Governance Console (Phase 22G) State
+  const [consoleOverview, setConsoleOverview] = React.useState<WebConsoleOverview | null>(null);
+  const [actionCenterItems, setActionCenterItems] = React.useState<WebGovernanceActionItem[]>([]);
+  const [actionCategoryFilter, setActionCategoryFilter] = React.useState<string>("all");
+  const [actionPriorityFilter, setActionPriorityFilter] = React.useState<string>("all");
+
+  // Agent Directory
+  const [agentDirectory, setAgentDirectory] = React.useState<WebAgentDirectoryItem[]>([]);
+  const [agentDirSearch, setAgentDirSearch] = React.useState("");
+  const [agentDirStatusFilter, setAgentDirStatusFilter] = React.useState<string>("all");
+  const [agentDirRiskFilter, setAgentDirRiskFilter] = React.useState<string>("all");
+  const [agentDirTrustFilter, setAgentDirTrustFilter] = React.useState<string>("all");
+  const [selectedAgentDetail, setSelectedAgentDetail] = React.useState<WebAgentDirectoryDetail | null>(null);
+  const [loadingAgentDetail, setLoadingAgentDetail] = React.useState(false);
+
+  // Unified Activity Timeline
+  const [activityItems, setActivityItems] = React.useState<WebUnifiedActivityItem[]>([]);
+  const [activityTotal, setActivityTotal] = React.useState(0);
+  const [activityPage, setActivityPage] = React.useState(1);
+  const [activityDomainFilter, setActivityDomainFilter] = React.useState<string>("all");
+  const [activitySeverityFilter, setActivitySeverityFilter] = React.useState<string>("all");
+  const [activityOutcomeFilter, setActivityOutcomeFilter] = React.useState<string>("all");
+  const [activitySearch, setActivitySearch] = React.useState("");
+  const [expandedActivityId, setExpandedActivityId] = React.useState<string | null>(null);
+
+  // Governance Reports
+  const [governanceReport, setGovernanceReport] = React.useState<WebGovernanceReport | null>(null);
+  const [reportType, setReportType] = React.useState<string>("EXECUTIVE_SUMMARY");
+  const [reportStartDate, setReportStartDate] = React.useState<string>("");
+  const [reportEndDate, setReportEndDate] = React.useState<string>("");
+  const [exportingReport, setExportingReport] = React.useState(false);
+
   // Dialog / Modal states
   const [showCreatePolicy, setShowCreatePolicy] = React.useState(false);
   const [selectedAgentForProfile, setSelectedAgentForProfile] = React.useState<string | null>(null);
@@ -283,6 +329,11 @@ export function AgentGovernancePage() {
         alertsData,
         mitigationsData,
         exceptionsData,
+        consoleOverviewData,
+        actionCenterData,
+        agentDirData,
+        activityData,
+        reportsData,
       ] = await Promise.allSettled([
         agentGovernanceService.getOverview(orgId),
         agentGovernanceService.listPolicies(orgId),
@@ -312,6 +363,11 @@ export function AgentGovernancePage() {
         agentGovernanceService.listBehavioralAlerts(orgId),
         agentGovernanceService.listMitigations(orgId),
         agentGovernanceService.listExceptions(orgId),
+        agentGovernanceService.getConsoleOverview(orgId),
+        agentGovernanceService.getActionCenter(orgId),
+        agentGovernanceService.getAgentDirectory(orgId),
+        agentGovernanceService.getUnifiedActivity(orgId, { page: 1, pageSize: 30 }),
+        agentGovernanceService.getGovernanceReports(orgId),
       ]);
 
       if (overviewData.status === "fulfilled") setOverview(overviewData.value);
@@ -342,6 +398,14 @@ export function AgentGovernancePage() {
       if (alertsData.status === "fulfilled") setBehavioralAlerts(alertsData.value.items);
       if (mitigationsData.status === "fulfilled") setRiskMitigations(mitigationsData.value.items);
       if (exceptionsData.status === "fulfilled") setRiskExceptions(exceptionsData.value.items);
+      if (consoleOverviewData.status === "fulfilled") setConsoleOverview(consoleOverviewData.value);
+      if (actionCenterData.status === "fulfilled") setActionCenterItems(actionCenterData.value.items);
+      if (agentDirData.status === "fulfilled") setAgentDirectory(agentDirData.value.items);
+      if (activityData.status === "fulfilled") {
+        setActivityItems(activityData.value.items);
+        setActivityTotal(activityData.value.total);
+      }
+      if (reportsData.status === "fulfilled") setGovernanceReport(reportsData.value);
     } catch (err: any) {
       setError(err?.message || "Failed to load governance telemetry");
     } finally {
@@ -352,6 +416,119 @@ export function AgentGovernancePage() {
   React.useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Support URL search params / hash
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab") as ActiveTab | null;
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, []);
+
+  const handleTabChange = (tab: ActiveTab) => {
+    setActiveTab(tab);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    window.history.replaceState({}, "", url.toString());
+  };
+
+  const handleOpenAgentDetail = async (agentId: string) => {
+    try {
+      setLoadingAgentDetail(true);
+      setError(null);
+      const detail = await agentGovernanceService.getAgentDirectoryDetail(orgId, agentId);
+      setSelectedAgentDetail(detail);
+    } catch (err: any) {
+      setError(err?.message || "Failed to load agent governance details");
+    } finally {
+      setLoadingAgentDetail(false);
+    }
+  };
+
+  const handleFilterAgentDirectory = async () => {
+    try {
+      setLoading(true);
+      const res = await agentGovernanceService.getAgentDirectory(orgId, {
+        search: agentDirSearch || undefined,
+        status: agentDirStatusFilter !== "all" ? agentDirStatusFilter : undefined,
+        riskTier: agentDirRiskFilter !== "all" ? agentDirRiskFilter : undefined,
+        trustTier: agentDirTrustFilter !== "all" ? agentDirTrustFilter : undefined,
+      });
+      setAgentDirectory(res.items);
+    } catch (err: any) {
+      setError(err?.message || "Failed to filter agent directory");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFilterActivity = async (page: number = 1) => {
+    try {
+      setLoading(true);
+      const res = await agentGovernanceService.getUnifiedActivity(orgId, {
+        category: activityDomainFilter !== "all" ? activityDomainFilter : undefined,
+        severity: activitySeverityFilter !== "all" ? activitySeverityFilter : undefined,
+        outcome: activityOutcomeFilter !== "all" ? activityOutcomeFilter : undefined,
+        correlationId: activitySearch || undefined,
+        page,
+        pageSize: 30,
+      });
+      setActivityItems(res.items);
+      setActivityTotal(res.total);
+      setActivityPage(page);
+    } catch (err: any) {
+      setError(err?.message || "Failed to filter activity timeline");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExportReport = async (format: "JSON" | "CSV") => {
+    try {
+      setExportingReport(true);
+      setError(null);
+      const res = await agentGovernanceService.exportGovernanceReport(orgId, format, {
+        reportType,
+        startDate: reportStartDate || undefined,
+        endDate: reportEndDate || undefined,
+      });
+      const blob = new Blob([res.content], {
+        type: format === "CSV" ? "text/csv;charset=utf-8;" : "application/json;charset=utf-8;",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", res.filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setActionSuccess(`Governance report exported successfully (${res.filename})`);
+    } catch (err: any) {
+      setError(err?.message || "Failed to export report");
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
+  const handleRefreshReport = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const rep = await agentGovernanceService.getGovernanceReports(orgId, {
+        reportType,
+        startDate: reportStartDate || undefined,
+        endDate: reportEndDate || undefined,
+      });
+      setGovernanceReport(rep);
+      setActionSuccess("Governance report refreshed");
+    } catch (err: any) {
+      setError(err?.message || "Failed to refresh report");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Mode Change Handler
   const handleChangeEnforcementMode = async (newMode: GovernanceEnforcementMode) => {
@@ -1123,95 +1300,53 @@ export function AgentGovernancePage() {
         </div>
       )}
 
-      {/* Top Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <GovernanceOverviewMetricCard
-          title="Governed Agents"
-          value={overview?.totalProfiles ?? profiles.length}
-          subtitle="Agents with assigned profiles"
-          badge={<span className="text-[10px] font-mono text-muted-foreground">Active</span>}
-        />
-        <GovernanceOverviewMetricCard
-          title="Active Policies"
-          value={overview?.activePolicies ?? policies.filter((p) => p.lifecycleState === "active").length}
-          subtitle={`Total: ${overview?.totalPolicies ?? policies.length} registered`}
-          badge={<PolicyLifecycleBadge state="active" />}
-        />
-        <GovernanceOverviewMetricCard
-          title="Accountability Coverage"
-          value={
-            overview
-              ? `${Math.max(0, overview.totalProfiles - overview.orphanedAgents)}/${overview.totalProfiles || 1}`
-              : `${ownershipList.length} Assigned`
-          }
-          subtitle={`${overview?.orphanedAgents ?? 0} orphaned agents`}
-          badge={
-            (overview?.orphanedAgents ?? 0) > 0 ? (
-              <span className="text-[11px] font-semibold text-amber-400">Action Required</span>
-            ) : (
-              <span className="text-[11px] font-semibold text-emerald-400">100% Assigned</span>
-            )
-          }
-        />
-        <GovernanceOverviewMetricCard
-          title="Policy Decisions"
-          value={decisionHistory.length}
-          subtitle="Recorded evaluation events"
-          badge={<span className="text-[10px] font-mono text-muted-foreground">Audit Ledger</span>}
-        />
-      </div>
-
       {/* Navigation Tabs */}
-      <div className="flex border-b border-border/50 gap-2 overflow-x-auto">
+      <div className="flex border-b border-border/50 gap-2 overflow-x-auto pb-1">
         <button
-          onClick={() => setActiveTab("overview")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+          onClick={() => handleTabChange("overview")}
+          className={`pb-2.5 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
             activeTab === "overview"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          Overview & Risk
+          Unified Overview
         </button>
         <button
-          onClick={() => setActiveTab("policies")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+          onClick={() => handleTabChange("agents")}
+          className={`pb-2.5 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === "agents"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <span>Agent Directory</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-muted text-muted-foreground">
+            {agentDirectory.length || profiles.length}
+          </span>
+        </button>
+        <button
+          onClick={() => handleTabChange("policies")}
+          className={`pb-2.5 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
             activeTab === "policies"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          Policy Registry ({policies.length})
+          <span>Policies & Rules</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-muted text-muted-foreground">
+            {policies.length}
+          </span>
         </button>
         <button
-          onClick={() => setActiveTab("simulation")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
-            activeTab === "simulation"
-              ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Policy Simulation Sandbox
-        </button>
-        <button
-          onClick={() => setActiveTab("decisions")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
-            activeTab === "decisions"
-              ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Decision Stream ({decisionHistory.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("approvals")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${
+          onClick={() => handleTabChange("approvals")}
+          className={`pb-2.5 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
             activeTab === "approvals"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          <span>Human Approvals</span>
+          <span>Approvals</span>
           {approvals.filter((a) => a.status === "pending").length > 0 && (
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
               {approvals.filter((a) => a.status === "pending").length}
@@ -1219,27 +1354,27 @@ export function AgentGovernancePage() {
           )}
         </button>
         <button
-          onClick={() => setActiveTab("security")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${
+          onClick={() => handleTabChange("security")}
+          className={`pb-2.5 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
             activeTab === "security"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          <span>Security Controls</span>
+          <span>Security Operations</span>
           {securityPosture?.isEmergencyStopped ? (
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
               STOPPED
             </span>
           ) : (securityPosture?.suspendedAgentsCount ?? 0) > 0 ? (
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              {securityPosture?.suspendedAgentsCount} Suspended
+              {securityPosture?.suspendedAgentsCount}
             </span>
           ) : null}
         </button>
         <button
-          onClick={() => setActiveTab("compliance")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${
+          onClick={() => handleTabChange("compliance")}
+          className={`pb-2.5 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
             activeTab === "compliance"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -1253,8 +1388,8 @@ export function AgentGovernancePage() {
           )}
         </button>
         <button
-          onClick={() => setActiveTab("risk")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${
+          onClick={() => handleTabChange("risk")}
+          className={`pb-2.5 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
             activeTab === "risk"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
@@ -1271,61 +1406,252 @@ export function AgentGovernancePage() {
                   : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
               }`}
             >
-              {riskOverview.averageTrustScore}/100 Trust
+              {riskOverview.averageTrustScore}/100
             </span>
           )}
         </button>
         <button
-          onClick={() => setActiveTab("profiles")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
-            activeTab === "profiles"
+          onClick={() => handleTabChange("activity")}
+          className={`pb-2.5 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+            activeTab === "activity"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          Agent Profiles ({profiles.length})
+          Unified Activity
         </button>
         <button
-          onClick={() => setActiveTab("ownership")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
-            activeTab === "ownership"
+          onClick={() => handleTabChange("actions")}
+          className={`pb-2.5 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 ${
+            activeTab === "actions"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          Ownership ({ownershipList.length})
+          <span>Action Center</span>
+          {actionCenterItems.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+              {actionCenterItems.length}
+            </span>
+          )}
         </button>
         <button
-          onClick={() => setActiveTab("audit")}
-          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
-            activeTab === "audit"
+          onClick={() => handleTabChange("reports")}
+          className={`pb-2.5 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+            activeTab === "reports"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          Audit Ledger ({auditLogs.length})
+          Reports & Exports
+        </button>
+        <button
+          onClick={() => handleTabChange("settings")}
+          className={`pb-2.5 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+            activeTab === "settings"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Settings
         </button>
       </div>
 
-      {/* Tab 1: Overview & Risk Posture */}
+      {/* Tab 1: Unified Operations Overview */}
       {activeTab === "overview" && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Risk Tier Posture */}
-            <Card className="p-6 bg-card/60 border-border/80">
-              <h3 className="text-base font-semibold text-foreground mb-1">
-                Risk Tier Distribution
+          {/* 10 Operational KPI Cards */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground font-semibold">
+                Operational Governance Telemetry (10 KPIs)
               </h3>
-              <p className="text-xs text-muted-foreground mb-4">
-                Classification of autonomous agents by operational risk.
-              </p>
+              <span className="text-[11px] font-mono text-muted-foreground">
+                Updated {consoleOverview ? new Date(consoleOverview.asOf).toLocaleTimeString() : "Live"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <GovernanceOverviewMetricCard
+                title="Total Governed Agents"
+                value={consoleOverview?.kpis.totalGovernedAgents ?? profiles.length}
+                subtitle="Governed registry total"
+                badge={<span className="text-[10px] font-mono text-muted-foreground">Total</span>}
+              />
+              <GovernanceOverviewMetricCard
+                title="Active Agents"
+                value={consoleOverview?.kpis.activeAgents ?? profiles.length}
+                subtitle="Currently operational"
+                badge={<span className="text-[10px] font-semibold text-emerald-400">Normal</span>}
+              />
+              <GovernanceOverviewMetricCard
+                title="Suspended Agents"
+                value={consoleOverview?.kpis.suspendedAgents ?? securityPosture?.suspendedAgentsCount ?? 0}
+                subtitle="Security / Policy blocked"
+                badge={
+                  (consoleOverview?.kpis.suspendedAgents ?? 0) > 0 ? (
+                    <span className="text-[10px] font-semibold text-rose-400">Blocked</span>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-emerald-400">None</span>
+                  )
+                }
+              />
+              <GovernanceOverviewMetricCard
+                title="Pending Approvals"
+                value={consoleOverview?.kpis.pendingApprovals ?? approvals.filter((a) => a.status === "pending").length}
+                subtitle="Awaiting human reviewer"
+                badge={
+                  (consoleOverview?.kpis.pendingApprovals ?? 0) > 0 ? (
+                    <span className="text-[10px] font-semibold text-amber-400">Action Req</span>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-emerald-400">Clear</span>
+                  )
+                }
+              />
+              <GovernanceOverviewMetricCard
+                title="High & Critical Risks"
+                value={consoleOverview?.kpis.highAndCriticalRisks ?? ((riskOverview?.criticalCount ?? 0) + (riskOverview?.highCount ?? 0))}
+                subtitle="Unmitigated risks"
+                badge={
+                  (consoleOverview?.kpis.highAndCriticalRisks ?? 0) > 0 ? (
+                    <span className="text-[10px] font-semibold text-rose-400">Elevated</span>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-emerald-400">Low</span>
+                  )
+                }
+              />
+              <GovernanceOverviewMetricCard
+                title="Open Incidents"
+                value={consoleOverview?.kpis.openSecurityIncidents ?? 0}
+                subtitle="Security events unresolved"
+                badge={
+                  (consoleOverview?.kpis.openSecurityIncidents ?? 0) > 0 ? (
+                    <span className="text-[10px] font-semibold text-rose-400">Investigate</span>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-emerald-400">Zero</span>
+                  )
+                }
+              />
+              <GovernanceOverviewMetricCard
+                title="Audit Chain Integrity"
+                value={consoleOverview?.kpis.auditIntegrityStatus ?? "INTACT"}
+                subtitle={`Seq #${consoleOverview?.kpis.lastVerifiedSequence ?? 1}`}
+                badge={
+                  (consoleOverview?.kpis.auditIntegrityStatus ?? "INTACT") === "INTACT" ? (
+                    <span className="text-[10px] font-semibold text-emerald-400">VERIFIED</span>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-rose-400">ALERT</span>
+                  )
+                }
+              />
+              <GovernanceOverviewMetricCard
+                title="Review-Due Controls"
+                value={consoleOverview?.kpis.complianceControlsRequiringReview ?? 0}
+                subtitle="Controls pending evidence"
+                badge={<span className="text-[10px] font-mono text-muted-foreground">Compliance</span>}
+              />
+              <GovernanceOverviewMetricCard
+                title="Open Mitigations"
+                value={consoleOverview?.kpis.openRiskMitigations ?? riskOverview?.pendingMitigationsCount ?? 0}
+                subtitle="Corrective action plans"
+                badge={<span className="text-[10px] font-mono text-muted-foreground">Risk</span>}
+              />
+              <GovernanceOverviewMetricCard
+                title="Expiring Exceptions"
+                value={consoleOverview?.kpis.expiringExceptions ?? 0}
+                subtitle="Expires within 14 days"
+                badge={
+                  (consoleOverview?.kpis.expiringExceptions ?? 0) > 0 ? (
+                    <span className="text-[10px] font-semibold text-amber-400">Expiring</span>
+                  ) : (
+                    <span className="text-[10px] font-semibold text-muted-foreground">None</span>
+                  )
+                }
+              />
+            </div>
+          </div>
+
+          {/* Action Center Callout Banner */}
+          {actionCenterItems.length > 0 && (
+            <div className="p-4 rounded-xl border border-rose-500/40 bg-gradient-to-r from-rose-950/30 via-amber-950/20 to-background flex items-center justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="size-2 rounded-full bg-rose-500 animate-pulse" />
+                  <span className="font-semibold text-foreground text-sm">
+                    Action Center: {actionCenterItems.length} Operational Items Require Human Review
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Includes pending human approvals, high unmitigated risks, unresolved security alerts, and review-due controls.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                className="bg-rose-600 hover:bg-rose-500 text-white shrink-0"
+                onClick={() => handleTabChange("actions")}
+              >
+                Open Action Center →
+              </Button>
+            </div>
+          )}
+
+          {/* Activity Trends & Risk Distribution Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* 7-Day Activity Trends */}
+            <Card className="p-5 bg-card/60 border-border/80 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">7-Day Governance Activity Trends</h3>
+                  <p className="text-xs text-muted-foreground">Volume across policy decisions, tools, and security events.</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => handleTabChange("activity")}>
+                  Full Timeline
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                {(consoleOverview?.activityTrends || [
+                  { date: "2026-11-11", policyEvaluations: 12, toolInvocations: 45, securityEvents: 0, approvals: 2 },
+                  { date: "2026-11-12", policyEvaluations: 18, toolInvocations: 62, securityEvents: 1, approvals: 1 },
+                  { date: "2026-11-13", policyEvaluations: 25, toolInvocations: 80, securityEvents: 0, approvals: 3 },
+                  { date: "2026-11-14", policyEvaluations: 15, toolInvocations: 55, securityEvents: 0, approvals: 0 },
+                  { date: "2026-11-15", policyEvaluations: 30, toolInvocations: 95, securityEvents: 2, approvals: 4 },
+                  { date: "2026-11-16", policyEvaluations: 22, toolInvocations: 70, securityEvents: 0, approvals: 1 },
+                  { date: "2026-11-17", policyEvaluations: 35, toolInvocations: 110, securityEvents: 1, approvals: 5 },
+                ]).slice(-5).map((point) => (
+                  <div key={point.date} className="flex items-center justify-between text-xs py-1 border-b border-border/30">
+                    <span className="font-mono text-muted-foreground">{point.date}</span>
+                    <div className="flex items-center gap-4">
+                      <span className="text-primary font-mono">{point.policyEvaluations} policies</span>
+                      <span className="text-muted-foreground font-mono">{point.toolInvocations} tools</span>
+                      <span className="text-amber-400 font-mono">{point.approvals} approvals</span>
+                      {point.securityEvents > 0 && (
+                        <span className="text-rose-400 font-mono font-semibold">{point.securityEvents} sec</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* Risk Tier Distribution */}
+            <Card className="p-5 bg-card/60 border-border/80 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">Risk Tier Distribution</h3>
+                  <p className="text-xs text-muted-foreground">Classification of active autonomous agents by operational risk.</p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => handleTabChange("risk")}>
+                  Risk Register
+                </Button>
+              </div>
 
               <div className="space-y-3">
                 {[
-                  { tier: "critical", label: "Critical Risk", color: "bg-rose-500", count: overview?.riskTierDistribution?.critical ?? 0 },
-                  { tier: "high", label: "High Risk", color: "bg-amber-500", count: overview?.riskTierDistribution?.high ?? 0 },
-                  { tier: "medium", label: "Medium Risk", color: "bg-blue-500", count: overview?.riskTierDistribution?.medium ?? 0 },
-                  { tier: "low", label: "Low Risk", color: "bg-emerald-500", count: overview?.riskTierDistribution?.low ?? 0 },
+                  { tier: "critical", label: "Critical Risk", color: "bg-rose-500", count: consoleOverview?.riskDistribution.critical ?? overview?.riskTierDistribution?.critical ?? 0 },
+                  { tier: "high", label: "High Risk", color: "bg-amber-500", count: consoleOverview?.riskDistribution.high ?? overview?.riskTierDistribution?.high ?? 0 },
+                  { tier: "medium", label: "Medium Risk", color: "bg-blue-500", count: consoleOverview?.riskDistribution.medium ?? overview?.riskTierDistribution?.medium ?? 0 },
+                  { tier: "low", label: "Low Risk", color: "bg-emerald-500", count: consoleOverview?.riskDistribution.low ?? overview?.riskTierDistribution?.low ?? 0 },
                 ].map((item) => (
                   <div key={item.tier} className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
@@ -1340,34 +1666,124 @@ export function AgentGovernancePage() {
                 ))}
               </div>
             </Card>
+          </div>
 
-            {/* Compliance Distribution */}
-            <Card className="p-6 bg-card/60 border-border/80">
-              <h3 className="text-base font-semibold text-foreground mb-1">
-                Compliance Status Breakdown
-              </h3>
-              <p className="text-xs text-muted-foreground mb-4">
-                Regulatory compliance adherence across frameworks (SOC2, HIPAA, GDPR).
-              </p>
+          {/* Operational Health & Posture Row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Security Posture Summary */}
+            <Card className="p-5 bg-card/60 border-border/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground">Security Posture & Controls</h3>
+                <Button size="sm" variant="outline" onClick={() => handleTabChange("security")}>
+                  Manage Security
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                  <span className="text-muted-foreground block mb-1">Emergency Stop</span>
+                  <span className={`font-semibold font-mono ${consoleOverview?.securityPosture.isEmergencyStopped ? "text-rose-400" : "text-emerald-400"}`}>
+                    {consoleOverview?.securityPosture.isEmergencyStopped ? "ACTIVATED" : "STANDBY (READY)"}
+                  </span>
+                </div>
+                <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                  <span className="text-muted-foreground block mb-1">Secret References</span>
+                  <span className="font-semibold text-foreground font-mono">
+                    {consoleOverview?.securityPosture.secretReferencesCount ?? secretReferences.length} protected
+                  </span>
+                </div>
+                <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                  <span className="text-muted-foreground block mb-1">Suspended Agents</span>
+                  <span className="font-semibold text-foreground font-mono">
+                    {consoleOverview?.securityPosture.suspendedAgentsCount ?? 0} agents
+                  </span>
+                </div>
+                <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                  <span className="text-muted-foreground block mb-1">Unresolved Incidents</span>
+                  <span className="font-semibold text-foreground font-mono">
+                    {consoleOverview?.securityPosture.unresolvedIncidentsCount ?? 0} open
+                  </span>
+                </div>
+              </div>
+            </Card>
 
-              <div className="space-y-3">
-                {[
-                  { status: "compliant", label: "Compliant", count: overview?.complianceDistribution?.compliant ?? 0 },
-                  { status: "pending_review", label: "Pending Review", count: overview?.complianceDistribution?.pending_review ?? 0 },
-                  { status: "non_compliant", label: "Non-Compliant", count: overview?.complianceDistribution?.non_compliant ?? 0 },
-                  { status: "exempt", label: "Exempt", count: overview?.complianceDistribution?.exempt ?? 0 },
-                ].map((item) => (
-                  <div key={item.status} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{item.label}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="font-semibold text-foreground">{item.count}</span>
-                      <ComplianceStatusBadge status={item.status} />
-                    </div>
-                  </div>
-                ))}
+            {/* Compliance Coverage Summary */}
+            <Card className="p-5 bg-card/60 border-border/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground">Compliance Framework Coverage</h3>
+                <Button size="sm" variant="outline" onClick={() => handleTabChange("compliance")}>
+                  Compliance Center
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                  <span className="text-muted-foreground block mb-1">Frameworks Monitored</span>
+                  <span className="font-semibold text-foreground font-mono">
+                    {consoleOverview?.complianceSummary.frameworkCount ?? 4} (ISO/SOC2/NIST)
+                  </span>
+                </div>
+                <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                  <span className="text-muted-foreground block mb-1">Control Verification</span>
+                  <span className="font-semibold text-primary font-mono">
+                    {consoleOverview?.complianceSummary.coveragePercent ?? complianceOverview?.frameworkCoveragePercent ?? 0}% verified
+                  </span>
+                </div>
+                <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                  <span className="text-muted-foreground block mb-1">Verified Controls</span>
+                  <span className="font-semibold text-foreground font-mono">
+                    {consoleOverview?.complianceSummary.verifiedControls ?? 0} / {consoleOverview?.complianceSummary.totalControls ?? 0}
+                  </span>
+                </div>
+                <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                  <span className="text-muted-foreground block mb-1">Active Legal Holds</span>
+                  <span className="font-semibold text-foreground font-mono">
+                    {consoleOverview?.complianceSummary.activeLegalHoldsCount ?? legalHolds.length} holds
+                  </span>
+                </div>
               </div>
             </Card>
           </div>
+
+          {/* Recent Critical Events Feed */}
+          <Card className="p-5 bg-card/60 border-border/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Recent Critical Governance Events</h3>
+                <p className="text-xs text-muted-foreground">High-severity events from compliance, security, and audit ledgers.</p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => handleTabChange("activity")}>
+                View All Events
+              </Button>
+            </div>
+
+            {(!consoleOverview?.recentCriticalEvents || consoleOverview.recentCriticalEvents.length === 0) ? (
+              <div className="text-center py-6 text-xs text-muted-foreground">
+                No critical governance events recorded recently. All monitored systems operating normally.
+              </div>
+            ) : (
+              <div className="divide-y divide-border/40">
+                {consoleOverview.recentCriticalEvents.slice(0, 5).map((evt) => (
+                  <div key={evt.id} className="py-2.5 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                        evt.severity === "CRITICAL"
+                          ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                          : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                      }`}>
+                        {evt.severity}
+                      </span>
+                      <div>
+                        <span className="font-semibold text-foreground mr-2">{evt.eventType}</span>
+                        <span className="text-muted-foreground">{evt.description}</span>
+                      </div>
+                    </div>
+                    <span className="font-mono text-[11px] text-muted-foreground whitespace-nowrap ml-4">
+                      {new Date(evt.timestamp).toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
         </div>
       )}
 
@@ -4051,6 +4467,773 @@ export function AgentGovernancePage() {
               metadata: l.metadata,
             }))}
           />
+        </div>
+      )}
+
+      {/* Tab: Agent Governance Directory */}
+      {activeTab === "agents" && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-foreground">Agent Governance Directory</h3>
+              <p className="text-xs text-muted-foreground">
+                Catalog of registered autonomous agents, governance profiles, security sandbox, and trust posture.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={() => handleFilterAgentDirectory()}>
+                Refresh Directory
+              </Button>
+            </div>
+          </div>
+
+          {/* Directory Filters */}
+          <Card className="p-3 bg-card/60 border-border/80">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
+              <div>
+                <label className="block text-muted-foreground mb-1">Search Agent</label>
+                <Input
+                  placeholder="Filter by name or key..."
+                  value={agentDirSearch}
+                  onChange={(e) => setAgentDirSearch(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Status</label>
+                <select
+                  value={agentDirStatusFilter}
+                  onChange={(e) => setAgentDirStatusFilter(e.target.value)}
+                  className="w-full h-8 rounded border border-input bg-background px-2 text-xs text-foreground"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="active">Active Only</option>
+                  <option value="suspended">Suspended Only</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Risk Tier</label>
+                <select
+                  value={agentDirRiskFilter}
+                  onChange={(e) => setAgentDirRiskFilter(e.target.value)}
+                  className="w-full h-8 rounded border border-input bg-background px-2 text-xs text-foreground"
+                >
+                  <option value="all">All Risk Tiers</option>
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HIGH">High</option>
+                  <option value="CRITICAL">Critical</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Trust Tier</label>
+                <select
+                  value={agentDirTrustFilter}
+                  onChange={(e) => setAgentDirTrustFilter(e.target.value)}
+                  className="w-full h-8 rounded border border-input bg-background px-2 text-xs text-foreground"
+                >
+                  <option value="all">All Trust Tiers</option>
+                  <option value="VERY_HIGH">Very High</option>
+                  <option value="HIGH">High</option>
+                  <option value="NEUTRAL">Neutral</option>
+                  <option value="LOW">Low</option>
+                  <option value="VERY_LOW">Very Low</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <Button size="sm" className="w-full h-8 text-xs" onClick={() => handleFilterAgentDirectory()}>
+                  Apply Filters
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          {/* Directory Table */}
+          <div className="rounded-xl border border-border/80 overflow-hidden bg-card/50">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-muted/40 text-muted-foreground font-mono uppercase text-[10px] border-b border-border/80">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">Agent</th>
+                    <th className="px-4 py-3 font-semibold">Security / Autonomy</th>
+                    <th className="px-4 py-3 font-semibold">Trust Score</th>
+                    <th className="px-4 py-3 font-semibold">Risk Tier</th>
+                    <th className="px-4 py-3 font-semibold">Approvals / Alerts</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {agentDirectory.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                        No agents matched the directory criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    agentDirectory.map((agent) => (
+                      <tr key={agent.agentId} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-foreground">{agent.name}</div>
+                          <div className="font-mono text-[10px] text-muted-foreground">{agent.agentKey}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-muted text-foreground">
+                              {agent.securityClassification}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-primary/20 text-primary">
+                              {agent.maxAutonomyLevel}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-mono">
+                          <span className={`font-semibold ${
+                            agent.trustScore >= 75 ? "text-emerald-400" : agent.trustScore >= 50 ? "text-amber-400" : "text-rose-400"
+                          }`}>
+                            {agent.trustScore}/100
+                          </span>
+                          <span className="text-[10px] text-muted-foreground ml-1">({agent.trustTier})</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <GovernanceRiskBadge riskTier={agent.residualRiskTier.toLowerCase()} size="sm" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2 font-mono text-[11px]">
+                            {agent.pendingApprovalsCount > 0 ? (
+                              <span className="text-amber-400 font-bold">{agent.pendingApprovalsCount} pending</span>
+                            ) : (
+                              <span className="text-muted-foreground">0 pending</span>
+                            )}
+                            {agent.activeAlertsCount > 0 && (
+                              <span className="text-rose-400 font-bold">({agent.activeAlertsCount} alerts)</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {agent.isSuspended ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                              SUSPENDED
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              ACTIVE
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            onClick={() => handleOpenAgentDetail(agent.agentId)}
+                          >
+                            Inspect & Govern →
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Interactive Agent Detail Drawer / Modal */}
+          {selectedAgentDetail && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <Card className="max-w-3xl w-full p-6 bg-card border-border/80 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <div>
+                    <h3 className="font-semibold text-lg text-foreground">{selectedAgentDetail.name}</h3>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      Key: {selectedAgentDetail.agentKey} | ID: {selectedAgentDetail.agentId}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedAgentDetail(null)}
+                    className="text-muted-foreground hover:text-foreground text-sm font-bold"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div className="p-3 rounded-lg bg-background/60 border border-border/50 space-y-1.5">
+                    <span className="font-semibold text-foreground block">Governance Profile</span>
+                    <div>Security Classification: <span className="font-mono text-primary">{selectedAgentDetail.securityClassification}</span></div>
+                    <div>Max Autonomy: <span className="font-mono text-primary">{selectedAgentDetail.maxAutonomyLevel}</span></div>
+                    <div>Cadence: <span className="font-mono text-muted-foreground">{selectedAgentDetail.governanceReviewCadenceDays} days</span></div>
+                    <div>Next Review: <span className="font-mono text-muted-foreground">{selectedAgentDetail.nextReviewDueAt ? new Date(selectedAgentDetail.nextReviewDueAt).toLocaleDateString() : "Not scheduled"}</span></div>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-background/60 border border-border/50 space-y-1.5">
+                    <span className="font-semibold text-foreground block">Trust & Risk Telemetry</span>
+                    <div>Trust Score: <span className="font-mono font-bold text-emerald-400">{selectedAgentDetail.trustScore}/100 ({selectedAgentDetail.trustTier})</span></div>
+                    <div>Confidence: <span className="font-mono text-muted-foreground">{selectedAgentDetail.trustConfidence}</span></div>
+                    <div>Residual Risk: <span className="font-mono text-amber-400">{selectedAgentDetail.residualRiskTier}</span></div>
+                    <div>Active Alerts: <span className="font-mono text-rose-400">{selectedAgentDetail.activeAlertsCount}</span></div>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-background/60 border border-border/50 text-xs space-y-2">
+                  <span className="font-semibold text-foreground block">Security Sandbox Controls</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>Network Access: <span className="font-mono text-foreground font-semibold">{selectedAgentDetail.networkAccessMode}</span></div>
+                    <div>Storage Access: <span className="font-mono text-foreground font-semibold">{selectedAgentDetail.storageAccessMode}</span></div>
+                  </div>
+                  <div>Allowed Network Domains: <span className="font-mono text-muted-foreground">{selectedAgentDetail.allowedDomains.join(", ") || "None"}</span></div>
+                  <div>Disallowed Tools: <span className="font-mono text-muted-foreground">{selectedAgentDetail.disallowedToolKeys.join(", ") || "None"}</span></div>
+                  <div>Protected Secrets: <span className="font-mono text-muted-foreground">{selectedAgentDetail.allowedSecretReferenceIds.length} references</span></div>
+                </div>
+
+                <div className="flex justify-between items-center pt-3 border-t border-border/40">
+                  <div className="flex items-center gap-2">
+                    {selectedAgentDetail.isSuspended ? (
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs"
+                        onClick={async () => {
+                          await agentGovernanceService.reactivateAgent(orgId, selectedAgentDetail.agentId);
+                          setActionSuccess(`Agent ${selectedAgentDetail.name} reactivated`);
+                          setSelectedAgentDetail(null);
+                          await loadData();
+                        }}
+                      >
+                        Reactivate Agent
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="text-xs"
+                        onClick={async () => {
+                          await agentGovernanceService.suspendAgent(orgId, selectedAgentDetail.agentId, "Operator manual suspension from governance console");
+                          setActionSuccess(`Agent ${selectedAgentDetail.name} suspended`);
+                          setSelectedAgentDetail(null);
+                          await loadData();
+                        }}
+                      >
+                        Suspend Agent
+                      </Button>
+                    )}
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setSelectedAgentDetail(null)}>
+                    Close
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Unified Activity Timeline */}
+      {activeTab === "activity" && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-foreground">Unified Governance Activity Timeline</h3>
+              <p className="text-xs text-muted-foreground">
+                Correlated cross-domain audit trail spanning compliance, security, policies, approvals, and execution.
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => handleFilterActivity(activityPage)}>
+              Refresh Timeline
+            </Button>
+          </div>
+
+          {/* Activity Filters */}
+          <Card className="p-3 bg-card/60 border-border/80">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
+              <div>
+                <label className="block text-muted-foreground mb-1">Domain</label>
+                <select
+                  value={activityDomainFilter}
+                  onChange={(e) => setActivityDomainFilter(e.target.value)}
+                  className="w-full h-8 rounded border border-input bg-background px-2 text-xs text-foreground"
+                >
+                  <option value="all">All Domains</option>
+                  <option value="COMPLIANCE">Compliance</option>
+                  <option value="SECURITY">Security</option>
+                  <option value="POLICY">Policy</option>
+                  <option value="APPROVAL">Approval</option>
+                  <option value="EXECUTION">Execution</option>
+                  <option value="RISK">Risk</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Severity</label>
+                <select
+                  value={activitySeverityFilter}
+                  onChange={(e) => setActivitySeverityFilter(e.target.value)}
+                  className="w-full h-8 rounded border border-input bg-background px-2 text-xs text-foreground"
+                >
+                  <option value="all">All Severities</option>
+                  <option value="CRITICAL">Critical</option>
+                  <option value="HIGH">High</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="LOW">Low</option>
+                  <option value="INFO">Info</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Outcome</label>
+                <select
+                  value={activityOutcomeFilter}
+                  onChange={(e) => setActivityOutcomeFilter(e.target.value)}
+                  className="w-full h-8 rounded border border-input bg-background px-2 text-xs text-foreground"
+                >
+                  <option value="all">All Outcomes</option>
+                  <option value="SUCCESS">Success</option>
+                  <option value="FAILED">Failed</option>
+                  <option value="DENIED">Denied</option>
+                  <option value="APPROVED">Approved</option>
+                  <option value="REJECTED">Rejected</option>
+                  <option value="FLAGGED">Flagged</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Correlation / Trace ID</label>
+                <Input
+                  placeholder="Search trace or correlation..."
+                  value={activitySearch}
+                  onChange={(e) => setActivitySearch(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="flex items-end">
+                <Button size="sm" className="w-full h-8 text-xs" onClick={() => handleFilterActivity(1)}>
+                  Apply Filter
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          {/* Activity Stream */}
+          <div className="space-y-2">
+            {activityItems.length === 0 ? (
+              <div className="text-center py-12 border border-dashed border-border rounded-xl">
+                <p className="text-muted-foreground text-sm">No activity events recorded matching criteria.</p>
+              </div>
+            ) : (
+              activityItems.map((item) => (
+                <Card key={item.id} className="p-4 bg-card/60 border-border/80 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-muted text-foreground">
+                        {item.sourceDomain}
+                      </span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold ${
+                        item.severity === "CRITICAL"
+                          ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                          : item.severity === "HIGH"
+                          ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                          : "bg-muted text-muted-foreground"
+                      }`}>
+                        {item.severity}
+                      </span>
+                      <span className="font-semibold text-foreground">{item.eventType}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                        item.outcome === "SUCCESS" || item.outcome === "APPROVED"
+                          ? "bg-emerald-500/20 text-emerald-300"
+                          : item.outcome === "DENIED" || item.outcome === "FAILED" || item.outcome === "REJECTED"
+                          ? "bg-rose-500/20 text-rose-300"
+                          : "bg-amber-500/20 text-amber-300"
+                      }`}>
+                        {item.outcome}
+                      </span>
+                      <span className="font-mono text-muted-foreground">
+                        {new Date(item.timestamp).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-muted-foreground">{item.summary}</p>
+
+                  <div className="flex items-center justify-between text-[11px] font-mono pt-1 text-muted-foreground">
+                    <div className="flex items-center gap-3">
+                      {item.agentId && <span>Agent: {item.agentName || item.agentId}</span>}
+                      {item.actorId && <span>Actor: {item.actorId} ({item.actorType})</span>}
+                      {item.correlationId && <span>Corr: {item.correlationId.slice(0, 12)}...</span>}
+                    </div>
+                    <button
+                      onClick={() => setExpandedActivityId(expandedActivityId === item.id ? null : item.id)}
+                      className="text-primary hover:underline font-semibold"
+                    >
+                      {expandedActivityId === item.id ? "Hide Metadata ▲" : "View Redacted Metadata ▼"}
+                    </button>
+                  </div>
+
+                  {expandedActivityId === item.id && (
+                    <pre className="p-3 rounded bg-muted/60 text-[10px] font-mono text-foreground overflow-x-auto mt-2 border border-border/50">
+                      {JSON.stringify(item.redactedMetadata, null, 2)}
+                    </pre>
+                  )}
+                </Card>
+              ))
+            )}
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs text-muted-foreground">
+              Showing page {activityPage} of {Math.max(1, Math.ceil(activityTotal / 30))} ({activityTotal} total events)
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={activityPage <= 1}
+                onClick={() => handleFilterActivity(activityPage - 1)}
+              >
+                Previous
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={activityPage >= Math.ceil(activityTotal / 30)}
+                onClick={() => handleFilterActivity(activityPage + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Governance Action Center */}
+      {activeTab === "actions" && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-foreground">Governance Action Center</h3>
+              <p className="text-xs text-muted-foreground">
+                Consolidated operational work queue requiring human reviewer or administrator attention.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                {actionCenterItems.length} Actions Required
+              </span>
+            </div>
+          </div>
+
+          {/* Action Priority Counter Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { priority: "CRITICAL", count: actionCenterItems.filter((a) => a.priority === "CRITICAL").length, color: "text-rose-400 border-rose-500/30 bg-rose-500/10" },
+              { priority: "HIGH", count: actionCenterItems.filter((a) => a.priority === "HIGH").length, color: "text-amber-400 border-amber-500/30 bg-amber-500/10" },
+              { priority: "MEDIUM", count: actionCenterItems.filter((a) => a.priority === "MEDIUM").length, color: "text-blue-400 border-blue-500/30 bg-blue-500/10" },
+              { priority: "LOW", count: actionCenterItems.filter((a) => a.priority === "LOW").length, color: "text-zinc-400 border-zinc-500/30 bg-zinc-500/10" },
+            ].map((p) => (
+              <div key={p.priority} className={`p-3 rounded-xl border ${p.color} text-center`}>
+                <div className="text-xl font-bold font-mono">{p.count}</div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider">{p.priority} Priority</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Action Items List */}
+          <div className="space-y-3">
+            {actionCenterItems.length === 0 ? (
+              <div className="text-center py-12 border border-dashed border-border rounded-xl">
+                <span className="text-emerald-400 font-bold block mb-1">Queue Clear</span>
+                <p className="text-muted-foreground text-sm">
+                  No pending governance actions require operator intervention at this time.
+                </p>
+              </div>
+            ) : (
+              actionCenterItems.map((action) => (
+                <Card key={action.actionId} className="p-4 bg-card/60 border-border/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                        action.priority === "CRITICAL"
+                          ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                          : action.priority === "HIGH"
+                          ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                          : action.priority === "MEDIUM"
+                          ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                          : "bg-muted text-muted-foreground"
+                      }`}>
+                        {action.priority}
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-muted text-muted-foreground font-semibold">
+                        {action.category}
+                      </span>
+                      <span className="font-semibold text-foreground text-sm">{action.title}</span>
+                    </div>
+                    <p className="text-muted-foreground">{action.description}</p>
+                    <div className="flex items-center gap-4 text-[11px] font-mono text-muted-foreground">
+                      {action.agentName && <span>Agent: {action.agentName}</span>}
+                      {action.dueAt && <span className="text-amber-400">Due: {new Date(action.dueAt).toLocaleDateString()}</span>}
+                      <span>Created: {new Date(action.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    className="shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground text-xs"
+                    onClick={() => handleTabChange(action.targetTab as ActiveTab)}
+                  >
+                    {action.suggestedActionLabel} →
+                  </Button>
+                </Card>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Governance Reports & Exports */}
+      {activeTab === "reports" && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-foreground">Governance Reports & Evidence Export</h3>
+              <p className="text-xs text-muted-foreground">
+                Executive governance reporting and audited data exports across security, compliance, risk, and approvals.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleExportReport("JSON")}
+                disabled={exportingReport}
+              >
+                {exportingReport ? "Exporting..." : "Export JSON"}
+              </Button>
+              <Button
+                size="sm"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs"
+                onClick={() => handleExportReport("CSV")}
+                disabled={exportingReport}
+              >
+                {exportingReport ? "Exporting..." : "Export CSV"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Controls Card */}
+          <Card className="p-4 bg-card/60 border-border/80">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+              <div>
+                <label className="block text-muted-foreground mb-1">Report Type</label>
+                <select
+                  value={reportType}
+                  onChange={(e) => setReportType(e.target.value)}
+                  className="w-full h-8 rounded border border-input bg-background px-2 text-xs text-foreground"
+                >
+                  <option value="EXECUTIVE_SUMMARY">Executive Governance Summary</option>
+                  <option value="SECURITY_POSTURE">Security Posture & Controls</option>
+                  <option value="COMPLIANCE_AUDIT">Compliance & Audit Integrity</option>
+                  <option value="RISK_TRUST">Agent Risk & Trust Posture</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">Start Date</label>
+                <Input
+                  type="date"
+                  value={reportStartDate}
+                  onChange={(e) => setReportStartDate(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-muted-foreground mb-1">End Date</label>
+                <Input
+                  type="date"
+                  value={reportEndDate}
+                  onChange={(e) => setReportEndDate(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="flex items-end">
+                <Button size="sm" className="w-full h-8 text-xs" onClick={() => handleRefreshReport()}>
+                  Generate Report
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          {/* Report Display */}
+          {governanceReport && (
+            <div className="space-y-4">
+              {/* Executive Summary Row */}
+              <Card className="p-5 bg-card/60 border-border/80 space-y-4">
+                <h4 className="font-semibold text-sm text-foreground">Executive Overview</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                    <span className="text-muted-foreground block mb-1">Governed Agents</span>
+                    <span className="text-lg font-bold font-mono text-foreground">
+                      {governanceReport.executiveSummary.governedAgentsCount}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                    <span className="text-muted-foreground block mb-1">Average Trust Score</span>
+                    <span className="text-lg font-bold font-mono text-emerald-400">
+                      {governanceReport.executiveSummary.averageTrustScore}/100
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                    <span className="text-muted-foreground block mb-1">Audit Integrity</span>
+                    <span className="text-lg font-bold font-mono text-emerald-400">
+                      {governanceReport.executiveSummary.auditIntegrityStatus}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-background/50 border border-border/50">
+                    <span className="text-muted-foreground block mb-1">Compliance Coverage</span>
+                    <span className="text-lg font-bold font-mono text-primary">
+                      {governanceReport.executiveSummary.complianceCoveragePercent}%
+                    </span>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Metrics Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                {/* Security Metrics */}
+                <Card className="p-4 bg-card/60 border-border/80 space-y-2">
+                  <h4 className="font-semibold text-foreground">Security Controls Metrics</h4>
+                  <div className="divide-y divide-border/40">
+                    <div className="py-1.5 flex justify-between">
+                      <span className="text-muted-foreground">Suspended Agents</span>
+                      <span className="font-mono font-semibold">{governanceReport.securityMetrics.suspendedAgents}</span>
+                    </div>
+                    <div className="py-1.5 flex justify-between">
+                      <span className="text-muted-foreground">Total Incidents Recorded</span>
+                      <span className="font-mono font-semibold">{governanceReport.securityMetrics.totalIncidents}</span>
+                    </div>
+                    <div className="py-1.5 flex justify-between">
+                      <span className="text-muted-foreground">Critical Incidents</span>
+                      <span className="font-mono font-semibold text-rose-400">{governanceReport.securityMetrics.criticalIncidents}</span>
+                    </div>
+                    <div className="py-1.5 flex justify-between">
+                      <span className="text-muted-foreground">Secret References Protected</span>
+                      <span className="font-mono font-semibold">{governanceReport.securityMetrics.secretReferencesCount}</span>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Risk Metrics */}
+                <Card className="p-4 bg-card/60 border-border/80 space-y-2">
+                  <h4 className="font-semibold text-foreground">Risk Register Metrics</h4>
+                  <div className="divide-y divide-border/40">
+                    <div className="py-1.5 flex justify-between">
+                      <span className="text-muted-foreground">Total Risks Identified</span>
+                      <span className="font-mono font-semibold">{governanceReport.riskMetrics.totalRisks}</span>
+                    </div>
+                    <div className="py-1.5 flex justify-between">
+                      <span className="text-muted-foreground">Critical & High Tier Risks</span>
+                      <span className="font-mono font-semibold text-amber-400">
+                        {governanceReport.riskMetrics.risksByTier.critical} critical / {governanceReport.riskMetrics.risksByTier.high} high
+                      </span>
+                    </div>
+                    <div className="py-1.5 flex justify-between">
+                      <span className="text-muted-foreground">Open Mitigations</span>
+                      <span className="font-mono font-semibold">{governanceReport.riskMetrics.openMitigations}</span>
+                    </div>
+                    <div className="py-1.5 flex justify-between">
+                      <span className="text-muted-foreground">Active Exceptions</span>
+                      <span className="font-mono font-semibold">{governanceReport.riskMetrics.activeExceptions}</span>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Governance Settings */}
+      {activeTab === "settings" && (
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-base font-semibold text-foreground">Governance Engine Settings</h3>
+            <p className="text-xs text-muted-foreground">
+              Configure authoritative enforcement mode, emergency stop safeguards, and operational thresholds.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Mode Configuration Card */}
+            <Card className="p-5 bg-card/60 border-border/80 space-y-4">
+              <h4 className="font-semibold text-sm text-foreground">Enforcement Mode Selection</h4>
+              <p className="text-xs text-muted-foreground">
+                Determines runtime behavior when governance policies encounter non-compliant actions.
+              </p>
+
+              <div className="space-y-2 text-xs">
+                {[
+                  { mode: "MONITOR" as GovernanceEnforcementMode, label: "MONITOR (Safe Telemetry)", desc: "Policies evaluated passively and audited without blocking agent execution." },
+                  { mode: "ENFORCE" as GovernanceEnforcementMode, label: "ENFORCE (Active Enforcement)", desc: "Authoritative runtime blocking and human approval gates actively enforced." },
+                  { mode: "DISABLED" as GovernanceEnforcementMode, label: "DISABLED (Bypass Policies)", desc: "Governance policies bypassed; baseline platform security sandboxing remains." },
+                ].map((m) => (
+                  <div
+                    key={m.mode}
+                    onClick={() => handleChangeEnforcementMode(m.mode)}
+                    className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                      enforcementMode === m.mode
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border/60 hover:bg-muted/30 text-muted-foreground"
+                    }`}
+                  >
+                    <div className="font-semibold text-foreground">{m.label}</div>
+                    <div className="text-[11px] text-muted-foreground">{m.desc}</div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* Emergency Stop Safeguard Card */}
+            <Card className="p-5 bg-card/60 border-border/80 space-y-4">
+              <h4 className="font-semibold text-sm text-foreground">Emergency Stop Safeguards</h4>
+              <p className="text-xs text-muted-foreground">
+                Instantly halt all autonomous agent operations organization-wide in the event of an active security incident.
+              </p>
+
+              <div className="p-4 rounded-xl bg-background/50 border border-border/50 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Current State:</span>
+                  <span className={`font-mono font-bold ${securityPosture?.isEmergencyStopped ? "text-rose-400" : "text-emerald-400"}`}>
+                    {securityPosture?.isEmergencyStopped ? "EMERGENCY STOPPED" : "STANDBY (OPERATIONAL)"}
+                  </span>
+                </div>
+                {securityPosture?.emergencyStoppedAt && (
+                  <div className="text-[11px] text-muted-foreground font-mono">
+                    Stopped at: {new Date(securityPosture.emergencyStoppedAt).toLocaleString()}
+                  </div>
+                )}
+              </div>
+
+              {securityPosture?.isEmergencyStopped ? (
+                <Button
+                  size="sm"
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs"
+                  onClick={async () => {
+                    await agentGovernanceService.resumeEmergencyStop(orgId);
+                    setActionSuccess("Emergency stop resumed. Operations returned to normal mode.");
+                    await loadData();
+                  }}
+                >
+                  Resume All Agent Operations
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="w-full text-xs"
+                  onClick={() => setShowEmergencyStopModal(true)}
+                >
+                  Trigger Emergency Stop
+                </Button>
+              )}
+            </Card>
+          </div>
         </div>
       )}
 

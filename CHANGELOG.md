@@ -1,3 +1,37 @@
+## [Unreleased - Epic 22G] - 2026-11-17
+
+### Added
+- **Epic 22G — Enterprise Governance Console & Unified Operations:**
+  - **Unified Information Architecture & Operations Cockpit (`AgentGovernancePage.tsx`):**
+    - Implemented a unified 10-section operational architecture: Overview, Agent Directory, Policies & Rules, Human Approvals, Security Operations, Compliance & Audit, Risk & Trust, Unified Activity, Action Center, Governance Reports, and Settings.
+    - Deep-linkable tabs with URL search parameter synchronization (`?tab=...`) and seamless browser navigation history.
+  - **10 Core Operational KPIs:**
+    - Live aggregation computed from underlying database records without fictional data: `totalGovernedAgents`, `activeAgents`, `suspendedAgents`, `pendingApprovals`, `highAndCriticalRisks`, `openSecurityIncidents`, `auditIntegrityStatus`, `complianceControlsRequiringReview`, `openRiskMitigations`, and `expiringExceptions`.
+    - Activity trends (7-day volume breakdown across policies, tools, security events, and approvals).
+    - Risk tier distribution, security posture, and compliance coverage visual summaries.
+  - **Prioritized Action Center (`/console/actions`):**
+    - Real-time operator work queue prioritized by severity (`CRITICAL` > `HIGH` > `MEDIUM` > `LOW`).
+    - Consolidates pending human approvals, critical unmitigated risks, unresolved security incidents, pending mitigation verifications, review-due compliance controls, and expiring exceptions (< 14 days).
+    - Dynamic work queue: resolved items automatically disappear, preventing stale alerts.
+    - Direct "Take Action" navigation buttons jumping straight into the appropriate operational tab.
+  - **Agent Governance Directory & Deep Inspection Drawer (`/console/directory`):**
+    - Searchable, paginated agent catalog with workspace, status, risk tier, and trust tier filtering.
+    - Merges agent identity, ownership accountability, profile cadence, effective security sandbox, trust score, and residual risk.
+    - Interactive slide-over drawer enabling instant suspension, reactivation, capability configuration, and risk exception requests.
+  - **Unified Activity Timeline (`/console/activity`):**
+    - Chronologically correlated cross-domain audit trail across executions, tools, policies, approvals, security events, and compliance logs.
+    - Deep recursive secret redaction via `redactObject` on all metadata payloads.
+    - Multi-faceted filtering (domain, severity, outcome, date range, correlation ID) and bounded pagination.
+  - **Governance Reporting & Audited Exports (`/console/reports` & `/console/reports/export`):**
+    - Executive summaries, security posture audits, compliance reports, and risk assessments.
+    - Audited exports supporting JSON and standard RFC 4180 CSV formats with real browser file downloads.
+    - Automatic compliance ledger audit logging (`agent.governance.report.generated`) upon report export.
+  - **Backend Consolidation Engine (`governance-console.types.ts`, `agent-governance-console.repository.ts`, `agent-governance-console.service.ts`):**
+    - 7 authenticated REST API endpoints mounted under `/api/v1/organizations/:organizationId/agent-governance/console/`.
+    - Zero new database tables required; 100% powered by existing migrations 0001 through 0036.
+  - **Architecture Decision Records:** Added ADR-022-19, ADR-022-20, and ADR-022-21 in `docs/epic-22/EPIC-22-ARCHITECTURE-DECISIONS.md`.
+  - **Automated Test Coverage:** 22 dedicated test cases passing in `apps/api/tests/epic22g-unified-console.test.ts` (100% passing), 141 tests passing across all Epic 22 suites.
+
 ## [Unreleased - Epic 22F] - 2026-11-17
 
 ### Added

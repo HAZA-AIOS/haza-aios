@@ -367,5 +367,67 @@ Implement fingerprinted anomaly detection and security override precedence:
 - Platform security boundaries remain inviolable regardless of agent trust scores.
 - Clear separation between advisory monitoring and active enforcement.
 
+---
+
+### ADR-022-19: Unified Governance Information Architecture & Real-Time Operational Aggregation
+
+**Status:** Approved  
+**Date:** 2026-11-17  
+**Context:**  
+Phases 22A through 22F introduced independent tables, services, and domain concepts across governance profiles, policy rules, approval requests, security sandboxing, compliance controls, and risk registers. Operators needed a unified operational console rather than fragmented siloed views, but creating redundant aggregation tables would introduce data desynchronization and unnecessary database writes.
+
+**Decision:**  
+Implement a 10-section Unified Information Architecture with minimal, high-efficiency real-time SQL aggregation endpoints:
+1. **Zero New Tables:** Build the console entirely on existing schema tables (migrations 0001 through 0036).
+2. **10 Core Operational KPIs:** Computed on-demand via parallel indexed count/aggregation queries, returning real metrics (`totalGovernedAgents`, `activeAgents`, `suspendedAgents`, `pendingApprovals`, `highAndCriticalRisks`, `openSecurityIncidents`, `auditIntegrityStatus`, `complianceControlsRequiringReview`, `openRiskMitigations`, `expiringExceptions`).
+3. **URL State Synchronization:** Provide deep-linkable URLs with URL search parameter synchronization (`?tab=...`), maintaining seamless browser back/forward navigation.
+
+**Consequences:**  
+- Single pane of glass for security officers, compliance auditors, and AI operations leads.
+- Zero data staleness or migration overhead.
+- High performance and immediate responsiveness across all metrics.
+
+---
+
+### ADR-022-20: Cross-Domain Audit Timeline Correlation & Deep Secret Redaction
+
+**Status:** Approved  
+**Date:** 2026-11-17  
+**Context:**  
+Investigations and compliance audits require tracing an agent's execution across security alerts, policy evaluations, approval requests, and compliance events in unified chronological order. Inspecting these events in a unified timeline risks exposing sensitive API keys, credentials, and tokens in browser clients.
+
+**Decision:**  
+Implement a correlated cross-domain activity stream with mandatory recursive redaction:
+1. **Multi-Domain Normalization:** Aggregate events from `agentComplianceEvents`, `agentSecurityEvents`, and `agentGovernanceAuditLogs` into a unified `UnifiedActivityItemDTO` format.
+2. **Strict Chronological Ordering:** Order events deterministically descending by timestamp with bounded pagination.
+3. **Deep Recursive Redaction:** Apply `redactObject` across all metadata payloads, masking API keys (`sk-...`), bearer tokens, passwords, and authorization headers before transmitting payloads to the UI or export endpoints.
+
+**Consequences:**  
+- Complete investigative visibility across diverse operational and security events.
+- Zero risk of credential or secret leakage to console operators.
+- Deterministic performance under high event volume.
+
+---
+
+### ADR-022-21: Prioritized Governance Action Center & Audited Report Exports
+
+**Status:** Approved  
+**Date:** 2026-11-17  
+**Context:**  
+Operators need an actionable queue of urgent operational tasks (pending approvals, critical unmitigated risks, unresolved security incidents, review-due controls, expiring exceptions) without manually searching through multiple tabs. Furthermore, external auditors require verifiable governance reports in standard interchangeable formats.
+
+**Decision:**  
+Implement a prioritized Action Center and audited report export engine:
+1. **Strict Severity Priority:** Sort queue items deterministically: `CRITICAL` > `HIGH` > `MEDIUM` > `LOW`.
+2. **Dynamic Work Queue:** Items disappear automatically once resolved (e.g. approval decided, mitigation verified), preventing stale actions.
+3. **Audited Report Exports:** Generate reports in JSON and RFC 4180 CSV formats, triggering browser file downloads.
+4. **Export Ledger Ingestion:** Automatically commit an immutable audit event (`agent.governance.report.generated`) to the compliance ledger whenever reports are generated or exported.
+
+**Consequences:**  
+- Eliminates operator oversight of critical security and approval gates.
+- Delivers one-click audit evidence packages for compliance frameworks (SOC 2, ISO 27001).
+- Enforces tamper-evident accountability for all exported governance telemetry.
+
+
 
 

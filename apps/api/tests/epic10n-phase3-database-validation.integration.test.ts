@@ -569,6 +569,7 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
         {
           academicYearId: fixture.year.id,
           billingPeriod: "2026-11",
+          issueDate: "2026-11-01",
           dueDate: "2026-11-15",
           feeStructureId: feeStructure.id,
         },
@@ -587,6 +588,7 @@ describeDatabase("Epic 10N Phase 3: Database Query Optimization, API Pre-Validat
         {
           academicYearId: fixture.year.id,
           billingPeriod: "2026-11",
+          issueDate: "2026-11-01",
           dueDate: "2026-11-15",
           feeStructureId: feeStructure.id,
         },

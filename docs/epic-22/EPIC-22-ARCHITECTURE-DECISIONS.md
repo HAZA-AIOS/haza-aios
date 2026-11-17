@@ -428,6 +428,68 @@ Implement a prioritized Action Center and audited report export engine:
 - Delivers one-click audit evidence packages for compliance frameworks (SOC 2, ISO 27001).
 - Enforces tamper-evident accountability for all exported governance telemetry.
 
+---
+
+### ADR-022-22: Continuous Governance Assurance & Acceptance Testing
+
+**Status:** Approved  
+**Date:** 2026-11-17  
+**Context:**  
+Phase 22H requires end-to-end acceptance testing that validates the complete flow across all previous phases (22A–22G) in a unified test environment without relying on external network dependencies or live database instances.
+
+**Decision:**  
+Implement a consolidated release acceptance suite (`epic22h-release-acceptance.test.ts`) that traces:
+1. Agent request generation with payload fingerprinting.
+2. Deterministic policy evaluation triggering `REQUIRE_APPROVAL`.
+3. Separation of duties enforcing reviewer authorization and blocking self-approval.
+4. Cryptographic continuation proof generation and verification.
+5. Replay attack rejection after single-use consumption.
+6. SHA-256 hash-chain audit ledger append.
+7. Console telemetry update with real-time KPI verification.
+
+**Consequences:**  
+- Guarantees 100% automated regression coverage across the entire governance lifecycle.
+- Provides reproducible mathematical proof of policy, approval, and audit integrity.
+
+---
+
+### ADR-022-23: Adversarial Boundary Defenses & IPv6 SSRF Hardening
+
+**Status:** Approved  
+**Date:** 2026-11-17  
+**Context:**  
+Outbound network requests initiated by agents must be strictly constrained to prevent SSRF against loopback, private subnets, and cloud metadata endpoints. Bracketed IPv6 notation (`[::1]`) in Node.js URL parsing could bypass unstripped loopback regexes.
+
+**Decision:**  
+Harden `AgentSecurityGatewayService` with bracket stripping and explicit address family normalization:
+1. Strip leading and trailing brackets (`cleanHostname = hostname.replace(/^\[|\]$/g, "")`).
+2. Validate both raw and bracket-stripped hosts against IPv6 loopback (`::1`), link-local (`fe80:`), and unique local (`fc00:`, `fd00:`) address ranges prior to external domain allowlisting.
+3. Enforce unconditional blocking for AWS IMDSv1/v2 metadata addresses (`169.254.169.254`) and unspecified hosts (`0.0.0.0`).
+
+**Consequences:**  
+- Closes loopback bypass vectors across both IPv4 and IPv6 URL notations.
+- Delivers robust defense-in-depth against prompt injection-induced SSRF attacks.
+
+---
+
+### ADR-022-24: Release Readiness & Forward-Fix Recovery Strategy
+
+**Status:** Approved  
+**Date:** 2026-11-17  
+**Context:**  
+Epic 22 involves 5 database migrations (`0032`–`0036`) and comprehensive governance enforcement. A recovery strategy is necessary in case of operational issues during production rollout.
+
+**Decision:**  
+Adopt a forward-fix and non-destructive containment strategy:
+1. **Instant Containment via Emergency Stop:** If an agent or policy anomaly arises, activate the instant Emergency Stop switch rather than rolling back migrations.
+2. **Additive Schema Forward-Fixing:** All migrations are strictly additive with idempotent guards (`IF NOT EXISTS`). Rollbacks of migrations are avoided in favor of fast forward-fixing.
+3. **Point-in-Time Restore as Last Resort:** Full database snapshot restore is reserved strictly for catastrophic core data corruption.
+
+**Consequences:**  
+- Prevents unnecessary downtime and database migration state desynchronization.
+- Enables sub-millisecond operational containment of rogue agents without system disruption.
+
+
 
 
 

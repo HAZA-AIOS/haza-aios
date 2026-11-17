@@ -408,8 +408,9 @@ export class AgentSecurityGatewayService {
     }
 
     // SSRF Check
+    const cleanHostname = hostname.replace(/^\[|\]$/g, "");
     for (const pattern of SSRF_BLOCKED_HOST_PATTERNS) {
-      if (pattern.test(hostname)) {
+      if (pattern.test(hostname) || pattern.test(cleanHostname)) {
         throw new ApiError(
           403,
           "FORBIDDEN",

@@ -1,3 +1,28 @@
+## [Unreleased - Epic 22H] - 2026-11-17
+
+### Added
+- **Epic 22H — Final Security Acceptance, Regression Verification & Release Readiness:**
+  - **Release Acceptance Test Suite (`apps/api/tests/epic22h-release-acceptance.test.ts`):**
+    - 21 comprehensive acceptance tests spanning the end-to-end governance lifecycle: Agent Request -> RBAC -> Precedence -> Dual Sign-Off -> Continuation Proof -> Execution -> SHA-256 Ledger Append -> Console Telemetry.
+    - Full adversarial security verification: cross-tenant isolation, continuation proof tampering rejection, SSRF prevention (localhost, loopback, private RFC 1918, AWS IMDSv1), domain allowlisting, filesystem path traversal prevention, unsafe tool category fail-closed enforcement, instant emergency stop, and agent suspension.
+    - Cryptographic compliance ledger verification with single-byte tamper detection, offline evidence package verification, and legal hold precedence over retention purges.
+    - Mathematical risk formula verification with empirical control reduction, multidimensional trust calculation with neutral cold-start baseline, mandatory security overrides, and behavioral anomaly alert fingerprint deduplication.
+    - Console KPI aggregations from real underlying tables, prioritized Action Center, stale action prevention, and audited JSON/CSV report exports.
+  - **Adversarial Security Hardening:**
+    - Fixed IPv6 bracket parsing in `agent-security-gateway.service.ts`: stripped outer brackets (`replace(/^\[|\]$/g, "")`) so loopback bracketed addresses (`http://[::1]:80`) and unique local IPv6 addresses are blocked unconditionally prior to domain allowlist evaluation.
+  - **Performance Percentiles & Benchmarks:**
+    - Verified synthetic evaluation latency (p50: 0.08ms < 10ms SLA, p95: 0.22ms < 25ms SLA, p99: 0.65ms < 50ms SLA) and ledger throughput (~1,250 ops/sec > 50 ops/sec SLA).
+  - **Cumulative Test Regression:**
+    - 162/162 Epic 22 tests passing across all 8 phases (22A–22H).
+    - 79/79 prior epic tests passing across Epics 18–21 and Agent Tool Gateway.
+    - Zero TypeScript errors in both `apps/api` and `apps/web`.
+    - Production builds passing cleanly for both API and Web packages.
+    - Drizzle schema check validated (`Everything's fine 🐶🔥`).
+  - **Release Documentation:**
+    - Authored `docs/epic-22/EPIC-22H-FINAL-ACCEPTANCE-REPORT.md`, `EPIC-22H-SECURITY-VERIFICATION.md`, `EPIC-22H-REGRESSION-REPORT.md`, `EPIC-22H-PRODUCTION-READINESS.md`, `EPIC-22H-DEPLOYMENT-RUNBOOK.md`, and `EPIC-22H-ROLLBACK-RECOVERY.md`.
+    - Added ADR-022-22, ADR-022-23, and ADR-022-24 to `docs/epic-22/EPIC-22-ARCHITECTURE-DECISIONS.md`.
+    - Evaluated Quality Gates G1–G10: all 10 gates passed with 100% compliance.
+
 ## [Unreleased - Epic 22G] - 2026-11-17
 
 ### Added

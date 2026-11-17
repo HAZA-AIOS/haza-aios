@@ -11,7 +11,7 @@
 In the event of an operational anomaly during or immediately following deployment, operators must adhere to the following recovery hierarchy:
 
 1. **Non-Destructive Containment (Preferred First Step):**  
-   If an agent or policy behaves unexpectedly, do **not** immediately rollback database migrations. Use the **Emergency Stop** switch in the Governance Console (or via API `POST /api/agents/governance/security/emergency-stop`) to immediately halt agent execution across the organization or workspace in under 1 millisecond.
+   If an agent or policy behaves unexpectedly, do **not** immediately rollback database migrations. Use the **Emergency Stop** switch in the Governance Console (or via API `POST /api/v1/organizations/:organizationId/agent-governance/security/emergency-stop`) to immediately halt agent execution across the organization or workspace in under 1 millisecond.
 2. **Forward-Fix Protocol (Preferred for Software Bugs):**  
    Because all Epic 22 migrations use additive, non-breaking schema patterns (`CREATE TABLE IF NOT EXISTS`, nullable foreign keys), software bugs in policy evaluation or API routing should be patched forward via a hotfix commit rather than rolling back database state.
 3. **Database Restore (Disaster Recovery Only):**  
@@ -29,13 +29,20 @@ To immediately suspend all autonomous agent executions without taking down the w
    - Enter incident rationale (e.g., "Investigating anomalous policy evaluation").
 2. **API Action (if Web Console unreachable):**
    ```bash
-   curl -X POST https://api.haza-aios.com/api/agents/governance/security/emergency-stop \
+   curl -X POST https://api.haza-aios.com/api/v1/organizations/{organizationId}/agent-governance/security/emergency-stop \
      -H "Authorization: Bearer <ADMIN_TOKEN>" \
      -H "Content-Type: application/json" \
-     -d '{"reason": "Emergency operational pause", "scope": "ORGANIZATION"}'
+     -d '{"reason": "Emergency operational pause", "workspaceId": "optional-workspace-id"}'
    ```
-3. **Effect:**
-   - `PolicyEvaluationEngine` and `AgentSecurityGatewayService` immediately return `503 Service Unavailable` for all agent actions.
+3. **Resume Procedure (Once Investigation Cleared):**
+   ```bash
+   curl -X POST https://api.haza-aios.com/api/v1/organizations/{organizationId}/agent-governance/security/emergency-resume \
+     -H "Authorization: Bearer <ADMIN_TOKEN>" \
+     -H "Content-Type: application/json" \
+     -d '{"reason": "Operational clearance verified"}'
+   ```
+4. **Effect:**
+   - `PolicyEvaluationEngine` and `AgentSecurityGatewayService` immediately reject agent actions with status `EMERGENCY_STOPPED`.
    - Core non-agent SIS functions (admissions, attendance, grading) remain completely unaffected.
 
 ---

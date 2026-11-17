@@ -4,8 +4,8 @@
 --         agent_risk_mitigations, agent_risk_exceptions, agent_risk_review_history
 
 CREATE TABLE IF NOT EXISTS `agent_risk_configurations` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
   `risk_scoring_model` varchar(60) NOT NULL DEFAULT 'INHERENT_LIKELIHOOD_IMPACT_V1',
   `low_threshold_max` int NOT NULL DEFAULT 5,
   `medium_threshold_max` int NOT NULL DEFAULT 11,
@@ -21,16 +21,16 @@ CREATE TABLE IF NOT EXISTS `agent_risk_configurations` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_arc_org` (`organization_id`),
   CONSTRAINT `fk_arc_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_risk_register` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `workspace_id` varchar(36) DEFAULT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `workspace_id` char(36) DEFAULT NULL,
   `risk_identifier` varchar(80) NOT NULL,
   `title` varchar(200) NOT NULL,
   `description` text,
-  `agent_id` varchar(36) DEFAULT NULL,
+  `agent_id` char(36) DEFAULT NULL,
   `risk_category` varchar(60) NOT NULL,
   `risk_source` varchar(80) NOT NULL DEFAULT 'MANUAL_ASSESSMENT',
   `likelihood` int NOT NULL DEFAULT 3,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS `agent_risk_register` (
   `existing_controls` json NOT NULL,
   `residual_score` int NOT NULL DEFAULT 9,
   `residual_tier` varchar(30) NOT NULL DEFAULT 'MEDIUM',
-  `owner_id` varchar(36) DEFAULT NULL,
+  `owner_id` char(36) DEFAULT NULL,
   `treatment_strategy` varchar(40) NOT NULL DEFAULT 'MITIGATE',
   `mitigation_status` varchar(40) NOT NULL DEFAULT 'IDENTIFIED',
   `review_frequency` varchar(40) NOT NULL DEFAULT 'QUARTERLY',
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS `agent_risk_register` (
   `linked_security_events` json NOT NULL,
   `linked_compliance_controls` json NOT NULL,
   `linked_evidence_ids` json NOT NULL,
-  `created_by` varchar(36) DEFAULT NULL,
+  `created_by` char(36) DEFAULT NULL,
   `created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
@@ -60,13 +60,13 @@ CREATE TABLE IF NOT EXISTS `agent_risk_register` (
   CONSTRAINT `fk_arr_agent` FOREIGN KEY (`agent_id`) REFERENCES `ai_agent_definitions` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_arr_owner` FOREIGN KEY (`owner_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_arr_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_risk_assessments` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `risk_id` varchar(36) NOT NULL,
-  `agent_id` varchar(36) DEFAULT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `risk_id` char(36) NOT NULL,
+  `agent_id` char(36) DEFAULT NULL,
   `assessment_version` varchar(32) NOT NULL DEFAULT 'v1.0.0',
   `scoring_model` varchar(60) NOT NULL DEFAULT 'INHERENT_LIKELIHOOD_IMPACT_V1',
   `likelihood` int NOT NULL,
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS `agent_risk_assessments` (
   `residual_tier` varchar(30) NOT NULL,
   `rationale` text,
   `calculation_inputs` json NOT NULL,
-  `assessed_by` varchar(36) DEFAULT NULL,
+  `assessed_by` char(36) DEFAULT NULL,
   `assessed_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   KEY `idx_ara_risk_assess` (`risk_id`, `assessed_at`),
@@ -87,13 +87,13 @@ CREATE TABLE IF NOT EXISTS `agent_risk_assessments` (
   CONSTRAINT `fk_ara_risk` FOREIGN KEY (`risk_id`) REFERENCES `agent_risk_register` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_ara_agent` FOREIGN KEY (`agent_id`) REFERENCES `ai_agent_definitions` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_ara_assessor` FOREIGN KEY (`assessed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_trust_profiles` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `workspace_id` varchar(36) DEFAULT NULL,
-  `agent_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `workspace_id` char(36) DEFAULT NULL,
+  `agent_id` char(36) NOT NULL,
   `trust_score` int NOT NULL DEFAULT 70,
   `trust_confidence` varchar(30) NOT NULL DEFAULT 'LOW',
   `trust_tier` varchar(30) NOT NULL DEFAULT 'NEUTRAL',
@@ -111,32 +111,32 @@ CREATE TABLE IF NOT EXISTS `agent_trust_profiles` (
   CONSTRAINT `fk_atp_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_atp_ws` FOREIGN KEY (`workspace_id`) REFERENCES `workspaces` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_atp_agent` FOREIGN KEY (`agent_id`) REFERENCES `ai_agent_definitions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_trust_assessment_history` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `agent_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `agent_id` char(36) NOT NULL,
   `trust_score` int NOT NULL,
   `trust_confidence` varchar(30) NOT NULL,
   `dimension_scores` json NOT NULL,
   `evidence_count` int NOT NULL,
   `is_insufficient_evidence` tinyint(1) NOT NULL,
   `evaluation_reason` varchar(120) NOT NULL DEFAULT 'PERIODIC_EVALUATION',
-  `evaluated_by` varchar(36) DEFAULT NULL,
+  `evaluated_by` char(36) DEFAULT NULL,
   `evaluated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   KEY `idx_atah_org_agent_eval` (`organization_id`, `agent_id`, `evaluated_at`),
   CONSTRAINT `fk_atah_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_atah_agent` FOREIGN KEY (`agent_id`) REFERENCES `ai_agent_definitions` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_atah_evaluator` FOREIGN KEY (`evaluated_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_behavioral_risk_alerts` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `workspace_id` varchar(36) DEFAULT NULL,
-  `agent_id` varchar(36) DEFAULT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `workspace_id` char(36) DEFAULT NULL,
+  `agent_id` char(36) DEFAULT NULL,
   `alert_identifier` varchar(120) NOT NULL,
   `detection_rule` varchar(80) NOT NULL,
   `severity` varchar(30) NOT NULL DEFAULT 'MEDIUM',
@@ -148,9 +148,9 @@ CREATE TABLE IF NOT EXISTS `agent_behavioral_risk_alerts` (
   `first_detected_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `last_detected_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `occurrence_count` int NOT NULL DEFAULT 1,
-  `acknowledged_by` varchar(36) DEFAULT NULL,
+  `acknowledged_by` char(36) DEFAULT NULL,
   `acknowledged_at` timestamp(3) NULL DEFAULT NULL,
-  `resolved_by` varchar(36) DEFAULT NULL,
+  `resolved_by` char(36) DEFAULT NULL,
   `resolved_at` timestamp(3) NULL DEFAULT NULL,
   `resolution_notes` text,
   PRIMARY KEY (`id`),
@@ -161,25 +161,25 @@ CREATE TABLE IF NOT EXISTS `agent_behavioral_risk_alerts` (
   CONSTRAINT `fk_abra_agent` FOREIGN KEY (`agent_id`) REFERENCES `ai_agent_definitions` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_abra_ack_user` FOREIGN KEY (`acknowledged_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_abra_res_user` FOREIGN KEY (`resolved_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_risk_mitigations` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `risk_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `risk_id` char(36) NOT NULL,
   `plan_identifier` varchar(80) NOT NULL,
   `title` varchar(200) NOT NULL,
   `description` text,
-  `owner_id` varchar(36) DEFAULT NULL,
+  `owner_id` char(36) DEFAULT NULL,
   `priority` varchar(30) NOT NULL DEFAULT 'MEDIUM',
   `target_date` timestamp(3) NULL DEFAULT NULL,
   `corrective_actions` json NOT NULL,
   `evidence_attachments` json NOT NULL,
   `status` varchar(40) NOT NULL DEFAULT 'OPEN',
-  `verified_by` varchar(36) DEFAULT NULL,
+  `verified_by` char(36) DEFAULT NULL,
   `verified_at` timestamp(3) NULL DEFAULT NULL,
   `verification_notes` text,
-  `created_by` varchar(36) DEFAULT NULL,
+  `created_by` char(36) DEFAULT NULL,
   `created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
@@ -190,27 +190,27 @@ CREATE TABLE IF NOT EXISTS `agent_risk_mitigations` (
   CONSTRAINT `fk_arm_owner` FOREIGN KEY (`owner_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_arm_verifier` FOREIGN KEY (`verified_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_arm_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_risk_exceptions` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `risk_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `risk_id` char(36) NOT NULL,
   `exception_identifier` varchar(80) NOT NULL,
   `title` varchar(200) NOT NULL,
   `justification` text NOT NULL,
   `scope_type` varchar(40) NOT NULL DEFAULT 'AGENT',
   `scope_target` varchar(180) NOT NULL,
   `status` varchar(40) NOT NULL DEFAULT 'REQUESTED',
-  `requested_by` varchar(36) NOT NULL,
+  `requested_by` char(36) NOT NULL,
   `requested_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  `approved_by` varchar(36) DEFAULT NULL,
+  `approved_by` char(36) DEFAULT NULL,
   `approved_at` timestamp(3) NULL DEFAULT NULL,
   `approval_notes` text,
   `effective_date` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `expiration_date` timestamp(3) NOT NULL,
   `compensating_controls` json NOT NULL,
-  `revoked_by` varchar(36) DEFAULT NULL,
+  `revoked_by` char(36) DEFAULT NULL,
   `revoked_at` timestamp(3) NULL DEFAULT NULL,
   `revocation_reason` text,
   PRIMARY KEY (`id`),
@@ -221,14 +221,14 @@ CREATE TABLE IF NOT EXISTS `agent_risk_exceptions` (
   CONSTRAINT `fk_are_requester` FOREIGN KEY (`requested_by`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_are_approver` FOREIGN KEY (`approved_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_are_revoker` FOREIGN KEY (`revoked_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_risk_review_history` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `risk_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `risk_id` char(36) NOT NULL,
   `review_type` varchar(50) NOT NULL DEFAULT 'PERIODIC_REVIEW',
-  `reviewed_by` varchar(36) NOT NULL,
+  `reviewed_by` char(36) NOT NULL,
   `previous_residual_score` int NOT NULL,
   `new_residual_score` int NOT NULL,
   `previous_status` varchar(40) NOT NULL,
@@ -240,5 +240,5 @@ CREATE TABLE IF NOT EXISTS `agent_risk_review_history` (
   CONSTRAINT `fk_arrh_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_arrh_risk` FOREIGN KEY (`risk_id`) REFERENCES `agent_risk_register` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_arrh_reviewer` FOREIGN KEY (`reviewed_by`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+);
 

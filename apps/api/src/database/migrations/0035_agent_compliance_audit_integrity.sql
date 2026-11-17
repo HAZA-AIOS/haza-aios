@@ -5,20 +5,20 @@
 --         agent_compliance_legal_holds, agent_compliance_investigations
 
 CREATE TABLE IF NOT EXISTS `agent_compliance_events` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `workspace_id` varchar(36) DEFAULT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `workspace_id` char(36) DEFAULT NULL,
   `event_category` varchar(60) NOT NULL,
   `event_type` varchar(80) NOT NULL,
   `event_timestamp` timestamp(3) NOT NULL,
   `ingestion_timestamp` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  `actor_id` varchar(36) DEFAULT NULL,
+  `actor_id` char(36) DEFAULT NULL,
   `actor_type` varchar(40) NOT NULL DEFAULT 'user',
-  `agent_id` varchar(36) DEFAULT NULL,
+  `agent_id` char(36) DEFAULT NULL,
   `execution_id` varchar(120) DEFAULT NULL,
-  `policy_id` varchar(36) DEFAULT NULL,
+  `policy_id` char(36) DEFAULT NULL,
   `policy_version` int DEFAULT NULL,
-  `approval_request_id` varchar(36) DEFAULT NULL,
+  `approval_request_id` char(36) DEFAULT NULL,
   `security_event_ref` varchar(120) DEFAULT NULL,
   `correlation_id` varchar(120) DEFAULT NULL,
   `trace_id` varchar(120) DEFAULT NULL,
@@ -36,12 +36,12 @@ CREATE TABLE IF NOT EXISTS `agent_compliance_events` (
   KEY `idx_ace_org_agent` (`organization_id`, `agent_id`),
   CONSTRAINT `fk_ace_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_ace_ws` FOREIGN KEY (`workspace_id`) REFERENCES `workspaces` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_audit_integrity_chains` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `event_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `event_id` char(36) NOT NULL,
   `sequence_number` bigint NOT NULL,
   `previous_event_hash` char(64) NOT NULL,
   `payload_hash` char(64) NOT NULL,
@@ -55,11 +55,11 @@ CREATE TABLE IF NOT EXISTS `agent_audit_integrity_chains` (
   KEY `idx_aaic_org_hash` (`organization_id`, `current_event_hash`),
   CONSTRAINT `fk_aaic_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_aaic_event` FOREIGN KEY (`event_id`) REFERENCES `agent_compliance_events` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_compliance_frameworks` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
   `framework_key` varchar(64) NOT NULL,
   `name` varchar(160) NOT NULL,
   `version` varchar(40) NOT NULL,
@@ -70,23 +70,23 @@ CREATE TABLE IF NOT EXISTS `agent_compliance_frameworks` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_acf_org_key` (`organization_id`, `framework_key`),
   CONSTRAINT `fk_acf_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_compliance_controls` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `framework_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `framework_id` char(36) NOT NULL,
   `control_key` varchar(64) NOT NULL,
   `title` varchar(200) NOT NULL,
   `description` text DEFAULT NULL,
   `category` varchar(80) NOT NULL,
   `implementation_status` varchar(40) NOT NULL DEFAULT 'NOT_IMPLEMENTED',
-  `owner_id` varchar(36) DEFAULT NULL,
+  `owner_id` char(36) DEFAULT NULL,
   `review_frequency_days` int NOT NULL DEFAULT 90,
   `last_reviewed_at` timestamp(3) NULL DEFAULT NULL,
   `next_review_due_at` timestamp(3) NULL DEFAULT NULL,
   `verified_at` timestamp(3) NULL DEFAULT NULL,
-  `verified_by` varchar(36) DEFAULT NULL,
+  `verified_by` char(36) DEFAULT NULL,
   `exceptions` text DEFAULT NULL,
   `metadata` json NOT NULL,
   `created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -98,12 +98,12 @@ CREATE TABLE IF NOT EXISTS `agent_compliance_controls` (
   CONSTRAINT `fk_acc_fw` FOREIGN KEY (`framework_id`) REFERENCES `agent_compliance_frameworks` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_acc_owner` FOREIGN KEY (`owner_id`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_acc_verifier` FOREIGN KEY (`verified_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_compliance_control_mappings` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `control_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `control_id` char(36) NOT NULL,
   `target_type` varchar(60) NOT NULL,
   `target_key` varchar(120) NOT NULL,
   `notes` text DEFAULT NULL,
@@ -112,12 +112,12 @@ CREATE TABLE IF NOT EXISTS `agent_compliance_control_mappings` (
   UNIQUE KEY `idx_accm_ctrl_target` (`control_id`, `target_type`, `target_key`),
   CONSTRAINT `fk_accm_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_accm_ctrl` FOREIGN KEY (`control_id`) REFERENCES `agent_compliance_controls` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_compliance_evidence` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `workspace_id` varchar(36) DEFAULT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `workspace_id` char(36) DEFAULT NULL,
   `title` varchar(200) NOT NULL,
   `evidence_type` varchar(60) NOT NULL,
   `source` varchar(120) NOT NULL,
@@ -127,9 +127,9 @@ CREATE TABLE IF NOT EXISTS `agent_compliance_evidence` (
   `storage_reference` varchar(255) DEFAULT NULL,
   `structured_payload` json NOT NULL,
   `verification_status` varchar(40) NOT NULL DEFAULT 'VALID',
-  `retention_policy_id` varchar(36) DEFAULT NULL,
+  `retention_policy_id` char(36) DEFAULT NULL,
   `is_under_legal_hold` boolean NOT NULL DEFAULT FALSE,
-  `collected_by` varchar(36) DEFAULT NULL,
+  `collected_by` char(36) DEFAULT NULL,
   `collected_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `access_count` int NOT NULL DEFAULT 0,
   `last_accessed_at` timestamp(3) NULL DEFAULT NULL,
@@ -141,12 +141,12 @@ CREATE TABLE IF NOT EXISTS `agent_compliance_evidence` (
   CONSTRAINT `fk_acev_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_acev_ws` FOREIGN KEY (`workspace_id`) REFERENCES `workspaces` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_acev_user` FOREIGN KEY (`collected_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_compliance_evidence_packages` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
-  `workspace_id` varchar(36) DEFAULT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
+  `workspace_id` char(36) DEFAULT NULL,
   `package_identifier` varchar(120) NOT NULL,
   `manifest_checksum` char(64) NOT NULL,
   `hash_algorithm` varchar(32) NOT NULL DEFAULT 'SHA-256',
@@ -155,35 +155,35 @@ CREATE TABLE IF NOT EXISTS `agent_compliance_evidence_packages` (
   `manifest_payload` json NOT NULL,
   `redaction_level` varchar(40) NOT NULL DEFAULT 'DEEP_SECRET_SCRUBBED',
   `status` varchar(40) NOT NULL DEFAULT 'GENERATED',
-  `exported_by` varchar(36) NOT NULL,
+  `exported_by` char(36) NOT NULL,
   `exported_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_acep_org_pkg` (`organization_id`, `package_identifier`),
   CONSTRAINT `fk_acep_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_acep_ws` FOREIGN KEY (`workspace_id`) REFERENCES `workspaces` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_acep_user` FOREIGN KEY (`exported_by`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_compliance_retention_policies` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
   `record_category` varchar(60) NOT NULL,
   `retention_duration_days` int NOT NULL DEFAULT 365,
   `effective_from` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `disposal_action` varchar(40) NOT NULL DEFAULT 'ARCHIVE',
   `status` varchar(40) NOT NULL DEFAULT 'ACTIVE',
-  `created_by` varchar(36) DEFAULT NULL,
+  `created_by` char(36) DEFAULT NULL,
   `created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updated_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_acrp_org_cat` (`organization_id`, `record_category`),
   CONSTRAINT `fk_acrp_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_acrp_user` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_compliance_legal_holds` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
   `hold_identifier` varchar(120) NOT NULL,
   `name` varchar(180) NOT NULL,
   `description` text DEFAULT NULL,
@@ -191,8 +191,8 @@ CREATE TABLE IF NOT EXISTS `agent_compliance_legal_holds` (
   `scope_type` varchar(40) NOT NULL DEFAULT 'ALL',
   `scope_criteria` json NOT NULL,
   `status` varchar(40) NOT NULL DEFAULT 'ACTIVE',
-  `created_by` varchar(36) NOT NULL,
-  `released_by` varchar(36) DEFAULT NULL,
+  `created_by` char(36) NOT NULL,
+  `released_by` char(36) DEFAULT NULL,
   `released_at` timestamp(3) NULL DEFAULT NULL,
   `release_justification` text DEFAULT NULL,
   `created_at` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -203,15 +203,15 @@ CREATE TABLE IF NOT EXISTS `agent_compliance_legal_holds` (
   CONSTRAINT `fk_aclh_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_aclh_creator` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_aclh_releaser` FOREIGN KEY (`released_by`) REFERENCES `users` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS `agent_compliance_investigations` (
-  `id` varchar(36) NOT NULL,
-  `organization_id` varchar(36) NOT NULL,
+  `id` char(36) NOT NULL,
+  `organization_id` char(36) NOT NULL,
   `case_number` varchar(80) NOT NULL,
   `title` varchar(200) NOT NULL,
   `description` text DEFAULT NULL,
-  `investigator_id` varchar(36) NOT NULL,
+  `investigator_id` char(36) NOT NULL,
   `status` varchar(40) NOT NULL DEFAULT 'OPEN',
   `search_filters` json NOT NULL,
   `findings` text DEFAULT NULL,
@@ -223,4 +223,4 @@ CREATE TABLE IF NOT EXISTS `agent_compliance_investigations` (
   KEY `idx_acin_org_status` (`organization_id`, `status`),
   CONSTRAINT `fk_acin_org` FOREIGN KEY (`organization_id`) REFERENCES `organizations` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_acin_user` FOREIGN KEY (`investigator_id`) REFERENCES `users` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+);

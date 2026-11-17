@@ -10,9 +10,9 @@
 
 Before triggering production rollout or merging PR:
 - [ ] Confirm `feature/epic-22-agent-governance-security` has clean working tree and zero uncommitted files.
-- [ ] Verify GitHub Actions CI status on PR is green (Build, Typecheck, Test).
+- [ ] Verify GitHub Actions CI status on PR is green (Build, Typecheck, Test, Migrations).
 - [ ] Perform a full pre-flight backup of the production MySQL database on Railway.
-- [ ] Verify production environment variables (specifically `AGENT_SECURITY_HMAC_SECRET`).
+- [ ] Verify production environment variables: Set `AGENT_SECURITY_HMAC_SECRET` (minimum 32 characters, high entropy) on Railway `api` and `worker` services.
 
 ---
 
@@ -32,9 +32,12 @@ Run the standard production migration command:
 ```bash
 npm run db:migrate -w apps/api
 ```
-*Note: This command invokes Drizzle's official migration runner against the production database, applying migrations `0032_epic22a_governance_foundation.sql` through `0036_epic22f_risk_trust.sql` sequentially.*
+*Note: This command invokes Drizzle's official migration runner against the production database, applying migrations `0032_agent_governance_foundation.sql` through `0036_agent_risk_trust_management.sql` sequentially.*
 
-### Step 3: Monitor Automated Railway Deployments
+### Step 3: Configure Environment Variables
+Ensure `AGENT_SECURITY_HMAC_SECRET` is defined on Railway `api` and `worker` production services prior to service restart.
+
+### Step 4: Monitor Automated Railway Deployments
 1. Monitor `api` deployment logs until service reports healthy.
 2. Monitor `web` deployment logs until static bundle is served.
 3. Monitor `worker` service restart and message bus subscription.
@@ -45,9 +48,14 @@ npm run db:migrate -w apps/api
 
 Execute the following smoke verification tests against the live production environment:
 
-1. **System Health Check:**
+1. **System Health & Readiness Checks:**
    ```bash
-   curl -f https://api.haza-aios.com/health
+   curl -f https://api.haza-aios.com/api/v1/health
+   curl -f https://api.haza-aios.com/api/v1/readiness
+   ```
+2. **Web Frontend Availability:**
+   ```bash
+   curl -I https://web-production-76faf.up.railway.app
    ```
 2. **Governance Console Telemetry:**
    Log into the web application at `https://app.haza-aios.com/agents/governance` and confirm:

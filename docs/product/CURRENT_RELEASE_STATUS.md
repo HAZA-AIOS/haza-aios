@@ -43,8 +43,9 @@ The Epic 21 production release report records successful API/Web health checks, 
 - Regression tests: **79/79 passing tests** across Epics 18–21 and Agent Tool Gateway.
 - Quality Gates: **10/10 gates PASSED** (G1 through G10).
 - Builds & Typecheck: API and Web TypeScript typecheck (0 errors) and production builds (Clean).
-- Database migrations: Continuous sequence `0032_epic22a_governance_foundation.sql` through `0036_epic22f_risk_trust.sql` synchronized with Drizzle schema (`Everything's fine 🐶🔥`).
-- Scope boundary adherence: Zero production deployments, zero database mutations, zero tag creation. Production deployment strictly deferred pending release authorization.
+- Database migrations: Continuous sequence `0032_agent_governance_foundation.sql` through `0036_agent_risk_trust_management.sql` synchronized with Drizzle schema (`Everything's fine 🐶🔥`).
+- Isolated upgrade & recovery rehearsal: **PASSED** (10/10 steps complete; 28 tables verified, repeat-run idempotency passed with 0 errors, disaster recovery dump and restore matched 159 tables and 457 foreign keys, test schemas cleanly dropped).
+- Scope boundary adherence: Zero production deployments, zero database mutations, zero tag creation. Production deployment strictly deferred pending explicit user authorization.
 
 ## Epic 21 evidence and release summary
 

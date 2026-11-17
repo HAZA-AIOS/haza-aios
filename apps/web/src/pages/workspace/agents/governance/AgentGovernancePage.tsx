@@ -47,6 +47,16 @@ import {
   type WebLegalHold,
   type WebComplianceInvestigation,
   type WebInvestigationTimeline,
+  type WebRiskOverview,
+  type WebRiskConfiguration,
+  type WebRiskRegisterItem,
+  type WebRiskAssessmentResult,
+  type WebAgentTrustProfile,
+  type WebBehavioralRiskAlert,
+  type WebRiskMitigationPlan,
+  type WebRiskException,
+  type WebRiskMatrixCell,
+  type WebRiskGovernanceRecommendation,
 } from "../../../../agents/governance-service";
 
 type ActiveTab =
@@ -57,6 +67,7 @@ type ActiveTab =
   | "approvals"
   | "security"
   | "compliance"
+  | "risk"
   | "profiles"
   | "ownership"
   | "audit";
@@ -148,6 +159,52 @@ export function AgentGovernancePage() {
   const [showExportPackageModal, setShowExportPackageModal] = React.useState(false);
   const [selectedEvidenceForExport, setSelectedEvidenceForExport] = React.useState<string[]>([]);
 
+  // Risk & Trust State (Phase 22F)
+  const [riskOverview, setRiskOverview] = React.useState<WebRiskOverview | null>(null);
+  const [riskConfig, setRiskConfig] = React.useState<WebRiskConfiguration | null>(null);
+  const [riskRegisterItems, setRiskRegisterItems] = React.useState<WebRiskRegisterItem[]>([]);
+  const [riskMatrix, setRiskMatrix] = React.useState<WebRiskMatrixCell[]>([]);
+  const [trustProfiles, setTrustProfiles] = React.useState<WebAgentTrustProfile[]>([]);
+  const [behavioralAlerts, setBehavioralAlerts] = React.useState<WebBehavioralRiskAlert[]>([]);
+  const [riskMitigations, setRiskMitigations] = React.useState<WebRiskMitigationPlan[]>([]);
+  const [riskExceptions, setRiskExceptions] = React.useState<WebRiskException[]>([]);
+  const [riskSubTab, setRiskSubTab] = React.useState<
+    "overview" | "register" | "matrix" | "trust" | "alerts" | "mitigations" | "exceptions" | "reports"
+  >("overview");
+
+  // Risk Modals & Form State
+  const [showCreateRiskModal, setShowCreateRiskModal] = React.useState(false);
+  const [newRiskTitle, setNewRiskTitle] = React.useState("");
+  const [newRiskCategory, setNewRiskCategory] = React.useState("SECURITY");
+  const [newRiskLikelihood, setNewRiskLikelihood] = React.useState(3);
+  const [newRiskImpact, setNewRiskImpact] = React.useState(3);
+  const [newRiskAgentId, setNewRiskAgentId] = React.useState("");
+  const [newRiskDesc, setNewRiskDesc] = React.useState("");
+
+  const [showAssessRiskModal, setShowAssessRiskModal] = React.useState(false);
+  const [selectedRiskForAssess, setSelectedRiskForAssess] = React.useState<WebRiskRegisterItem | null>(null);
+  const [assessLikelihood, setAssessLikelihood] = React.useState(3);
+  const [assessImpact, setAssessImpact] = React.useState(3);
+  const [assessControlName, setAssessControlName] = React.useState("");
+  const [assessControlEffectiveness, setAssessControlEffectiveness] = React.useState("EFFECTIVE");
+
+  const [showMitigationModal, setShowMitigationModal] = React.useState(false);
+  const [selectedRiskForMitigation, setSelectedRiskForMitigation] = React.useState<WebRiskRegisterItem | null>(null);
+  const [mitigationTitle, setMitigationTitle] = React.useState("");
+  const [mitigationPriority, setMitigationPriority] = React.useState("MEDIUM");
+  const [mitigationActionDesc, setMitigationActionDesc] = React.useState("");
+
+  const [showExceptionModal, setShowExceptionModal] = React.useState(false);
+  const [selectedRiskForException, setSelectedRiskForException] = React.useState<WebRiskRegisterItem | null>(null);
+  const [exceptionTitle, setExceptionTitle] = React.useState("");
+  const [exceptionJustification, setExceptionJustification] = React.useState("");
+  const [exceptionDurationDays, setExceptionDurationDays] = React.useState(30);
+
+  const [simulatingRisk, setSimulatingRisk] = React.useState(false);
+  const [riskSimAgentId, setRiskSimAgentId] = React.useState("");
+  const [riskSimExplicitDenial, setRiskSimExplicitDenial] = React.useState(false);
+  const [riskSimResult, setRiskSimResult] = React.useState<WebRiskGovernanceRecommendation | null>(null);
+
   // Dialog / Modal states
   const [showCreatePolicy, setShowCreatePolicy] = React.useState(false);
   const [selectedAgentForProfile, setSelectedAgentForProfile] = React.useState<string | null>(null);
@@ -218,6 +275,14 @@ export function AgentGovernancePage() {
         compPackagesData,
         compRetentionData,
         compInvestigationsData,
+        riskOverviewData,
+        riskConfigData,
+        risksData,
+        riskMatrixData,
+        trustProfilesData,
+        alertsData,
+        mitigationsData,
+        exceptionsData,
       ] = await Promise.allSettled([
         agentGovernanceService.getOverview(orgId),
         agentGovernanceService.listPolicies(orgId),
@@ -239,6 +304,14 @@ export function AgentGovernancePage() {
         agentGovernanceService.listEvidencePackages(orgId),
         agentGovernanceService.listRetentionPolicies(orgId),
         agentGovernanceService.listInvestigations(orgId),
+        agentGovernanceService.getRiskOverview(orgId),
+        agentGovernanceService.getRiskConfiguration(orgId),
+        agentGovernanceService.listRisks(orgId),
+        agentGovernanceService.getRiskMatrix(orgId),
+        agentGovernanceService.listTrustProfiles(orgId),
+        agentGovernanceService.listBehavioralAlerts(orgId),
+        agentGovernanceService.listMitigations(orgId),
+        agentGovernanceService.listExceptions(orgId),
       ]);
 
       if (overviewData.status === "fulfilled") setOverview(overviewData.value);
@@ -261,6 +334,14 @@ export function AgentGovernancePage() {
       if (compPackagesData.status === "fulfilled") setEvidencePackages(compPackagesData.value.items);
       if (compRetentionData.status === "fulfilled") setRetentionPolicies(compRetentionData.value.items);
       if (compInvestigationsData.status === "fulfilled") setInvestigations(compInvestigationsData.value.items);
+      if (riskOverviewData.status === "fulfilled") setRiskOverview(riskOverviewData.value);
+      if (riskConfigData.status === "fulfilled") setRiskConfig(riskConfigData.value);
+      if (risksData.status === "fulfilled") setRiskRegisterItems(risksData.value.items);
+      if (riskMatrixData.status === "fulfilled") setRiskMatrix(riskMatrixData.value.matrix);
+      if (trustProfilesData.status === "fulfilled") setTrustProfiles(trustProfilesData.value.items);
+      if (alertsData.status === "fulfilled") setBehavioralAlerts(alertsData.value.items);
+      if (mitigationsData.status === "fulfilled") setRiskMitigations(mitigationsData.value.items);
+      if (exceptionsData.status === "fulfilled") setRiskExceptions(exceptionsData.value.items);
     } catch (err: any) {
       setError(err?.message || "Failed to load governance telemetry");
     } finally {
@@ -744,6 +825,208 @@ export function AgentGovernancePage() {
     }
   };
 
+  // =========================================================================
+  // Risk & Trust Handlers (Phase 22F)
+  // =========================================================================
+
+  const handleCreateRiskSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRiskTitle) return;
+    try {
+      setError(null);
+      await agentGovernanceService.createRisk(orgId, {
+        title: newRiskTitle,
+        riskCategory: newRiskCategory,
+        likelihood: newRiskLikelihood,
+        impact: newRiskImpact,
+        agentId: newRiskAgentId || undefined,
+        description: newRiskDesc || undefined,
+      });
+      setShowCreateRiskModal(false);
+      setNewRiskTitle("");
+      setNewRiskDesc("");
+      setNewRiskAgentId("");
+      setActionSuccess("Risk recorded in enterprise registry");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to create risk");
+    }
+  };
+
+  const handleAssessRiskSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRiskForAssess) return;
+    try {
+      setError(null);
+      const controls = assessControlName
+        ? [{ id: "ctrl-1", name: assessControlName, effectiveness: assessControlEffectiveness }]
+        : [];
+      await agentGovernanceService.assessRisk(orgId, selectedRiskForAssess.id, {
+        likelihood: assessLikelihood,
+        impact: assessImpact,
+        controls,
+      });
+      setShowAssessRiskModal(false);
+      setSelectedRiskForAssess(null);
+      setAssessControlName("");
+      setActionSuccess("Risk re-assessed with deterministic residual score");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to assess risk");
+    }
+  };
+
+  const handleCreateMitigationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRiskForMitigation || !mitigationTitle) return;
+    try {
+      setError(null);
+      await agentGovernanceService.createMitigationPlan(orgId, {
+        riskId: selectedRiskForMitigation.id,
+        title: mitigationTitle,
+        priority: mitigationPriority,
+        correctiveActions: mitigationActionDesc
+          ? [{ actionId: "act-1", description: mitigationActionDesc, status: "PENDING" }]
+          : [],
+      });
+      setShowMitigationModal(false);
+      setSelectedRiskForMitigation(null);
+      setMitigationTitle("");
+      setMitigationActionDesc("");
+      setActionSuccess("Risk mitigation plan registered");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to create mitigation plan");
+    }
+  };
+
+  const handleVerifyMitigation = async (mitigationId: string) => {
+    const notes = prompt("Enter verification notes and rationale:");
+    if (!notes) return;
+    try {
+      setError(null);
+      await agentGovernanceService.verifyMitigationPlan(orgId, mitigationId, notes);
+      setActionSuccess("Mitigation plan verified by authorized reviewer");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to verify mitigation plan");
+    }
+  };
+
+  const handleRequestExceptionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRiskForException || !exceptionTitle || !exceptionJustification) return;
+    try {
+      setError(null);
+      const expirationDate = new Date(Date.now() + exceptionDurationDays * 24 * 60 * 60 * 1000).toISOString();
+      await agentGovernanceService.requestException(orgId, {
+        riskId: selectedRiskForException.id,
+        title: exceptionTitle,
+        justification: exceptionJustification,
+        scopeType: "AGENT",
+        scopeTarget: selectedRiskForException.agentId || "*",
+        expirationDate,
+      });
+      setShowExceptionModal(false);
+      setSelectedRiskForException(null);
+      setExceptionTitle("");
+      setExceptionJustification("");
+      setActionSuccess("Risk exception requested. Awaiting authorized approval.");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to request risk exception");
+    }
+  };
+
+  const handleApproveException = async (exceptionId: string) => {
+    const notes = prompt("Enter approval notes:") || "Approved by compliance reviewer";
+    try {
+      setError(null);
+      await agentGovernanceService.approveException(orgId, exceptionId, notes);
+      setActionSuccess("Risk exception approved");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to approve risk exception");
+    }
+  };
+
+  const handleRevokeException = async (exceptionId: string) => {
+    const reason = prompt("Enter revocation reason:");
+    if (!reason) return;
+    try {
+      setError(null);
+      await agentGovernanceService.revokeException(orgId, exceptionId, reason);
+      setActionSuccess("Risk exception revoked");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to revoke risk exception");
+    }
+  };
+
+  const handleAcknowledgeAlert = async (alertId: string) => {
+    try {
+      setError(null);
+      await agentGovernanceService.acknowledgeBehavioralAlert(orgId, alertId);
+      setActionSuccess("Behavioral risk alert acknowledged");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to acknowledge alert");
+    }
+  };
+
+  const handleResolveAlert = async (alertId: string) => {
+    const notes = prompt("Enter resolution notes:") || "Resolved by operator";
+    try {
+      setError(null);
+      await agentGovernanceService.resolveBehavioralAlert(orgId, alertId, notes);
+      setActionSuccess("Behavioral risk alert resolved");
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to resolve alert");
+    }
+  };
+
+  const handleEvaluateAgentTrust = async (agentId: string) => {
+    try {
+      setError(null);
+      await agentGovernanceService.evaluateAgentTrust(orgId, agentId);
+      setActionSuccess(`Trust profile re-evaluated for agent ${agentId}`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to evaluate agent trust");
+    }
+  };
+
+  const handleDetectBehavioralAlerts = async () => {
+    try {
+      setError(null);
+      const res = await agentGovernanceService.detectBehavioralAlerts(orgId);
+      setActionSuccess(`Behavioral detection completed: ${res.detected} alert(s) identified.`);
+      await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Failed to run behavioral detection");
+    }
+  };
+
+  const handleSimulateRiskGovernance = async () => {
+    if (!riskSimAgentId) {
+      setError("Please specify an Agent ID to simulate risk governance");
+      return;
+    }
+    try {
+      setError(null);
+      setSimulatingRisk(true);
+      const result = await agentGovernanceService.simulateRiskDecision(orgId, riskSimAgentId, {
+        explicitSecurityDenial: riskSimExplicitDenial,
+      });
+      setRiskSimResult(result);
+    } catch (err: any) {
+      setError(err?.message || "Failed to simulate risk decision");
+    } finally {
+      setSimulatingRisk(false);
+    }
+  };
+
   return (
     <div className="flex-1 space-y-6 p-8 pt-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -966,6 +1249,29 @@ export function AgentGovernancePage() {
           {complianceOverview && (
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-primary/20 text-primary border border-primary/30">
               {complianceOverview.frameworkCoveragePercent}%
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("risk")}
+          className={`pb-3 px-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${
+            activeTab === "risk"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <span>Risk & Trust</span>
+          {riskOverview && (
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                riskOverview.criticalCount > 0
+                  ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
+                  : riskOverview.highCount > 0
+                  ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                  : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+              }`}
+            >
+              {riskOverview.averageTrustScore}/100 Trust
             </span>
           )}
         </button>
@@ -2759,6 +3065,830 @@ export function AgentGovernancePage() {
                     </Button>
                   </div>
                 </div>
+              </Card>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Risk & Trust Management (Phase 22F) */}
+      {activeTab === "risk" && (
+        <div className="space-y-6">
+          {/* Sub-Navigation Pills */}
+          <div className="flex items-center gap-2 border-b border-border/40 pb-3 overflow-x-auto">
+            {[
+              { id: "overview", label: "Risk Overview & KPI" },
+              { id: "register", label: `Risk Register (${riskRegisterItems.length})` },
+              { id: "matrix", label: "Assessment Matrix (5x5)" },
+              { id: "trust", label: `Agent Trust Profiles (${trustProfiles.length})` },
+              { id: "alerts", label: `Behavioral Alerts (${behavioralAlerts.length})` },
+              { id: "mitigations", label: `Mitigation Plans (${riskMitigations.length})` },
+              { id: "exceptions", label: `Exceptions (${riskExceptions.length})` },
+              { id: "reports", label: "Reports & Simulation" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setRiskSubTab(tab.id as any)}
+                className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap ${
+                  riskSubTab === tab.id
+                    ? "bg-primary text-primary-foreground font-semibold shadow-sm"
+                    : "bg-card/60 text-muted-foreground hover:text-foreground border border-border/40"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Sub-Tab 1: Overview */}
+          {riskSubTab === "overview" && (
+            <div className="space-y-6">
+              <Card className="p-4 bg-muted/20 border-border/60 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-4">
+                  <div>
+                    <span className="text-muted-foreground">Scoring Model:</span>{" "}
+                    <span className="font-mono font-bold text-foreground">Likelihood (1-5) Ã— Impact (1-5)</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Enforcement:</span>{" "}
+                    <span className="font-mono font-bold text-amber-400">
+                      {riskOverview?.riskEnforcementEnabled ? "ENABLED" : "SIMULATION / MONITOR"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Behavioral Rules:</span>{" "}
+                    <span className="font-mono font-bold text-emerald-400">10 Active Patterns</span>
+                  </div>
+                </div>
+                <span className="text-[11px] font-mono text-muted-foreground">
+                  Precedence: Security &gt; RBAC &gt; Approval &gt; Risk Mode
+                </span>
+              </Card>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="p-4 bg-card border-border/80 space-y-1">
+                  <span className="text-xs text-muted-foreground">Total Registered Risks</span>
+                  <div className="text-2xl font-bold text-foreground">{riskOverview?.totalRisks ?? riskRegisterItems.length}</div>
+                  <div className="text-[11px] text-muted-foreground flex items-center gap-2 pt-1">
+                    <span className="text-emerald-400">{riskOverview?.lowCount ?? 0} Low</span> Â·
+                    <span className="text-amber-400">{riskOverview?.mediumCount ?? 0} Med</span> Â·
+                    <span className="text-orange-400">{riskOverview?.highCount ?? 0} High</span> Â·
+                    <span className="text-rose-400">{riskOverview?.criticalCount ?? 0} Crit</span>
+                  </div>
+                </Card>
+
+                <Card className="p-4 bg-card border-border/80 space-y-1">
+                  <span className="text-xs text-muted-foreground">Average Agent Trust Score</span>
+                  <div className="text-2xl font-bold text-primary">{riskOverview?.averageTrustScore ?? 70}/100</div>
+                  <div className="text-[11px] text-muted-foreground pt-1">
+                    Across {riskOverview?.totalAgentsEvaluated ?? trustProfiles.length} evaluated agents
+                  </div>
+                </Card>
+
+                <Card className="p-4 bg-card border-border/80 space-y-1">
+                  <span className="text-xs text-muted-foreground">Active Behavioral Alerts</span>
+                  <div className="text-2xl font-bold text-rose-400">{riskOverview?.activeAlertCount ?? behavioralAlerts.length}</div>
+                  <div className="text-[11px] text-muted-foreground pt-1">
+                    {riskOverview?.criticalAlertCount ?? 0} Critical alerts requiring review
+                  </div>
+                </Card>
+
+                <Card className="p-4 bg-card border-border/80 space-y-1">
+                  <span className="text-xs text-muted-foreground">Pending Mitigations & Exceptions</span>
+                  <div className="text-2xl font-bold text-amber-400">
+                    {(riskOverview?.pendingMitigationsCount ?? 0) + (riskOverview?.activeExceptionsCount ?? 0)}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground pt-1">
+                    {riskOverview?.pendingMitigationsCount ?? 0} mitigations Â· {riskOverview?.activeExceptionsCount ?? 0} exceptions
+                  </div>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          {/* Sub-Tab 2: Risk Register */}
+          {riskSubTab === "register" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  Enterprise risk registry mapping inherent risks, control effectiveness, and residual scores.
+                </span>
+                <Button size="sm" onClick={() => setShowCreateRiskModal(true)} className="bg-primary text-primary-foreground">
+                  + New Risk
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {riskRegisterItems.length === 0 ? (
+                  <div className="text-center py-12 border border-dashed border-border rounded-xl text-muted-foreground text-xs">
+                    No risks recorded in the register yet. Click &quot;+ New Risk&quot; to identify an agent risk.
+                  </div>
+                ) : (
+                  riskRegisterItems.map((r) => (
+                    <div key={r.id} className="p-4 rounded-xl border border-border/60 bg-muted/10 space-y-3 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-primary/20 text-primary border border-primary/30">
+                            {r.riskCategory}
+                          </span>
+                          <span className="font-bold text-foreground text-sm">{r.title}</span>
+                          <span className="text-muted-foreground font-mono text-[11px]">({r.riskIdentifier})</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                            r.residualTier === "CRITICAL"
+                              ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
+                              : r.residualTier === "HIGH"
+                              ? "bg-orange-500/20 text-orange-300 border-orange-500/30"
+                              : r.residualTier === "MEDIUM"
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                              : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                          }`}>
+                            Residual: {r.residualScore} ({r.residualTier})
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-muted/40 text-muted-foreground">
+                            {r.mitigationStatus}
+                          </span>
+                        </div>
+                      </div>
+
+                      {r.description && <p className="text-muted-foreground text-xs">{r.description}</p>}
+
+                      <div className="flex items-center justify-between border-t border-border/40 pt-2 text-[11px] text-muted-foreground font-mono">
+                        <div>
+                          Inherent: {r.inherentScore} (L:{r.likelihood} Ã— I:{r.impact}) Â· Agent: {r.agentId || "Global"} Â· Strategy: {r.treatmentStrategy}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedRiskForAssess(r);
+                              setAssessLikelihood(r.likelihood);
+                              setAssessImpact(r.impact);
+                              setShowAssessRiskModal(true);
+                            }}
+                          >
+                            Assess
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedRiskForMitigation(r);
+                              setMitigationTitle(`Mitigate ${r.riskIdentifier}`);
+                              setShowMitigationModal(true);
+                            }}
+                          >
+                            Mitigate
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedRiskForException(r);
+                              setExceptionTitle(`Exception for ${r.riskIdentifier}`);
+                              setShowExceptionModal(true);
+                            }}
+                          >
+                            Exception
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Sub-Tab 3: Assessment Matrix */}
+          {riskSubTab === "matrix" && (
+            <Card className="p-5 bg-card border-border/80 space-y-4">
+              <div>
+                <h3 className="font-semibold text-base text-foreground">5x5 Risk Assessment Matrix</h3>
+                <span className="text-xs text-muted-foreground">
+                  Deterministic visual distribution of inherent risks by Likelihood (Y-axis) vs Impact (X-axis).
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-center border-collapse text-xs">
+                  <thead>
+                    <tr>
+                      <th className="p-2 border border-border/40 bg-muted/20 font-mono text-[11px] text-muted-foreground">Likelihood \ Impact</th>
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <th key={i} className="p-2 border border-border/40 bg-muted/20 font-mono font-bold text-foreground">
+                          Impact {i}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[5, 4, 3, 2, 1].map((l) => (
+                      <tr key={l}>
+                        <td className="p-2 border border-border/40 bg-muted/20 font-mono font-bold text-foreground">
+                          Likelihood {l}
+                        </td>
+                        {[1, 2, 3, 4, 5].map((i) => {
+                          const score = l * i;
+                          const cell = riskMatrix.find((c) => c.likelihood === l && c.impact === i);
+                          const count = cell?.count ?? 0;
+                          const tierColor =
+                            score >= 20
+                              ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
+                              : score >= 12
+                              ? "bg-orange-500/20 text-orange-300 border-orange-500/30"
+                              : score >= 6
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                              : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
+
+                          return (
+                            <td key={i} className={`p-4 border border-border/40 font-mono ${tierColor}`}>
+                              <div className="text-sm font-bold">{count}</div>
+                              <div className="text-[10px] opacity-75">Score: {score}</div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+
+          {/* Sub-Tab 4: Agent Trust Profiles */}
+          {riskSubTab === "trust" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  Verifiable per-agent trust profiles synthesized across 7 operational dimensions.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {trustProfiles.length === 0 ? (
+                  <div className="col-span-2 text-center py-12 border border-dashed border-border rounded-xl text-muted-foreground text-xs">
+                    No agent trust profiles loaded.
+                  </div>
+                ) : (
+                  trustProfiles.map((p) => (
+                    <Card key={p.id} className="p-4 bg-card border-border/80 space-y-3 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-0.5">
+                          <span className="font-mono text-xs text-muted-foreground">Agent: {p.agentId}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl font-bold text-foreground">{p.trustScore}/100</span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-primary/20 text-primary border border-primary/30">
+                              {p.trustTier}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono text-muted-foreground border border-border/40">
+                              {p.trustConfidence} Conf
+                            </span>
+                          </div>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => handleEvaluateAgentTrust(p.agentId)}>
+                          Re-evaluate
+                        </Button>
+                      </div>
+
+                      {p.isInsufficientEvidence && (
+                        <div className="p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px]">
+                          âš ï¸  Insufficient operational evidence. Neutral baseline (70) assigned without penalizing.
+                        </div>
+                      )}
+
+                      <div className="space-y-1.5 pt-2 border-t border-border/40">
+                        {p.contributingFactors.slice(0, 4).map((f, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-[11px]">
+                            <span className="text-muted-foreground">{f.dimension}</span>
+                            <span className="font-mono font-bold text-foreground">{f.score}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Sub-Tab 5: Behavioral Alerts */}
+          {riskSubTab === "alerts" && (
+            <Card className="p-5 bg-card border-border/80 space-y-4">
+              <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                <div>
+                  <h3 className="font-semibold text-base text-foreground">Behavioral Anomaly & Risk Alerts</h3>
+                  <span className="text-xs text-muted-foreground">
+                    Real-time detection across 10 deterministic behavioral rules with deduplicated fingerprinting.
+                  </span>
+                </div>
+                <Button size="sm" onClick={handleDetectBehavioralAlerts} className="bg-primary text-primary-foreground">
+                  Run Detection Engine
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {behavioralAlerts.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground text-xs">
+                    No active behavioral alerts. Click &quot;Run Detection Engine&quot; to analyze telemetry.
+                  </div>
+                ) : (
+                  behavioralAlerts.map((alt) => (
+                    <div key={alt.id} className="p-4 rounded-xl border border-border/60 bg-muted/10 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                            alt.severity === "CRITICAL"
+                              ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
+                              : alt.severity === "HIGH"
+                              ? "bg-orange-500/20 text-orange-300 border-orange-500/30"
+                              : "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                          }`}>
+                            {alt.severity}
+                          </span>
+                          <span className="font-bold text-foreground">{alt.title}</span>
+                          <span className="font-mono text-muted-foreground text-[11px]">({alt.detectionRule})</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-muted/30 text-muted-foreground">
+                            Seen: {alt.occurrenceCount}x
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-primary/20 text-primary">
+                            {alt.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-muted-foreground text-xs">{alt.description}</p>
+
+                      <div className="flex items-center justify-between border-t border-border/40 pt-2 text-[11px] text-muted-foreground font-mono">
+                        <div>Agent: {alt.agentId || "Global"} Â· Last: {new Date(alt.lastDetectedAt).toLocaleTimeString()}</div>
+                        {alt.status === "ACTIVE" && (
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="outline" onClick={() => handleAcknowledgeAlert(alt.id)}>
+                              Acknowledge
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => handleResolveAlert(alt.id)}>
+                              Resolve
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+          )}
+
+          {/* Sub-Tab 6: Mitigation Plans */}
+          {riskSubTab === "mitigations" && (
+            <Card className="p-5 bg-card border-border/80 space-y-4">
+              <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                <div>
+                  <h3 className="font-semibold text-base text-foreground">Risk Mitigation Plans</h3>
+                  <span className="text-xs text-muted-foreground">
+                    Structured remediation workflows with corrective actions and mandatory reviewer verification.
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {riskMitigations.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground text-xs">
+                    No mitigation plans active. Select &quot;Mitigate&quot; on any risk in the Risk Register.
+                  </div>
+                ) : (
+                  riskMitigations.map((m) => (
+                    <div key={m.id} className="p-4 rounded-xl border border-border/60 bg-muted/10 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono bg-primary/20 text-primary border border-primary/30">
+                            {m.priority}
+                          </span>
+                          <span className="font-bold text-foreground text-sm">{m.title}</span>
+                          <span className="font-mono text-muted-foreground text-[11px]">({m.planIdentifier})</span>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono border ${
+                          m.status === "VERIFIED"
+                            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                            : "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                        }`}>
+                          {m.status}
+                        </span>
+                      </div>
+
+                      {m.description && <p className="text-muted-foreground text-xs">{m.description}</p>}
+
+                      <div className="flex items-center justify-between border-t border-border/40 pt-2 text-[11px] text-muted-foreground font-mono">
+                        <div>Actions: {m.correctiveActions.length} registered</div>
+                        {m.status !== "VERIFIED" && (
+                          <Button size="sm" variant="outline" onClick={() => handleVerifyMitigation(m.id)}>
+                            Verify Mitigation
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+          )}
+
+          {/* Sub-Tab 7: Exceptions */}
+          {riskSubTab === "exceptions" && (
+            <Card className="p-5 bg-card border-border/80 space-y-4">
+              <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                <div>
+                  <h3 className="font-semibold text-base text-foreground">Risk Acceptance & Exception Requests</h3>
+                  <span className="text-xs text-muted-foreground">
+                    Time-bounded exception waivers with mandatory review. Permanent exceptions are prohibited.
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {riskExceptions.length === 0 ? (
+                  <div className="text-center py-6 text-muted-foreground text-xs">
+                    No risk exceptions requested. Select &quot;Exception&quot; on any risk in the Risk Register.
+                  </div>
+                ) : (
+                  riskExceptions.map((exc) => (
+                    <div key={exc.id} className="p-4 rounded-xl border border-border/60 bg-muted/10 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-foreground text-sm">{exc.title}</span>
+                          <span className="font-mono text-muted-foreground text-[11px]">({exc.exceptionIdentifier})</span>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase font-mono border ${
+                          exc.status === "APPROVED"
+                            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                            : exc.status === "REVOKED"
+                            ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
+                            : "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                        }`}>
+                          {exc.status}
+                        </span>
+                      </div>
+
+                      <p className="text-muted-foreground text-xs">{exc.justification}</p>
+
+                      <div className="flex items-center justify-between border-t border-border/40 pt-2 text-[11px] text-muted-foreground font-mono">
+                        <div>Expires: {new Date(exc.expirationDate).toLocaleDateString()} Â· Scope: {exc.scopeTarget}</div>
+                        <div className="flex items-center gap-2">
+                          {exc.status === "REQUESTED" && (
+                            <Button size="sm" variant="outline" onClick={() => handleApproveException(exc.id)}>
+                              Approve Exception
+                            </Button>
+                          )}
+                          {exc.status === "APPROVED" && (
+                            <Button size="sm" variant="outline" onClick={() => handleRevokeException(exc.id)}>
+                              Revoke
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+          )}
+
+          {/* Sub-Tab 8: Reports & Simulation */}
+          {riskSubTab === "reports" && (
+            <div className="space-y-6">
+              <Card className="p-5 bg-card border-border/80 space-y-4">
+                <div>
+                  <h3 className="font-semibold text-base text-foreground">Risk-Based Governance Simulator</h3>
+                  <span className="text-xs text-muted-foreground">
+                    Evaluate simulated governance recommendations across risk tiers, trust levels, and security controls.
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1">Target Agent ID</label>
+                    <Input
+                      placeholder="e.g. agent-academic-1"
+                      value={riskSimAgentId}
+                      onChange={(e) => setRiskSimAgentId(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex items-center pt-6">
+                    <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={riskSimExplicitDenial}
+                        onChange={(e) => setRiskSimExplicitDenial(e.target.checked)}
+                        className="rounded border-border text-primary"
+                      />
+                      <span>Simulate Explicit Security Denial Override</span>
+                    </label>
+                  </div>
+                  <div className="pt-5">
+                    <Button
+                      size="sm"
+                      onClick={handleSimulateRiskGovernance}
+                      disabled={simulatingRisk}
+                      className="bg-primary text-primary-foreground font-semibold w-full"
+                    >
+                      {simulatingRisk ? "Simulating..." : "Simulate Governance Decision"}
+                    </Button>
+                  </div>
+                </div>
+
+                {riskSimResult && (
+                  <div className="p-4 rounded-xl border border-border/60 bg-muted/20 space-y-3 text-xs mt-4">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-foreground text-sm">Simulation Recommendation</span>
+                      <span className={`px-2.5 py-1 rounded text-xs font-bold uppercase font-mono border ${
+                        riskSimResult.recommendation === "SUSPEND"
+                          ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
+                          : riskSimResult.recommendation === "REQUIRE_APPROVAL"
+                          ? "bg-orange-500/20 text-orange-300 border-orange-500/30"
+                          : riskSimResult.recommendation === "MONITOR"
+                          ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
+                          : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                      }`}>
+                        {riskSimResult.recommendation}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px] text-muted-foreground border-y border-border/40 py-2">
+                      <div>Risk Tier: <span className="text-foreground font-bold">{riskSimResult.riskTier}</span></div>
+                      <div>Trust Score: <span className="text-foreground font-bold">{riskSimResult.trustScore}/100</span></div>
+                      <div>Active Alerts: <span className="text-foreground font-bold">{riskSimResult.activeAlertCount}</span></div>
+                      <div>Security Override: <span className="text-foreground font-bold">{riskSimResult.mandatorySecurityOverrideApplied ? "YES" : "NO"}</span></div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground font-semibold">Evaluation Rationale:</span>
+                      <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                        {riskSimResult.reasons.map((r, idx) => (
+                          <li key={idx}>{r}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
+
+          {/* Modal: New Risk */}
+          {showCreateRiskModal && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <Card className="max-w-md w-full p-6 bg-card border-border/80 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <h3 className="font-semibold text-base text-foreground">Register New Agent Risk</h3>
+                  <button onClick={() => setShowCreateRiskModal(false)} className="text-muted-foreground hover:text-foreground">
+                    âœ•
+                  </button>
+                </div>
+                <form onSubmit={handleCreateRiskSubmit} className="space-y-4 text-xs">
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Risk Title *</label>
+                    <Input
+                      placeholder="e.g. Unrestricted File System Access"
+                      value={newRiskTitle}
+                      onChange={(e) => setNewRiskTitle(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Risk Category</label>
+                    <select
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground"
+                      value={newRiskCategory}
+                      onChange={(e) => setNewRiskCategory(e.target.value)}
+                    >
+                      {["SECURITY", "PRIVACY", "COMPLIANCE", "OPERATIONAL", "FINANCIAL", "RELIABILITY", "AUTONOMY", "DATA_INTEGRITY", "THIRD_PARTY", "REPUTATIONAL"].map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-medium text-foreground mb-1">Likelihood (1-5)</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={5}
+                        value={newRiskLikelihood}
+                        onChange={(e) => setNewRiskLikelihood(Number(e.target.value))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-foreground mb-1">Impact (1-5)</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={5}
+                        value={newRiskImpact}
+                        onChange={(e) => setNewRiskImpact(Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Associated Agent ID (optional)</label>
+                    <Input
+                      placeholder="Leave blank for global risk"
+                      value={newRiskAgentId}
+                      onChange={(e) => setNewRiskAgentId(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Description</label>
+                    <textarea
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground min-h-[60px]"
+                      value={newRiskDesc}
+                      onChange={(e) => setNewRiskDesc(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowCreateRiskModal(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" size="sm" className="bg-primary text-primary-foreground font-semibold">
+                      Register Risk
+                    </Button>
+                  </div>
+                </form>
+              </Card>
+            </div>
+          )}
+
+          {/* Modal: Assess Risk */}
+          {showAssessRiskModal && selectedRiskForAssess && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <Card className="max-w-md w-full p-6 bg-card border-border/80 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <h3 className="font-semibold text-base text-foreground">Re-Assess Risk</h3>
+                  <button onClick={() => setShowAssessRiskModal(false)} className="text-muted-foreground hover:text-foreground">
+                    âœ•
+                  </button>
+                </div>
+                <form onSubmit={handleAssessRiskSubmit} className="space-y-4 text-xs">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-medium text-foreground mb-1">Likelihood (1-5)</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={5}
+                        value={assessLikelihood}
+                        onChange={(e) => setAssessLikelihood(Number(e.target.value))}
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium text-foreground mb-1">Impact (1-5)</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={5}
+                        value={assessImpact}
+                        onChange={(e) => setAssessImpact(Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Mitigating Control Name</label>
+                    <Input
+                      placeholder="e.g. Sandbox Tool Isolation Gate"
+                      value={assessControlName}
+                      onChange={(e) => setAssessControlName(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Control Effectiveness</label>
+                    <select
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground"
+                      value={assessControlEffectiveness}
+                      onChange={(e) => setAssessControlEffectiveness(e.target.value)}
+                    >
+                      <option value="EFFECTIVE">EFFECTIVE (40% reduction)</option>
+                      <option value="PARTIALLY_EFFECTIVE">PARTIALLY_EFFECTIVE (20% reduction)</option>
+                      <option value="INEFFECTIVE">INEFFECTIVE (0% reduction)</option>
+                    </select>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowAssessRiskModal(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" size="sm" className="bg-primary text-primary-foreground font-semibold">
+                      Compute & Save Assessment
+                    </Button>
+                  </div>
+                </form>
+              </Card>
+            </div>
+          )}
+
+          {/* Modal: Create Mitigation */}
+          {showMitigationModal && selectedRiskForMitigation && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <Card className="max-w-md w-full p-6 bg-card border-border/80 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <h3 className="font-semibold text-base text-foreground">Create Mitigation Plan</h3>
+                  <button onClick={() => setShowMitigationModal(false)} className="text-muted-foreground hover:text-foreground">
+                    âœ•
+                  </button>
+                </div>
+                <form onSubmit={handleCreateMitigationSubmit} className="space-y-4 text-xs">
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Plan Title *</label>
+                    <Input
+                      value={mitigationTitle}
+                      onChange={(e) => setMitigationTitle(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Priority</label>
+                    <select
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground"
+                      value={mitigationPriority}
+                      onChange={(e) => setMitigationPriority(e.target.value)}
+                    >
+                      <option value="LOW">LOW</option>
+                      <option value="MEDIUM">MEDIUM</option>
+                      <option value="HIGH">HIGH</option>
+                      <option value="CRITICAL">CRITICAL</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Corrective Action Item</label>
+                    <textarea
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground min-h-[60px]"
+                      placeholder="Action item details..."
+                      value={mitigationActionDesc}
+                      onChange={(e) => setMitigationActionDesc(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowMitigationModal(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" size="sm" className="bg-primary text-primary-foreground font-semibold">
+                      Register Plan
+                    </Button>
+                  </div>
+                </form>
+              </Card>
+            </div>
+          )}
+
+          {/* Modal: Request Exception */}
+          {showExceptionModal && selectedRiskForException && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <Card className="max-w-md w-full p-6 bg-card border-border/80 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-border/40 pb-3">
+                  <h3 className="font-semibold text-base text-foreground">Request Risk Exception</h3>
+                  <button onClick={() => setShowExceptionModal(false)} className="text-muted-foreground hover:text-foreground">
+                    âœ•
+                  </button>
+                </div>
+                <form onSubmit={handleRequestExceptionSubmit} className="space-y-4 text-xs">
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Exception Title *</label>
+                    <Input
+                      value={exceptionTitle}
+                      onChange={(e) => setExceptionTitle(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Justification *</label>
+                    <textarea
+                      className="w-full bg-background border border-border rounded-md px-3 py-2 text-xs text-foreground min-h-[60px]"
+                      placeholder="Operational rationale for temporary risk acceptance..."
+                      value={exceptionJustification}
+                      onChange={(e) => setExceptionJustification(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-foreground mb-1">Duration (days, mandatory expiration)</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={exceptionDurationDays}
+                      onChange={(e) => setExceptionDurationDays(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setShowExceptionModal(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" size="sm" className="bg-primary text-primary-foreground font-semibold">
+                      Request Exception
+                    </Button>
+                  </div>
+                </form>
               </Card>
             </div>
           )}

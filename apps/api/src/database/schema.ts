@@ -5133,6 +5133,379 @@ export const agentComplianceInvestigations = mysqlTable(
   ],
 );
 
+export const agentRiskConfigurations = mysqlTable(
+  "agent_risk_configurations",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    riskScoringModel: varchar("risk_scoring_model", { length: 60 })
+      .notNull()
+      .default("INHERENT_LIKELIHOOD_IMPACT_V1"),
+    lowThresholdMax: int("low_threshold_max").notNull().default(5),
+    mediumThresholdMax: int("medium_threshold_max").notNull().default(11),
+    highThresholdMax: int("high_threshold_max").notNull().default(19),
+    criticalThresholdMin: int("critical_threshold_min").notNull().default(20),
+    riskEnforcementEnabled: boolean("risk_enforcement_enabled").notNull().default(false),
+    riskEnforcementMode: varchar("risk_enforcement_mode", { length: 40 })
+      .notNull()
+      .default("MONITOR"),
+    trustEvaluationWindowDays: int("trust_evaluation_window_days").notNull().default(30),
+    minOperationsForConfidence: int("min_operations_for_confidence").notNull().default(5),
+    behavioralDetectionEnabled: boolean("behavioral_detection_enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_arc_org").on(table.organizationId),
+  ],
+);
+
+export const agentRiskRegister = mysqlTable(
+  "agent_risk_register",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    riskIdentifier: varchar("risk_identifier", { length: 80 }).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description"),
+    agentId: char("agent_id", { length: 36 }).references(() => aiAgentDefinitions.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    riskCategory: varchar("risk_category", { length: 60 }).notNull(),
+    riskSource: varchar("risk_source", { length: 80 }).notNull().default("MANUAL_ASSESSMENT"),
+    likelihood: int("likelihood").notNull().default(3),
+    impact: int("impact").notNull().default(3),
+    inherentScore: int("inherent_score").notNull().default(9),
+    inherentTier: varchar("inherent_tier", { length: 30 }).notNull().default("MEDIUM"),
+    existingControls: json("existing_controls")
+      .$type<Array<{ id: string; name: string; effectiveness: string; reductionFactor?: number }>>()
+      .notNull()
+      .default([]),
+    residualScore: int("residual_score").notNull().default(9),
+    residualTier: varchar("residual_tier", { length: 30 }).notNull().default("MEDIUM"),
+    ownerId: char("owner_id", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    treatmentStrategy: varchar("treatment_strategy", { length: 40 })
+      .notNull()
+      .default("MITIGATE"),
+    mitigationStatus: varchar("mitigation_status", { length: 40 })
+      .notNull()
+      .default("IDENTIFIED"),
+    reviewFrequency: varchar("review_frequency", { length: 40 })
+      .notNull()
+      .default("QUARTERLY"),
+    nextReviewDate: timestamp("next_review_date", { fsp: 3 }),
+    linkedSecurityEvents: json("linked_security_events")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    linkedComplianceControls: json("linked_compliance_controls")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    linkedEvidenceIds: json("linked_evidence_ids")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    createdBy: char("created_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_arr_org_identifier").on(table.organizationId, table.riskIdentifier),
+    index("idx_arr_org_agent").on(table.organizationId, table.agentId),
+    index("idx_arr_org_cat_tier").on(table.organizationId, table.riskCategory, table.residualTier),
+  ],
+);
+
+export const agentRiskAssessments = mysqlTable(
+  "agent_risk_assessments",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    riskId: char("risk_id", { length: 36 })
+      .notNull()
+      .references(() => agentRiskRegister.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: char("agent_id", { length: 36 }).references(() => aiAgentDefinitions.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    assessmentVersion: varchar("assessment_version", { length: 32 }).notNull().default("v1.0.0"),
+    scoringModel: varchar("scoring_model", { length: 60 })
+      .notNull()
+      .default("INHERENT_LIKELIHOOD_IMPACT_V1"),
+    likelihood: int("likelihood").notNull(),
+    impact: int("impact").notNull(),
+    inherentScore: int("inherent_score").notNull(),
+    inherentTier: varchar("inherent_tier", { length: 30 }).notNull(),
+    controlsEvaluated: json("controls_evaluated")
+      .$type<Array<Record<string, unknown>>>()
+      .notNull()
+      .default([]),
+    residualScore: int("residual_score").notNull(),
+    residualTier: varchar("residual_tier", { length: 30 }).notNull(),
+    rationale: text("rationale"),
+    calculationInputs: json("calculation_inputs")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    assessedBy: char("assessed_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    assessedAt: timestamp("assessed_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_ara_risk_assess").on(table.riskId, table.assessedAt),
+    index("idx_ara_org_agent").on(table.organizationId, table.agentId),
+  ],
+);
+
+export const agentTrustProfiles = mysqlTable(
+  "agent_trust_profiles",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    trustScore: int("trust_score").notNull().default(70),
+    trustConfidence: varchar("trust_confidence", { length: 30 }).notNull().default("LOW"),
+    trustTier: varchar("trust_tier", { length: 30 }).notNull().default("NEUTRAL"),
+    dimensionScores: json("dimension_scores")
+      .$type<Record<string, number>>()
+      .notNull()
+      .default({}),
+    evidenceCount: int("evidence_count").notNull().default(0),
+    isInsufficientEvidence: boolean("is_insufficient_evidence").notNull().default(true),
+    contributingFactors: json("contributing_factors")
+      .$type<Array<{ dimension: string; score: number; weight: number; explanation: string }>>()
+      .notNull()
+      .default([]),
+    modelVersion: varchar("model_version", { length: 32 }).notNull().default("v1.0.0"),
+    lastEvaluatedAt: timestamp("last_evaluated_at", { fsp: 3 }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("idx_atp_org_agent").on(table.organizationId, table.agentId),
+    index("idx_atp_org_score").on(table.organizationId, table.trustScore),
+  ],
+);
+
+export const agentTrustAssessmentHistory = mysqlTable(
+  "agent_trust_assessment_history",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    agentId: char("agent_id", { length: 36 })
+      .notNull()
+      .references(() => aiAgentDefinitions.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    trustScore: int("trust_score").notNull(),
+    trustConfidence: varchar("trust_confidence", { length: 30 }).notNull(),
+    dimensionScores: json("dimension_scores")
+      .$type<Record<string, number>>()
+      .notNull()
+      .default({}),
+    evidenceCount: int("evidence_count").notNull(),
+    isInsufficientEvidence: boolean("is_insufficient_evidence").notNull(),
+    evaluationReason: varchar("evaluation_reason", { length: 120 })
+      .notNull()
+      .default("PERIODIC_EVALUATION"),
+    evaluatedBy: char("evaluated_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    evaluatedAt: timestamp("evaluated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_atah_org_agent_eval").on(table.organizationId, table.agentId, table.evaluatedAt),
+  ],
+);
+
+export const agentBehavioralRiskAlerts = mysqlTable(
+  "agent_behavioral_risk_alerts",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    workspaceId: char("workspace_id", { length: 36 }).references(() => workspaces.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    agentId: char("agent_id", { length: 36 }).references(() => aiAgentDefinitions.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    alertIdentifier: varchar("alert_identifier", { length: 120 }).notNull(),
+    detectionRule: varchar("detection_rule", { length: 80 }).notNull(),
+    severity: varchar("severity", { length: 30 }).notNull().default("MEDIUM"),
+    status: varchar("status", { length: 40 }).notNull().default("ACTIVE"),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description").notNull(),
+    evidenceRefs: json("evidence_refs").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    fingerprint: varchar("fingerprint", { length: 128 }).notNull(),
+    firstDetectedAt: timestamp("first_detected_at", { fsp: 3 }).notNull().defaultNow(),
+    lastDetectedAt: timestamp("last_detected_at", { fsp: 3 }).notNull().defaultNow(),
+    occurrenceCount: int("occurrence_count").notNull().default(1),
+    acknowledgedBy: char("acknowledged_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    acknowledgedAt: timestamp("acknowledged_at", { fsp: 3 }),
+    resolvedBy: char("resolved_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    resolvedAt: timestamp("resolved_at", { fsp: 3 }),
+    resolutionNotes: text("resolution_notes"),
+  },
+  (table) => [
+    index("idx_abra_org_agent_stat").on(table.organizationId, table.agentId, table.status),
+    index("idx_abra_org_rule_fp").on(table.organizationId, table.detectionRule, table.fingerprint),
+  ],
+);
+
+export const agentRiskMitigations = mysqlTable(
+  "agent_risk_mitigations",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    riskId: char("risk_id", { length: 36 })
+      .notNull()
+      .references(() => agentRiskRegister.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    planIdentifier: varchar("plan_identifier", { length: 80 }).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    description: text("description"),
+    ownerId: char("owner_id", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    priority: varchar("priority", { length: 30 }).notNull().default("MEDIUM"),
+    targetDate: timestamp("target_date", { fsp: 3 }),
+    correctiveActions: json("corrective_actions")
+      .$type<Array<{ actionId: string; description: string; status: string; assignedTo?: string; completedAt?: string }>>()
+      .notNull()
+      .default([]),
+    evidenceAttachments: json("evidence_attachments").$type<string[]>().notNull().default([]),
+    status: varchar("status", { length: 40 }).notNull().default("OPEN"),
+    verifiedBy: char("verified_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    verifiedAt: timestamp("verified_at", { fsp: 3 }),
+    verificationNotes: text("verification_notes"),
+    createdBy: char("created_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    createdAt: timestamp("created_at", { fsp: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_arm_org_risk").on(table.organizationId, table.riskId),
+    index("idx_arm_org_status").on(table.organizationId, table.status),
+  ],
+);
+
+export const agentRiskExceptions = mysqlTable(
+  "agent_risk_exceptions",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    riskId: char("risk_id", { length: 36 })
+      .notNull()
+      .references(() => agentRiskRegister.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    exceptionIdentifier: varchar("exception_identifier", { length: 80 }).notNull(),
+    title: varchar("title", { length: 200 }).notNull(),
+    justification: text("justification").notNull(),
+    scopeType: varchar("scope_type", { length: 40 }).notNull().default("AGENT"),
+    scopeTarget: varchar("scope_target", { length: 180 }).notNull(),
+    status: varchar("status", { length: 40 }).notNull().default("REQUESTED"),
+    requestedBy: char("requested_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    requestedAt: timestamp("requested_at", { fsp: 3 }).notNull().defaultNow(),
+    approvedBy: char("approved_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    approvedAt: timestamp("approved_at", { fsp: 3 }),
+    approvalNotes: text("approval_notes"),
+    effectiveDate: timestamp("effective_date", { fsp: 3 }).notNull().defaultNow(),
+    expirationDate: timestamp("expiration_date", { fsp: 3 }).notNull(),
+    compensatingControls: json("compensating_controls")
+      .$type<Array<{ controlName: string; description: string; verified: boolean }>>()
+      .notNull()
+      .default([]),
+    revokedBy: char("revoked_by", { length: 36 }).references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    revokedAt: timestamp("revoked_at", { fsp: 3 }),
+    revocationReason: text("revocation_reason"),
+  },
+  (table) => [
+    index("idx_are_org_risk").on(table.organizationId, table.riskId),
+    index("idx_are_org_stat_exp").on(table.organizationId, table.status, table.expirationDate),
+  ],
+);
+
+export const agentRiskReviewHistory = mysqlTable(
+  "agent_risk_review_history",
+  {
+    id: char("id", { length: 36 }).primaryKey(),
+    organizationId: char("organization_id", { length: 36 })
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    riskId: char("risk_id", { length: 36 })
+      .notNull()
+      .references(() => agentRiskRegister.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    reviewType: varchar("review_type", { length: 50 }).notNull().default("PERIODIC_REVIEW"),
+    reviewedBy: char("reviewed_by", { length: 36 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    previousResidualScore: int("previous_residual_score").notNull(),
+    newResidualScore: int("new_residual_score").notNull(),
+    previousStatus: varchar("previous_status", { length: 40 }).notNull(),
+    newStatus: varchar("new_status", { length: 40 }).notNull(),
+    notes: text("notes").notNull(),
+    reviewedAt: timestamp("reviewed_at", { fsp: 3 }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("idx_arrh_org_risk").on(table.organizationId, table.riskId, table.reviewedAt),
+  ],
+);
+
 export const schema = {
   usageMeterEvents,
   saasPlans,
@@ -5280,6 +5653,15 @@ export const schema = {
   agentComplianceRetentionPolicies,
   agentComplianceLegalHolds,
   agentComplianceInvestigations,
+  agentRiskConfigurations,
+  agentRiskRegister,
+  agentRiskAssessments,
+  agentTrustProfiles,
+  agentTrustAssessmentHistory,
+  agentBehavioralRiskAlerts,
+  agentRiskMitigations,
+  agentRiskExceptions,
+  agentRiskReviewHistory,
   workspaces,
 };
 

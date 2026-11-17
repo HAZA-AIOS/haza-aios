@@ -1,3 +1,36 @@
+## [Unreleased - Epic 22F] - 2026-11-17
+
+### Added
+- **Epic 22F — Enterprise Agent Risk & Trust Management:**
+  - **Risk & Trust Schema & Persistence (Migration 0036 - `0036_agent_risk_trust_management.sql`):**
+    - Added 9 relational tables: `agent_risk_configurations`, `agent_risk_register`, `agent_risk_assessments`, `agent_trust_profiles`, `agent_trust_assessment_history`, `agent_behavioral_risk_alerts`, `agent_risk_mitigations`, `agent_risk_exceptions`, and `agent_risk_review_history`.
+    - Enforced tenant-isolated foreign keys, unique constraints, and composite indexes across all risk entities.
+  - **Deterministic Risk Assessment Engine (`risk-trust.types.ts` & `agent-risk.service.ts`):**
+    - Inherent risk calculation via deterministic $\text{Likelihood} \times \text{Impact} \in [1, 25]$ mapped to tiers (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
+    - Empirical control effectiveness gating: `EFFECTIVE` (40%), `PARTIALLY_EFFECTIVE` (20%), `INEFFECTIVE` (0%), capped at 85% total reduction ($\text{Residual Score} \ge 1$).
+    - Risk assessment versioning preserving historical calculations and assessor rationale.
+  - **Multidimensional Agent Trust Profile Engine (`agent-risk.service.ts`):**
+    - 7 operational trust dimensions: execution reliability (20%), policy adherence (20%), security incident history (20%), human approval outcomes (10%), tool execution safety (10%), compliance evidence quality (10%), and operational consistency (10%).
+    - Cold-start neutral baseline: agents with $< 5$ operations receive neutral baseline score (70/100) and `LOW` confidence.
+    - Deterministic confidence scaling ($<5 \implies \text{LOW}$, $5-19 \implies \text{MEDIUM}$, $\ge 20 \implies \text{HIGH}$).
+    - Zero paid AI token consumption: calculated entirely through operational telemetry aggregation.
+  - **Behavioral Anomaly Detection Engine (10 Rules):**
+    - Evaluates telemetry for repeated policy denials, excessive failed tool calls, repeated unauthorized access, sudden tool spikes, unusual external network destinations, approval rejections, privilege escalation, security control breaches, execution cost/runtime exceedance, and execution failure spikes.
+    - SHA-256 fingerprint deduplication: `SHA-256(orgId + agentId + rule + dateBucket)` increments occurrence count without alert flood.
+    - Acknowledge and resolve workflows with full audit notes.
+  - **Risk-Based Governance Integration & Safeguards:**
+    - Governance recommendations: `ALLOW`, `MONITOR`, `REQUIRE_APPROVAL`, `RESTRICT`, `SUSPEND`.
+    - Mandatory security precedence: explicit security denials immediately enforce `SUSPEND`, superseding trust scores or exceptions.
+    - Default-disabled enforcement mode: risk-based enforcement runs in simulation mode (`[SIMULATION MODE]`) until explicitly enabled.
+    - Self-approval prohibition on exceptions (`requestedBy !== approvedBy`) and mandatory future expiration dates.
+  - **29 Authenticated REST API Endpoints:** Mounted under `/api/v1/organizations/:organizationId/agent-governance/risk/`.
+  - **Governance Center UI — Risk & Trust Center (`AgentGovernancePage.tsx`):**
+    - New "Risk & Trust" tab in governance console with dynamic trust score pill.
+    - 8 sub-navigation views: Overview, Risk Register, 5x5 Matrix, Trust Profiles, Behavioral Alerts, Mitigations, Exceptions, and Reports.
+    - 4 interactive modals for New Risk, Re-Assessment, Mitigation Plan, and Exception Request.
+  - **Architecture Decision Records:** Added ADR-022-16, ADR-022-17, and ADR-022-18 in `docs/epic-22/EPIC-22-ARCHITECTURE-DECISIONS.md`.
+  - **Automated Test Coverage:** 25 dedicated test cases in `apps/api/tests/epic22f-risk-trust.test.ts` (100% passing), 183 regression tests passing across Epics 18–22.
+
 ## [Unreleased - Epic 22E] - 2026-11-06
 
 ### Added

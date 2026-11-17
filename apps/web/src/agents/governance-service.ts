@@ -1127,6 +1127,311 @@ export class AgentGovernanceService {
       },
     );
   }
+
+  // =========================================================================
+  // EPIC 22F: ENTERPRISE AGENT RISK & TRUST MANAGEMENT
+  // =========================================================================
+
+  async getRiskOverview(organizationId: string): Promise<WebRiskOverview> {
+    return await apiClient.request<WebRiskOverview>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/overview`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async getRiskConfiguration(organizationId: string): Promise<WebRiskConfiguration> {
+    return await apiClient.request<WebRiskConfiguration>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/configuration`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async updateRiskConfiguration(
+    organizationId: string,
+    data: Partial<WebRiskConfiguration>,
+  ): Promise<WebRiskConfiguration> {
+    return await apiClient.request<WebRiskConfiguration>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/configuration`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async listRisks(
+    organizationId: string,
+    filters?: { category?: string; residualTier?: string; agentId?: string; status?: string },
+  ): Promise<{ items: WebRiskRegisterItem[]; total: number }> {
+    const params = new URLSearchParams();
+    if (filters?.category) params.set("category", filters.category);
+    if (filters?.residualTier) params.set("residualTier", filters.residualTier);
+    if (filters?.agentId) params.set("agentId", filters.agentId);
+    if (filters?.status) params.set("status", filters.status);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ items: WebRiskRegisterItem[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/register${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async getRisk(organizationId: string, riskId: string): Promise<WebRiskRegisterItem> {
+    return await apiClient.request<WebRiskRegisterItem>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/register/${riskId}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async createRisk(organizationId: string, data: any): Promise<WebRiskRegisterItem> {
+    return await apiClient.request<WebRiskRegisterItem>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/register`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async updateRisk(organizationId: string, riskId: string, data: any): Promise<WebRiskRegisterItem> {
+    return await apiClient.request<WebRiskRegisterItem>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/register/${riskId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async deleteRisk(organizationId: string, riskId: string): Promise<{ success: boolean }> {
+    return await apiClient.request<{ success: boolean }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/register/${riskId}`,
+      {
+        method: "DELETE",
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async assessRisk(organizationId: string, riskId: string, input: any): Promise<WebRiskAssessmentResult> {
+    return await apiClient.request<WebRiskAssessmentResult>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/register/${riskId}/assessments`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async getRiskMatrix(organizationId: string): Promise<{ matrix: WebRiskMatrixCell[] }> {
+    return await apiClient.request<{ matrix: WebRiskMatrixCell[] }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/matrix`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async listTrustProfiles(
+    organizationId: string,
+    filters?: { tier?: string; confidence?: string },
+  ): Promise<{ items: WebAgentTrustProfile[]; total: number }> {
+    const params = new URLSearchParams();
+    if (filters?.tier) params.set("tier", filters.tier);
+    if (filters?.confidence) params.set("confidence", filters.confidence);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ items: WebAgentTrustProfile[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/trust-profiles${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async getTrustProfile(organizationId: string, agentId: string): Promise<WebAgentTrustProfile> {
+    return await apiClient.request<WebAgentTrustProfile>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/trust-profiles/${agentId}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async evaluateAgentTrust(organizationId: string, agentId: string): Promise<WebAgentTrustProfile> {
+    return await apiClient.request<WebAgentTrustProfile>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/trust-profiles/${agentId}/evaluate`,
+      {
+        method: "POST",
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async listBehavioralAlerts(
+    organizationId: string,
+    filters?: { agentId?: string; status?: string; severity?: string },
+  ): Promise<{ items: WebBehavioralRiskAlert[]; total: number }> {
+    const params = new URLSearchParams();
+    if (filters?.agentId) params.set("agentId", filters.agentId);
+    if (filters?.status) params.set("status", filters.status);
+    if (filters?.severity) params.set("severity", filters.severity);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ items: WebBehavioralRiskAlert[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/alerts${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async detectBehavioralAlerts(
+    organizationId: string,
+    agentId?: string,
+  ): Promise<{ items: WebBehavioralRiskAlert[]; detected: number }> {
+    return await apiClient.request<{ items: WebBehavioralRiskAlert[]; detected: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/alerts/detect`,
+      {
+        method: "POST",
+        body: JSON.stringify({ agentId }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async acknowledgeBehavioralAlert(organizationId: string, alertId: string): Promise<WebBehavioralRiskAlert> {
+    return await apiClient.request<WebBehavioralRiskAlert>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/alerts/${alertId}/acknowledge`,
+      {
+        method: "POST",
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async acknowledgeAlert(organizationId: string, alertId: string): Promise<WebBehavioralRiskAlert> {
+    return this.acknowledgeBehavioralAlert(organizationId, alertId);
+  }
+
+  async resolveBehavioralAlert(
+    organizationId: string,
+    alertId: string,
+    notes?: string,
+  ): Promise<WebBehavioralRiskAlert> {
+    return await apiClient.request<WebBehavioralRiskAlert>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/alerts/${alertId}/resolve`,
+      {
+        method: "POST",
+        body: JSON.stringify({ notes }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async resolveAlert(
+    organizationId: string,
+    alertId: string,
+    notes?: string,
+  ): Promise<WebBehavioralRiskAlert> {
+    return this.resolveBehavioralAlert(organizationId, alertId, notes);
+  }
+
+  async listMitigations(
+    organizationId: string,
+    filters?: { riskId?: string; status?: string },
+  ): Promise<{ items: WebRiskMitigationPlan[]; total: number }> {
+    const params = new URLSearchParams();
+    if (filters?.riskId) params.set("riskId", filters.riskId);
+    if (filters?.status) params.set("status", filters.status);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ items: WebRiskMitigationPlan[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/mitigations${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async createMitigationPlan(organizationId: string, data: any): Promise<WebRiskMitigationPlan> {
+    return await apiClient.request<WebRiskMitigationPlan>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/mitigations`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async verifyMitigationPlan(
+    organizationId: string,
+    mitigationId: string,
+    notes: string,
+    evidenceIds?: string[],
+  ): Promise<WebRiskMitigationPlan> {
+    return await apiClient.request<WebRiskMitigationPlan>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/mitigations/${mitigationId}/verify`,
+      {
+        method: "POST",
+        body: JSON.stringify({ notes, evidenceIds }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async listExceptions(
+    organizationId: string,
+    filters?: { riskId?: string; status?: string },
+  ): Promise<{ items: WebRiskException[]; total: number }> {
+    const params = new URLSearchParams();
+    if (filters?.riskId) params.set("riskId", filters.riskId);
+    if (filters?.status) params.set("status", filters.status);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return await apiClient.request<{ items: WebRiskException[]; total: number }>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/exceptions${query}`,
+      { authToken: this.getAuthToken() },
+    );
+  }
+
+  async requestException(organizationId: string, data: any): Promise<WebRiskException> {
+    return await apiClient.request<WebRiskException>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/exceptions`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async approveException(organizationId: string, exceptionId: string, notes?: string): Promise<WebRiskException> {
+    return await apiClient.request<WebRiskException>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/exceptions/${exceptionId}/approve`,
+      {
+        method: "POST",
+        body: JSON.stringify({ notes }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async revokeException(organizationId: string, exceptionId: string, reason: string): Promise<WebRiskException> {
+    return await apiClient.request<WebRiskException>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/exceptions/${exceptionId}/revoke`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
+
+  async simulateRiskDecision(
+    organizationId: string,
+    agentId: string,
+    context?: any,
+  ): Promise<WebRiskGovernanceRecommendation> {
+    return await apiClient.request<WebRiskGovernanceRecommendation>(
+      `/api/v1/organizations/${organizationId}/agent-governance/risk/simulate`,
+      {
+        method: "POST",
+        body: JSON.stringify({ agentId, ...context }),
+        authToken: this.getAuthToken(),
+      },
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1342,6 +1647,184 @@ export interface WebSecurityPostureSummary {
   revokedSecretReferencesCount: number;
   securityEventsCount24h: number;
   criticalEventsCount24h: number;
+}
+
+// ---------------------------------------------------------------------------
+// Epic 22F Web Types
+// ---------------------------------------------------------------------------
+
+export interface WebRiskOverview {
+  totalRisks: number;
+  lowCount: number;
+  mediumCount: number;
+  highCount: number;
+  criticalCount: number;
+  averageTrustScore: number;
+  totalAgentsEvaluated: number;
+  activeAlertCount: number;
+  criticalAlertCount: number;
+  pendingMitigationsCount: number;
+  activeExceptionsCount: number;
+  riskEnforcementEnabled: boolean;
+  riskEnforcementMode: string;
+}
+
+export interface WebRiskConfiguration {
+  id: string;
+  organizationId: string;
+  riskScoringModel: string;
+  lowThresholdMax: number;
+  mediumThresholdMax: number;
+  highThresholdMax: number;
+  criticalThresholdMin: number;
+  riskEnforcementEnabled: boolean;
+  riskEnforcementMode: string;
+  trustEvaluationWindowDays: number;
+  minOperationsForConfidence: number;
+  behavioralDetectionEnabled: boolean;
+}
+
+export interface WebRiskRegisterItem {
+  id: string;
+  organizationId: string;
+  workspaceId: string | null;
+  riskIdentifier: string;
+  title: string;
+  description: string | null;
+  agentId: string | null;
+  riskCategory: string;
+  riskSource: string;
+  likelihood: number;
+  impact: number;
+  inherentScore: number;
+  inherentTier: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  existingControls: Array<{ id: string; name: string; effectiveness: string; reductionFactor?: number }>;
+  residualScore: number;
+  residualTier: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  ownerId: string | null;
+  treatmentStrategy: "MITIGATE" | "ACCEPT" | "AVOID" | "TRANSFER";
+  mitigationStatus: "IDENTIFIED" | "ASSESSED" | "TREATMENT_PLANNED" | "IN_MITIGATION" | "MITIGATED" | "ACCEPTED" | "CLOSED";
+  reviewFrequency: string;
+  nextReviewDate: string | null;
+  linkedSecurityEvents: string[];
+  linkedComplianceControls: string[];
+  linkedEvidenceIds: string[];
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WebRiskAssessmentResult {
+  inherentScore: number;
+  inherentTier: string;
+  residualScore: number;
+  residualTier: string;
+  scoringModel: string;
+  modelVersion: string;
+  controlsEvaluated: Array<{
+    id: string;
+    name: string;
+    effectiveness: string;
+    appliedReduction: number;
+  }>;
+  explanation: {
+    inherentFormula: string;
+    totalControlReduction: number;
+    residualFormula: string;
+    summary: string;
+  };
+}
+
+export interface WebAgentTrustProfile {
+  id: string;
+  organizationId: string;
+  workspaceId: string | null;
+  agentId: string;
+  trustScore: number;
+  trustConfidence: "LOW" | "MEDIUM" | "HIGH";
+  trustTier: "VERY_LOW" | "LOW" | "NEUTRAL" | "HIGH" | "VERY_HIGH";
+  dimensionScores: Record<string, number>;
+  evidenceCount: number;
+  isInsufficientEvidence: boolean;
+  contributingFactors: Array<{ dimension: string; score: number; weight: number; explanation: string }>;
+  modelVersion: string;
+  lastEvaluatedAt: string;
+}
+
+export interface WebBehavioralRiskAlert {
+  id: string;
+  organizationId: string;
+  workspaceId: string | null;
+  agentId: string | null;
+  alertIdentifier: string;
+  detectionRule: string;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  status: "ACTIVE" | "ACKNOWLEDGED" | "SUPPRESSED" | "RESOLVED";
+  title: string;
+  description: string;
+  evidenceRefs: Array<Record<string, unknown>>;
+  occurrenceCount: number;
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  resolutionNotes?: string | null;
+}
+
+export interface WebRiskMitigationPlan {
+  id: string;
+  organizationId: string;
+  riskId: string;
+  planIdentifier: string;
+  title: string;
+  description: string | null;
+  ownerId: string | null;
+  priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  targetDate: string | null;
+  correctiveActions: Array<{ actionId: string; description: string; status: string; assignedTo?: string; completedAt?: string }>;
+  evidenceAttachments: string[];
+  status: "OPEN" | "IN_PROGRESS" | "PENDING_VERIFICATION" | "VERIFIED" | "REJECTED" | "CLOSED";
+  verifiedBy: string | null;
+  verifiedAt: string | null;
+  verificationNotes: string | null;
+}
+
+export interface WebRiskException {
+  id: string;
+  organizationId: string;
+  riskId: string;
+  exceptionIdentifier: string;
+  title: string;
+  justification: string;
+  scopeType: string;
+  scopeTarget: string;
+  status: "REQUESTED" | "APPROVED" | "REJECTED" | "EXPIRED" | "REVOKED";
+  requestedBy: string;
+  requestedAt: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  expirationDate: string;
+  compensatingControls: Array<{ controlName: string; description: string; verified: boolean }>;
+}
+
+export interface WebRiskMatrixCell {
+  likelihood: number;
+  impact: number;
+  inherentScore: number;
+  count: number;
+  risks: Array<{ id: string; title: string; tier: string }>;
+}
+
+export interface WebRiskGovernanceRecommendation {
+  agentId: string;
+  recommendation: "ALLOW" | "MONITOR" | "REQUIRE_APPROVAL" | "RESTRICT" | "SUSPEND";
+  riskTier: string;
+  trustScore: number;
+  trustTier: string;
+  activeAlertCount: number;
+  criticalAlertCount: number;
+  isRiskEnforcementEnabled: boolean;
+  reasons: string[];
+  mandatorySecurityOverrideApplied: boolean;
+  evaluatedAt: string;
 }
 
 export const agentGovernanceService = new AgentGovernanceService();

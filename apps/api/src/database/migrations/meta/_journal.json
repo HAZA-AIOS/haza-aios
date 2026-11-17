@@ -253,6 +253,13 @@
       "when": 1794200000000,
       "tag": "0035_agent_compliance_audit_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "5",
+      "when": 1794300000000,
+      "tag": "0036_agent_risk_trust_management",
+      "breakpoints": true
     }
   ]
 }

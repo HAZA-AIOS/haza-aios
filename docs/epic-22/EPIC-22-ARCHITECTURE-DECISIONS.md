@@ -299,4 +299,73 @@ Implement a controlled evidence registry, packaging engine, and legal hold syste
 - Total immunity of litigation-critical evidence against premature retention expiration.
 - Zero risk of unintended data destruction during compliance evaluations.
 
+---
+
+### ADR-022-16: Deterministic Inherent vs. Residual Risk Scoring with Control Effectiveness Gating
+
+**Status:** Approved  
+**Date:** 2026-11-17  
+**Context:**  
+Agent operational risk assessment often suffers from subjective, non-deterministic estimates or the "control effectiveness fallacy" — assuming a risk is mitigated simply because a control exists on paper, even if that control is ineffective or unverified.
+
+**Decision:**  
+Implement deterministic quantitative risk assessment:
+1. **Inherent Risk Formulation:** $\text{Inherent Score} = \text{Likelihood} \times \text{Impact} \in [1, 25]$ mapped to tiers (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
+2. **Control Effectiveness Gating:** Controls reduce risk strictly based on empirical status:
+   - `EFFECTIVE`: 40% reduction
+   - `PARTIALLY_EFFECTIVE`: 20% reduction
+   - `INEFFECTIVE`: 0% reduction
+   - Unverified controls provide 0% reduction.
+3. **Reduction Ceiling:** Total control reduction is capped at 85%, ensuring residual risk score can never drop to 0 through controls alone ($\text{Residual Score} \ge 1$).
+4. **Historical Assessment Immutability:** Each assessment generates an incrementing version number, preserving complete audit history and calculation parameters.
+
+**Consequences:**  
+- Eliminates subjective bias and artificial risk deflation.
+- Enforces rigorous control verification before risk reduction is recognized.
+- Guarantees full audit traceability across risk reassessments.
+
+---
+
+### ADR-022-17: Multidimensional Agent Trust Profiles with Insufficient-Evidence Neutral Baseline
+
+**Status:** Approved  
+**Date:** 2026-11-17  
+**Context:**  
+Single-dimensional trust scores fail to capture the nuances of agent behavior. Moreover, newly deployed agents with zero operational history face a cold-start dilemma: treating them as malicious blocks legitimate business workflows, while blindly assigning high trust creates security vulnerabilities.
+
+**Decision:**  
+Implement a 7-dimensional trust evaluation engine:
+1. **Weighted Dimensions:** `executionReliability` (20%), `policyAdherence` (20%), `securityIncidentHistory` (20%), `humanApprovalOutcomes` (10%), `toolExecutionSafety` (10%), `complianceEvidenceQuality` (10%), and `operationalConsistency` (10%).
+2. **Cold-Start Neutral Baseline:** When total operations are below `minOperationsForConfidence` (default 5), the engine assigns a neutral baseline score (70/100) with `trustConfidence = "LOW"` and `isInsufficientEvidence = true`.
+3. **Deterministic Confidence Scaling:** Confidence levels scale automatically with telemetry sample volume ($<5 \implies \text{LOW}$, $5-19 \implies \text{MEDIUM}$, $\ge 20 \implies \text{HIGH}$).
+4. **Zero-Token Telemetry Processing:** Trust profile evaluation runs entirely via deterministic SQL queries and mathematical aggregation without consuming paid AI model tokens.
+
+**Consequences:**  
+- Transparent, explainable trust scoring across distinct operational vectors.
+- Safe cold-start handling without false penalties or unjustified privileges.
+- Zero marginal LLM inference cost for continuous trust evaluation.
+
+---
+
+### ADR-022-18: Fingerprinted Behavioral Anomaly Detection & Mandatory Security Precedence Enforcement
+
+**Status:** Approved  
+**Date:** 2026-11-17  
+**Context:**  
+Continuous behavioral monitoring can flood database tables with duplicate alerts during incident cascades. Furthermore, high trust scores or approved exceptions must never be permitted to bypass fundamental platform security boundaries or allow self-approved policy circumvention.
+
+**Decision:**  
+Implement fingerprinted anomaly detection and security override precedence:
+1. **Rule Engine:** 10 deterministic operational rules detect policy denials, tool failure spikes, unauthorized access, SSRF/network anomalies, approval rejections, and execution failure spikes.
+2. **Deduplication via SHA-256 Fingerprinting:** Alerts compute `SHA-256(orgId + agentId + rule + dateBucket)`. Recurrent triggers increment `occurrenceCount` and update timestamps rather than creating duplicate rows.
+3. **Mandatory Security Precedence:** Explicit security denials (`explicitSecurityDenial = true`, e.g., sandbox violations, SSRF blocks) take absolute precedence over trust scores or exceptions, immediately recommending `SUSPEND`.
+4. **Self-Approval Prohibition:** Exception requests strictly prohibit self-approval (`requestedBy !== approvedBy`) and require an explicit future expiration date; permanent exceptions are rejected.
+5. **Default-Disabled Enforcement Mode:** Risk enforcement defaults to `false` (`[SIMULATION MODE]`), generating advisory recommendations without disrupting existing workflows until administrators explicitly enable active enforcement.
+
+**Consequences:**  
+- High-volume alert storms are prevented via deterministic hourly fingerprinting.
+- Platform security boundaries remain inviolable regardless of agent trust scores.
+- Clear separation between advisory monitoring and active enforcement.
+
+
 
